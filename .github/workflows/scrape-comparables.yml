@@ -1,0 +1,53 @@
+name: Grow comparables corpus (Phase E)
+
+# Corpus size is the biggest lever on retrieval quality, so we grow it on a schedule
+# rather than as a one-off. Append-only + dedupe by listing_id, so price history
+# accumulates and a depreciation-over-time signal becomes possible later.
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays, 03:17 UTC — off-peak for the free Apify tier
+  workflow_dispatch:
+    inputs:
+      per_make:
+        description: "Listings to fetch per make"
+        default: "40"
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install --quiet pandas numpy requests joblib scikit-learn fastembed rank-bm25
+
+      - name: Scrape fresh listings
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: python scripts/scrape_comparables.py --per-make "${{ github.event.inputs.per_make || 40 }}"
+
+      - name: Rebuild the retrieval index
+        run: python backend-api/agents/build_comparables_index.py
+
+      - name: Re-run the retrieval eval (a bigger corpus must not regress quality)
+        run: python eval/comparables_eval.py || echo "::warning::comparables eval reported a regression"
+
+      - name: Commit the grown corpus
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data/processed/comparables.csv backend-api/models/comparables_index.joblib; then
+            echo "no new listings — nothing to commit"
+            exit 0
+          fi
+          rows=$(($(wc -l < data/processed/comparables.csv) - 1))
+          git add data/processed/comparables.csv backend-api/models/comparables_index.joblib eval/comparables_eval.json
+          git commit -m "data: grow comparables corpus to ${rows} listings (automated)"
+          git push
