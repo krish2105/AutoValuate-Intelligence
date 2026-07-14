@@ -1,0 +1,25 @@
+# Render Blueprint (repo root) — one-click, fully-configured deploy of the backend API.
+# In Render: New → Blueprint → connect this repo → it reads THIS file and sets the root
+# directory, Python version, build + start commands, and health check automatically.
+# Free tier. Secrets you add in the dashboard (or leave unset — the app still runs).
+services:
+  - type: web
+    name: autovaluate-api
+    runtime: python
+    plan: free
+    rootDir: backend-api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: ALLOWED_ORIGINS
+        value: "https://auto-valuate-intelligence.vercel.app"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CV_SERVICE_URL
+        sync: false
