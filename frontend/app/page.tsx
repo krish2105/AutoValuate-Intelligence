@@ -24,12 +24,15 @@ export default function Home() {
   const [online, setOnline] = useState<boolean | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [drawer, setDrawer] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { setHistory(loadHistory()); apiInfo().then((i) => setOnline(i.online)); }, []);
 
   async function run(input: VehicleInput) {
-    setLoading(true); setSteps([]); setResult(null); setDemo(false);
+    setLoading(true); setSteps([]); setResult(null); setDemo(false); setError(null);
+    abortRef.current = new AbortController();
     await streamValuation(input, {
       onStep: (s) => setSteps((p) => [...p, s]),
       onResult: (r, isDemo) => {
@@ -37,9 +40,17 @@ export default function Home() {
         setHistory(saveToHistory(r));
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
       },
-      onError: () => setLoading(false),
-    });
+      onError: (msg) => { setLoading(false); setError(msg); },
+    }, abortRef.current.signal);
   }
+
+  function cancel() {
+    abortRef.current?.abort();
+    setLoading(false);
+    setSteps([]);
+  }
+
+  const lastStep = steps[steps.length - 1];
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-24 pt-5 sm:px-6">
@@ -48,9 +59,9 @@ export default function Home() {
         <div className="glass flex items-center justify-between rounded-2xl px-3 py-2.5 sm:px-4">
           <Logo />
           <div className="flex items-center gap-2">
-            <span className="hidden items-center gap-1.5 rounded-full bg-surface-2/70 px-2.5 py-1 text-[11px] font-medium sm:inline-flex">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2/70 px-2 py-1 text-[11px] font-medium sm:px-2.5">
               <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-good" : "bg-warn"} ${online ? "animate-pulse" : ""}`} />
-              {online === null ? "checking…" : online ? "API live" : "demo mode"}
+              <span className="hidden sm:inline">{online === null ? "checking…" : online ? "API live" : "demo mode"}</span>
             </span>
             <button onClick={() => setDrawer(true)} aria-label="History"
               className="grid h-10 w-10 place-items-center rounded-full border bg-surface/70 backdrop-blur transition hover:bg-surface-2">
@@ -90,12 +101,29 @@ export default function Home() {
           <AnimatePresence>
             {(loading || steps.length > 0) && (
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-                <SectionCard title="Live reasoning trace" subtitle="Each agent, streamed in real time" icon={<Radio className="h-4.5 w-4.5" />}>
+                <SectionCard title="Live reasoning trace" subtitle="Each agent, streamed in real time" icon={<Radio className="h-4.5 w-4.5" />}
+                  right={loading ? (
+                    <button onClick={cancel} className="rounded-lg border px-2.5 py-1 text-xs text-muted transition hover:text-bad hover:border-bad/40">Cancel</button>
+                  ) : undefined}>
                   <ReasoningTrace steps={steps} active={loading} />
                 </SectionCard>
               </motion.div>
             )}
           </AnimatePresence>
+
+          {error && (
+            <div role="alert" className="flex items-start gap-2 rounded-xl border border-bad/30 bg-bad/8 px-4 py-3 text-sm text-bad">
+              <span className="mt-0.5">⚠</span>
+              <div>{error} <button onClick={() => setError(null)} className="ml-1 underline">dismiss</button></div>
+            </div>
+          )}
+        </div>
+
+        {/* screen-reader live announcer */}
+        <div aria-live="polite" className="sr-only">
+          {loading && lastStep ? `Step: ${lastStep.step} — ${lastStep.detail}` : ""}
+          {result ? `Valuation complete. Estimated value ${Math.round(result.valuation.price_mid_aed).toLocaleString()} dirhams, ${result.confidence.level} confidence.` : ""}
+          {error ? `Error: ${error}` : ""}
         </div>
 
         {/* right: results */}

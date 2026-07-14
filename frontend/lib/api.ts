@@ -2,6 +2,7 @@ import type { TraceStep, ValuationResult, VehicleInput } from "./types";
 import { demoResult } from "./demo";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const DEFAULT_TIMEOUT_MS = 90_000; // generous for a Render cold start
 
 export interface StreamHandlers {
   onStep: (step: TraceStep) => void;
@@ -11,41 +12,57 @@ export interface StreamHandlers {
 
 /**
  * Streams the valuation over the backend's SSE endpoint. EventSource can't POST,
- * so we POST via fetch and parse the SSE frames from the ReadableStream manually.
- * If the backend is unreachable (not deployed / cold start failed), we degrade to
- * a deterministic demo result with a staged trace so the UI still demonstrates.
+ * so we POST via fetch and parse SSE frames from the ReadableStream.
+ *
+ * Failure policy:
+ *  - user cancel (externalSignal)      → silent stop
+ *  - timeout                           → onError (the engine is waking up)
+ *  - error AFTER a run has started     → onError (interrupted) — never relabel a real run as demo
+ *  - connection fails before any event → demo fallback so the link is never blank
  */
-export async function streamValuation(input: VehicleInput, h: StreamHandlers, signal?: AbortSignal) {
+export async function streamValuation(
+  input: VehicleInput,
+  h: StreamHandlers,
+  externalSignal?: AbortSignal,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+) {
+  const ctrl = new AbortController();
+  let timedOut = false;
+  let started = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+  const onExtAbort = () => ctrl.abort();
+  externalSignal?.addEventListener("abort", onExtAbort);
+
+  const handleFrame = (frame: string) => {
+    let event = "";
+    const dataLines: string[] = [];
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (dataLines.length === 0) return;
+    const data = JSON.parse(dataLines.join("\n")); // SSE joins multi-line data with \n
+    started = true;
+    if (event === "trace") h.onStep(data as TraceStep);
+    else if (event === "error") h.onError(data?.error || "valuation failed");
+    else if (event === "result") {
+      if (data.ok === false) h.onError(data.error || "valuation failed");
+      else h.onResult(data as ValuationResult, false);
+    }
+  };
+
   try {
     const res = await fetch(`${API}/valuate/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
-      signal,
+      signal: ctrl.signal,
     });
     if (!res.ok || !res.body) throw new Error(`API ${res.status}`);
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-
-    const handleFrame = (frame: string) => {
-      let event = "";
-      let dataLine = "";
-      for (const line of frame.split("\n")) {
-        if (line.startsWith("event:")) event = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataLine = line.slice(5).trim();
-      }
-      if (!dataLine) return;
-      const data = JSON.parse(dataLine);
-      if (event === "trace") h.onStep(data as TraceStep);
-      else if (event === "error") h.onError(data?.error || "valuation failed");
-      else if (event === "result") {
-        if (data.ok === false) h.onError(data.error || "valuation failed");
-        else h.onResult(data as ValuationResult, false);
-      }
-    };
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -54,12 +71,15 @@ export async function streamValuation(input: VehicleInput, h: StreamHandlers, si
       buffer = frames.pop() ?? "";
       for (const frame of frames) handleFrame(frame);
     }
-    // flush the final frame (last event may arrive without a trailing blank line)
-    if (buffer.trim()) handleFrame(buffer);
+    if (buffer.trim()) handleFrame(buffer); // last frame may lack a trailing blank line
   } catch (err: any) {
-    if (err?.name === "AbortError") return;
-    // graceful demo fallback with a staged trace
-    await runDemo(input, h);
+    if (externalSignal?.aborted) return;                       // user cancelled → silent
+    if (timedOut) return h.onError("The analysis engine is waking up and timed out. Please try again.");
+    if (started) return h.onError("The valuation was interrupted. Please try again.");
+    await runDemo(input, h);                                    // backend unreachable → demo
+  } finally {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", onExtAbort);
   }
 }
 

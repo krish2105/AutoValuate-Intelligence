@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileText, Quote } from "lucide-react";
+import { FileText, Quote, Download } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
+import { downloadReportPdf } from "@/lib/pdf";
 import { SectionCard, Pill } from "./ui";
 
 function evidenceFor(evidence: ValuationResult["evidence"], id: string): string | null {
@@ -26,7 +27,18 @@ export function SellerReport({ result }: { result: ValuationResult }) {
     <SectionCard
       title="Seller report" subtitle={`Synthesized via ${report_provider} · every figure citation-grounded`}
       icon={<FileText className="h-4.5 w-4.5" />}
-      right={<Pill tone={result.verification.passed ? "good" : "warn"}>{result.verification.passed ? "verified" : "flagged"}</Pill>}
+      right={
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => downloadReportPdf(result)}
+            aria-label="Download PDF report"
+            className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs text-muted transition hover:border-accent/40 hover:text-accent"
+          >
+            <Download className="h-3.5 w-3.5" /> PDF
+          </button>
+          <Pill tone={result.verification.passed ? "good" : "warn"}>{result.verification.passed ? "verified" : "flagged"}</Pill>
+        </div>
+      }
     >
       <div className="space-y-3 text-sm leading-relaxed text-fg/90">
         {paras.map((p, pi) => (

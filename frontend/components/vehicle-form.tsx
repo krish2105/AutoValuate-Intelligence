@@ -52,11 +52,16 @@ export function VehicleForm({ onSubmit, loading }: { onSubmit: (v: VehicleInput)
     >
       {/* photo dropzone */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Upload car photos — drop files here or press Enter to browse"
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
         onClick={() => fileRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileRef.current?.click(); } }}
         className={cn(
+          "focus:outline-none focus:ring-2 focus:ring-accent/50",
           "group relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-7 text-center transition",
           drag ? "border-accent bg-accent/8" : "hairline hover:border-accent/50 hover:bg-surface-2/50"
         )}

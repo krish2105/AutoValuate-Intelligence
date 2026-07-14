@@ -21,15 +21,26 @@ export function loadHistory(): HistoryItem[] {
 
 export function saveToHistory(result: ValuationResult): HistoryItem[] {
   const v = result.vehicle;
+  // Never persist base64 photos into localStorage — they blow the ~5 MB quota.
+  const slim: ValuationResult = { ...result, vehicle: { ...v, photos: [] } };
   const item: HistoryItem = {
     id: `${Date.now()}`,
     ts: Date.now(),
     label: `${v.year} ${v.make} ${v.model}`,
     mid: result.valuation.price_mid_aed,
-    result,
+    result: slim,
   };
   const next = [item, ...loadHistory()].slice(0, 20);
-  localStorage.setItem(KEY, JSON.stringify(next));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    // quota exceeded — drop the oldest half and retry once, then give up quietly
+    try {
+      localStorage.setItem(KEY, JSON.stringify(next.slice(0, 10)));
+    } catch {
+      /* history is best-effort; never let it break the app */
+    }
+  }
   return next;
 }
 

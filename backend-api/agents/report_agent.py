@@ -80,7 +80,7 @@ def _template(vehicle: dict, ev: dict, condition: dict) -> str:
     return (
         f'Based on the details provided, {car} has an estimated fair-market value between '
         f'AED {int(v["V1"]["aed"]):,} [V1] and AED {int(v["V3"]["aed"]):,} [V3], with a mid-point of '
-        f'AED {int(v["V2"]["aed"]):,} [V2]. This range is a calibrated {int(v["V4"]["value"]*100)}% '
+        f'AED {int(v["V2"]["aed"]):,} [V2]. This range is a calibrated {round(v["V4"]["value"]*100)}% '
         f'confidence interval [V4].\n\n'
         f'The main factors behind this estimate are {drv}. On held-out testing the pricing model '
         f'carries a median error of about {v["V5"]["value"]}% [V5], so treat the mid-point as a guide, '
