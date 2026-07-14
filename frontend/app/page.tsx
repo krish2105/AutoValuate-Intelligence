@@ -1,0 +1,164 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Activity, Clock, Radio, FlaskConical, ArrowDown } from "lucide-react";
+import type { TraceStep, ValuationResult, VehicleInput } from "@/lib/types";
+import { streamValuation, apiInfo } from "@/lib/api";
+import { loadHistory, saveToHistory, clearHistory, type HistoryItem } from "@/lib/history";
+import { Logo, Reveal, SectionCard } from "@/components/ui";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { VehicleForm } from "@/components/vehicle-form";
+import { ReasoningTrace } from "@/components/reasoning-trace";
+import { ValuationDashboard } from "@/components/valuation-dashboard";
+import { DamageReport } from "@/components/damage-report";
+import { Comparables } from "@/components/comparables";
+import { SellerReport } from "@/components/seller-report";
+import { ConfidencePanel } from "@/components/confidence-panel";
+import { HistoryDrawer } from "@/components/history-drawer";
+
+export default function Home() {
+  const [loading, setLoading] = useState(false);
+  const [steps, setSteps] = useState<TraceStep[]>([]);
+  const [result, setResult] = useState<ValuationResult | null>(null);
+  const [demo, setDemo] = useState(false);
+  const [online, setOnline] = useState<boolean | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [drawer, setDrawer] = useState(false);
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setHistory(loadHistory()); apiInfo().then((i) => setOnline(i.online)); }, []);
+
+  async function run(input: VehicleInput) {
+    setLoading(true); setSteps([]); setResult(null); setDemo(false);
+    await streamValuation(input, {
+      onStep: (s) => setSteps((p) => [...p, s]),
+      onResult: (r, isDemo) => {
+        setResult(r); setDemo(isDemo); setLoading(false);
+        setHistory(saveToHistory(r));
+        setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+      },
+      onError: () => setLoading(false),
+    });
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 pb-24 pt-5 sm:px-6">
+      {/* header */}
+      <header className="sticky top-3 z-30 mb-8">
+        <div className="glass flex items-center justify-between rounded-2xl px-3 py-2.5 sm:px-4">
+          <Logo />
+          <div className="flex items-center gap-2">
+            <span className="hidden items-center gap-1.5 rounded-full bg-surface-2/70 px-2.5 py-1 text-[11px] font-medium sm:inline-flex">
+              <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-good" : "bg-warn"} ${online ? "animate-pulse" : ""}`} />
+              {online === null ? "checking…" : online ? "API live" : "demo mode"}
+            </span>
+            <button onClick={() => setDrawer(true)} aria-label="History"
+              className="grid h-10 w-10 place-items-center rounded-full border bg-surface/70 backdrop-blur transition hover:bg-surface-2">
+              <Clock className="h-[18px] w-[18px]" />
+            </button>
+            <ThemeToggle />
+          </div>
+        </div>
+      </header>
+
+      {/* hero */}
+      <Reveal>
+        <div className="mb-8 text-center">
+          <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border bg-surface/60 px-3 py-1 text-[11px] font-medium text-muted">
+            <FlaskConical className="h-3.5 w-3.5 text-accent" /> CV · explainable ML · agentic RAG
+          </span>
+          <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-5xl">
+            Know what your car is <span className="text-accent">really</span> worth.
+          </h1>
+          <p className="mx-auto mt-3 max-w-xl text-pretty text-sm text-muted sm:text-base">
+            An instant, explainable, damage-aware fair-market valuation for the UAE — backed by a trained damage
+            detector, an explainable pricing model, and live comparable listings. Every number is traceable.
+          </p>
+        </div>
+      </Reveal>
+
+      {/* main grid */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        {/* left: form + trace */}
+        <div className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+          <Reveal delay={0.05}>
+            <SectionCard title="Your vehicle" subtitle="Photos optional · details required" icon={<Activity className="h-4.5 w-4.5" />}>
+              <VehicleForm onSubmit={run} loading={loading} />
+            </SectionCard>
+          </Reveal>
+
+          <AnimatePresence>
+            {(loading || steps.length > 0) && (
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+                <SectionCard title="Live reasoning trace" subtitle="Each agent, streamed in real time" icon={<Radio className="h-4.5 w-4.5" />}>
+                  <ReasoningTrace steps={steps} active={loading} />
+                </SectionCard>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* right: results */}
+        <div ref={resultsRef} className="space-y-5">
+          <AnimatePresence mode="wait">
+            {!result && !loading && (
+              <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="flex min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center">
+                <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-accent/10 text-accent">
+                  <Activity className="h-7 w-7" />
+                </motion.div>
+                <p className="text-sm font-medium">Your valuation appears here</p>
+                <p className="mt-1 max-w-xs text-xs text-muted">Fill in the details and hit “Value my car”. The full reasoning trace streams live, then the results build in.</p>
+                <ArrowDown className="mt-4 h-4 w-4 animate-bounce text-muted lg:hidden" />
+              </motion.div>
+            )}
+
+            {loading && !result && (
+              <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="space-y-5">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="card overflow-hidden p-6">
+                    <div className="relative overflow-hidden rounded-lg">
+                      <div className="h-4 w-1/3 rounded bg-surface-2" />
+                      <div className="mt-4 h-16 rounded bg-surface-2" />
+                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+                    </div>
+                  </div>
+                ))}
+                <p className="text-center text-xs text-muted">
+                  {online === false ? "Backend offline — waking analysis engine / showing demo…" : "Running the model pipeline…"}
+                </p>
+              </motion.div>
+            )}
+
+            {result && (
+              <motion.div key="result" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
+                {demo && (
+                  <div className="rounded-xl border border-warn/30 bg-warn/8 px-4 py-2.5 text-xs text-warn">
+                    Demo data shown — the live API wasn’t reachable. Numbers mirror a real pipeline run.
+                  </div>
+                )}
+                <ConfidencePanel c={result.confidence} />
+                <ValuationDashboard v={result.valuation} />
+                <DamageReport c={result.condition} />
+                <Comparables items={result.comparables} />
+                <SellerReport result={result} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <footer className="mt-16 border-t pt-6 text-center text-xs text-muted">
+        AutoValuate Intelligence · trained damage detector + explainable pricing + agentic RAG · not a certified appraisal.
+      </footer>
+
+      <HistoryDrawer
+        open={drawer} items={history} onClose={() => setDrawer(false)}
+        onSelect={(it) => { setResult(it.result); setDemo(false); setSteps(it.result.trace); setDrawer(false); setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 120); }}
+        onClear={() => setHistory(clearHistory())}
+      />
+    </div>
+  );
+}

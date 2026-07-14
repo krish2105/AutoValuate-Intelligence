@@ -118,6 +118,16 @@ Each entry records **what** was chosen and **why**, so the whole stack is defens
 
 ---
 
+## ADR-015 — Frontend: premium dark/light Next.js with graceful demo fallback
+
+**Decision:** Next.js 14 (App Router) + Tailwind + framer-motion + Recharts, `next-themes` dark-primary/light toggle, Inter + JetBrains Mono (tabular figures for all money/metrics). The API client streams the backend SSE (`/valuate/stream`) by POST-ing via `fetch` and parsing frames from the `ReadableStream`; if the backend is unreachable it degrades to a deterministic **demo** result with a staged trace, so the portfolio link is never dead during a Render cold start.
+
+**Why:** Design direction "Modern Dark (Cinema Mobile)" — glassmorphism header, ambient light blobs, instrument-cluster aesthetic matching an automotive dashboard. Verified end-to-end against the live local backend: the 7-step reasoning trace streams in real time, the SHAP waterfall + animated price gauge render, comparables show real listing IDs, and the seller report's `[V*]/[C*]` citations are clickable to their evidence. Two real bugs were found and fixed during browser testing: sse-starlette uses `\r\n` frame separators (normalize before splitting), and the final `result` frame arrives without a trailing blank line (flush the buffer on stream close). Mobile verified at 375px — single column, no overflow, responsive chart.
+
+**Free-tier note:** heavy compute stays in the backend; Vercel only proxies. `NEXT_PUBLIC_API_URL` selects the backend; unset → demo mode.
+
+---
+
 ## Dataset licensing
 
 | Dataset | Use | License / terms |
