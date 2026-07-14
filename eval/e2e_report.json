@@ -3,8 +3,8 @@
   "passed": 18,
   "failed": 0,
   "pass_rate": 1.0,
-  "elapsed_sec": 15.2,
-  "avg_sec_per_case": 0.84,
+  "elapsed_sec": 9.6,
+  "avg_sec_per_case": 0.53,
   "cases": [
     {
       "id": "bench-01",
@@ -18,7 +18,7 @@
       "top_comp": "2020 nissan patrol",
       "top_sim": 0.9595,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -33,7 +33,7 @@
       "top_comp": "2017 toyota land cruiser",
       "top_sim": 0.941,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -48,7 +48,7 @@
       "top_comp": "2019 toyota corolla",
       "top_sim": 0.9544,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -63,7 +63,7 @@
       "top_comp": "2019 honda civic",
       "top_sim": 0.9309,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -78,7 +78,7 @@
       "top_comp": "2019 lexus lx-series",
       "top_sim": 0.9729,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -93,7 +93,7 @@
       "top_comp": "2020 bmw x5",
       "top_sim": 0.9627,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -108,7 +108,7 @@
       "top_comp": "2020 mercedes-benz c-class",
       "top_sim": 0.9289,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -123,7 +123,7 @@
       "top_comp": "2024 hyundai creta",
       "top_sim": 0.9733,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -138,7 +138,7 @@
       "top_comp": "2023 toyota rav 4",
       "top_sim": 0.9734,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -153,7 +153,7 @@
       "top_comp": "2017 ford mustang",
       "top_sim": 0.9725,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -168,7 +168,7 @@
       "top_comp": "2019 nissan sunny",
       "top_sim": 0.9418,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -183,7 +183,7 @@
       "top_comp": "2016 toyota prado",
       "top_sim": 0.9744,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -198,7 +198,7 @@
       "top_comp": "2015 honda accord",
       "top_sim": 0.9639,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -213,7 +213,7 @@
       "top_comp": "2020 lexus es-series",
       "top_sim": 0.9459,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -228,7 +228,7 @@
       "top_comp": "2019 mitsubishi pajero",
       "top_sim": 0.9114,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
@@ -243,7 +243,7 @@
       "top_comp": "2010 toyota yaris",
       "top_sim": 0.9368,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {

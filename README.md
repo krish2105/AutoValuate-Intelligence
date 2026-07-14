@@ -17,7 +17,7 @@ Hybrid **Computer Vision + Tabular ML + Agentic-RAG** vehicle valuation SaaS, bu
 - [x] Phase 6 — orchestration API & agent graph (LangGraph 7-node graph, SSE trace, Verifier gate, confidence disclosure)
 - [x] Phase 7 — frontend (premium Next.js: dark/light toggle, live SSE trace, SHAP waterfall, citation-grounded report, mobile-responsive)
 - [x] Phase 8 — integration & end-to-end testing (53 checks green: 18-vehicle E2E + adversarial verifier + HTTP/SSE contract)
-- [ ] Phase 9 — evaluation & guardrails
+- [x] Phase 9 — evaluation & guardrails (faithfulness 1.000 w/ discriminating negative control; Section 15 contract enforced, 90 checks)
 - [ ] Phase 10 — deployment, CI/CD & polish
 - [ ] Phase 11 — presentation deck + script
 

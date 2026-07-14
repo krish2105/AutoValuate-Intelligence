@@ -128,7 +128,45 @@ Benchmark set: `eval/benchmark_cases.json`; results: `eval/e2e_report.json`.
 
 ---
 
-## Report faithfulness (Ragas) — _pending Phase 9_
+## Report faithfulness & guardrails (Phase 9)
 
-Target: faithfulness ≥ 0.90 on the generated seller report vs. the retrieved comparables and
-computed SHAP values. Filled in Phase 9.
+### Faithfulness (`eval/faithfulness_eval.py` → `eval/faithfulness_report.json`)
+Ragas' faithfulness decomposes an answer into atomic claims and checks context support. Here every
+report claim is a **number or a citation**, which is machine-checkable — so faithfulness is computed
+**deterministically** (no LLM self-grading), the stronger guarantee for a valuation product. The
+`report_agent` still uses the live Gemini→Groq LLM when keys are set; this same metric grades whatever
+writer produced the text, and the Verifier gate enforces the target at serve time.
+
+| metric | value (over 18 benchmark reports) | target |
+|---|---|---|
+| Mean faithfulness | **1.000** | ≥ 0.90 |
+| Min faithfulness | **1.000** | ≥ 0.90 |
+| Mean citation validity | **1.000** | — |
+| Mean relevancy | **1.000** | — |
+| **Negative control** (deliberately hallucinated report) | faithfulness **0.000**, cite-validity 0.50 | must be < 0.90 |
+
+The negative control proves the metric discriminates — it is not trivially 1.0. Combined with the
+adversarial unit tests (the Verifier catches injected fake figures), the citation-grounding guarantee
+is demonstrably real, not asserted.
+
+### Confidence-disclosure contract — Section 15 (`eval/guardrails_test.py` → `eval/guardrails_report.json`)
+Enforced as a test over all 18 cases: **90 checks, 0 failures.** Every report states (a) per-damage CV
+confidence when available, else an honest "no visual assessment" note; (b) the valuation
+prediction-interval width; (c) a professional-inspection recommendation whenever confidence is limited;
+and never claims to be a certified appraisal. Confidence tiers use a data-support signal (comparable
+quality + make familiarity + interval width + visual assessment), so they differentiate honestly:
+
+| tier | count (18 benchmark, no photos) | meaning |
+|---|---|---|
+| high | 0 | needs a visual assessment (CV Space) — impossible without photos |
+| medium | 16 | strong comparable support, but no visual scan |
+| low | 2 | thin comparables (the Tesla + Porsche edge cases) |
+
+Run everything with `eval/run_all.sh` (5 suites, ~90 checks + 18 E2E, all green).
+
+---
+
+## Report faithfulness (Ragas library) — _optional live-LLM pass_
+When `GEMINI_API_KEY`/`GROQ_API_KEY` are configured, the report is LLM-written and the deterministic
+faithfulness metric above grades it directly. A full Ragas-library LLM-judge pass can be added as a
+secondary check, but is not required — the machine-checkable metric is authoritative here.

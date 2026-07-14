@@ -1,0 +1,140 @@
+{
+  "contract": "Section 15 confidence-disclosure",
+  "cases": 18,
+  "checks_passed": 90,
+  "checks_failed": 0,
+  "level_distribution": {
+    "high": 0,
+    "medium": 16,
+    "low": 2
+  },
+  "all_recommend_inspection_when_uncertain": true,
+  "per_case": [
+    {
+      "id": "bench-01",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-02",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-03",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-04",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-05",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-06",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-07",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-08",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-09",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-10",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-11",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-12",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-13",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-14",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-15",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-16",
+      "level": "medium",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-17",
+      "level": "low",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    },
+    {
+      "id": "bench-18",
+      "level": "low",
+      "interval_pct": 85.6,
+      "cv_assessed": false,
+      "recommends_inspection": true
+    }
+  ]
+}

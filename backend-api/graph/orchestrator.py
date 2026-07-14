@@ -99,20 +99,34 @@ def n_verify(state: State) -> State:
 
 def n_confidence(state: State) -> State:
     val, cond = state["valuation"], state["condition"]
+    comps, vehicle = state["comparables"], state["vehicle"]
     width = val.get("interval_pct_width", 0)
-    reasons, level = [], "high"
-    if width > 90:
-        level = "low"; reasons.append(f"wide price interval (±{width/2:.0f}% around mid)")
-    elif width > 60:
-        level = "medium"; reasons.append(f"moderate price interval (±{width/2:.0f}%)")
-    if not cond.get("cv_available"):
-        level = "low" if level != "low" else level
-        reasons.append("no visual damage assessment was performed")
+    reasons: list[str] = []
+
+    # Data-support signal: how well the market actually covers this vehicle.
+    top_sim = comps[0]["similarity"] if comps else 0.0
+    same_make = sum(1 for c in comps if str(c["make"]).lower() == str(vehicle["make"]).lower())
+    strong_support = top_sim >= 0.80 and same_make >= 3
+
+    # Score 0–3: good comparables + visual assessment + a not-too-wide interval.
+    score = 0
+    if strong_support:
+        score += 1
     else:
+        reasons.append("few closely-comparable listings for this make/model")
+    if cond.get("cv_available"):
+        score += 1
         weak = [f["damage_type"] for f in cond["findings"] if f["max_confidence"] < 0.5]
         if weak:
             reasons.append(f"low detection confidence for: {', '.join(weak)}")
+    else:
+        reasons.append("no visual damage assessment was performed")
+    if width <= 90:
+        score += 1
+    else:
+        reasons.append(f"wide price interval (±{width/2:.0f}% around mid)")
 
+    level = "high" if score >= 3 else "medium" if score == 2 else "low"
     recommend = level in ("low", "medium")
     disclosure = {
         "level": level,
