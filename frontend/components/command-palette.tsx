@@ -114,11 +114,13 @@ export function CommandPalette({
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-[60] bg-black/55 backdrop-blur-sm"
             />
+            {/* flex-centred: framer's inline transform would clobber a Tailwind translate */}
+            <div className="fixed inset-0 z-[61] flex items-start justify-center overflow-y-auto p-4 pt-[14vh]">
             <motion.div
               initial={{ opacity: 0, scale: 0.97, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -8 }}
               transition={{ type: "spring", stiffness: 300, damping: 26 }}
               role="dialog" aria-modal="true" aria-label="Command palette"
-              className="fixed left-1/2 top-[18%] z-[61] w-[min(92vw,520px)] -translate-x-1/2 overflow-hidden rounded-2xl border bg-surface shadow-lift"
+              className="relative w-full max-w-[520px] overflow-hidden rounded-2xl border bg-surface shadow-lift"
             >
               <div className="flex items-center gap-2 border-b px-3.5">
                 <Search className="h-4 w-4 shrink-0 text-muted" />
@@ -156,6 +158,7 @@ export function CommandPalette({
                 ))}
               </ul>
             </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>

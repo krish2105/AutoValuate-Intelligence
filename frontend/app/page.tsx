@@ -123,7 +123,7 @@ export default function Home() {
       {/* main grid */}
       <div ref={appraiseRef} id="appraise" className="grid scroll-mt-24 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         {/* left: form + trace */}
-        <div className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+        <div className="min-w-0 space-y-5 lg:sticky lg:top-24 lg:self-start">
           <Reveal delay={0.05}>
             <SectionCard title="Your vehicle" subtitle="Photos optional · details required" icon={<Activity className="h-4.5 w-4.5" />}>
               <div className="mb-5">
@@ -162,7 +162,7 @@ export default function Home() {
         </div>
 
         {/* right: results */}
-        <div ref={resultsRef} className="space-y-5">
+        <div ref={resultsRef} className="min-w-0 space-y-5">
           <AnimatePresence mode="wait">
             {!result && !loading && (
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

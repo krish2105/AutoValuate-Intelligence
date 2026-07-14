@@ -42,11 +42,13 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
         <>
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={onClose} className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm" />
+          {/* flex-centred: framer's inline transform would clobber a Tailwind translate */}
+          <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 12 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
             role="dialog" aria-modal="true" aria-label="Account"
-            className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-surface p-6 shadow-lift"
+            className="relative w-full max-w-[380px] rounded-2xl border bg-surface p-6 shadow-lift"
           >
             <button onClick={onClose} aria-label="Close" className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg hover:bg-surface-2"><X className="h-4 w-4" /></button>
             <div className="mb-1 grid h-11 w-11 place-items-center rounded-xl bg-accent/12 text-accent"><Mail className="h-5 w-5" /></div>
@@ -72,6 +74,7 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
             </button>
             <p className="mt-2 text-center text-[11px] text-muted">You can value cars right away — an account just syncs your history across devices.</p>
           </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

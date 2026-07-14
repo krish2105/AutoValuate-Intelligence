@@ -60,11 +60,15 @@ export function Onboarding() {
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={close} className="fixed inset-0 z-[70] bg-black/55 backdrop-blur-sm"
           />
+          {/* Centre with flex, NOT translate: framer-motion writes its own inline transform
+              (scale/y), which overrides Tailwind's -translate-x-1/2/-translate-y-1/2 and
+              leaves the dialog hanging off the right/bottom edge on narrow screens. */}
+          <div className="fixed inset-0 z-[71] grid place-items-center overflow-y-auto p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 14 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 14 }}
             transition={{ type: "spring", stiffness: 280, damping: 24 }}
             role="dialog" aria-modal="true" aria-label="Welcome to AutoValuate"
-            className="fixed left-1/2 top-1/2 z-[71] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-surface p-6 shadow-lift"
+            className="relative w-full max-w-[420px] rounded-2xl border bg-surface p-6 shadow-lift"
           >
             <button onClick={close} aria-label="Skip the tour"
               className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg">
@@ -98,6 +102,7 @@ export function Onboarding() {
               </div>
             </div>
           </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>
