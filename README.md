@@ -2,115 +2,163 @@
 
 # AutoValuate Intelligence
 
-### Explainable, damage-aware car valuation for the UAE
+### Explainable, damage-aware used-car valuation for the UAE
 
-*Upload photos of a car and a few details — get an instant, explainable, damage-aware fair-market value, backed by a trained damage detector, an explainable pricing model, and live comparable listings. Every number is traceable.*
+*Snap a few photos, add a few details, and get an instant fair-market value you can actually defend — with the reasoning shown, not hidden. A trained damage detector runs **on your device**, an explainable model prices the car, live comparables ground it, and every number in the report is checked before you see it.*
 
 **Computer Vision · Explainable ML · Agentic RAG — on a 100% free-tier stack**
+
+[![live](https://img.shields.io/badge/demo-live-4FD18B?style=flat-square)](https://auto-valuate-intelligence.vercel.app)
+[![CV mAP](https://img.shields.io/badge/CV%20mAP%400.5-0.732-F5A623?style=flat-square)](docs/RESEARCH.md)
+[![faithfulness](https://img.shields.io/badge/report%20faithfulness-1.000-F5A623?style=flat-square)](eval/faithfulness_report.json)
+[![a11y](https://img.shields.io/badge/WCAG%202.1%20AA-0%20violations-4FD18B?style=flat-square)](#accessibility--responsiveness)
 
 </div>
 
 ---
 
-## 🔗 Live demo
+## 🔗 Live
 
-| Surface | URL | Status |
-|---|---|---|
-| **Web app** (Vercel) | **https://auto-valuate-intelligence.vercel.app** | 🟢 live |
-| **Valuation API** (Render) | https://autovaluate-api.onrender.com | 🟢 live |
-| **Damage detector** | in-process (onnxruntime) in the API · `ENABLE_LOCAL_CV` | mAP 0.732 |
+| Surface | URL |
+|---|---|
+| **Web app** | **https://auto-valuate-intelligence.vercel.app** |
+| **Valuation API** | https://autovaluate-api.onrender.com |
+| **Public model report card** | [/model](https://auto-valuate-intelligence.vercel.app/model) — live eval metrics |
 
-> Runs fully locally today (see [Run locally](#-run-locally)). Deploy steps for all three free tiers are in [Deploy](#-deploy-all-free-tier). The app degrades to a demo result if the API is asleep, so the link is never blank.
+> The free-tier API sleeps after 15 min idle; a keep-alive workflow pings it, and the app shows a clear loading state on cold start. If the backend is ever unreachable it falls back to a labelled demo result, so the link is never blank.
 
 ---
 
 ## What it does
 
-Three AI systems work together, and the final report cites every claim back to the model that produced it:
+Three AI systems work together, and the final report cites every claim back to the model that produced it.
 
-- **🧠 Deep learning** — a YOLOv8 damage detector fine-tuned on ~18,000 real annotated images (CarDD + VehiDE), 8 damage classes, served CPU-only.
-- **📊 Explainable ML** — an XGBoost quantile price model with SHAP explanations, on real scraped Dubizzle listings, with a calibrated confidence interval.
-- **🤖 Agentic RAG** — a LangGraph pipeline (intake → damage → pricing → comparables → report → **verifier** → confidence) with a hard citation-grounding gate.
-
-## 📈 Results (reproducible — `./eval/run_all.sh`)
-
-| Area | Metric | Value |
+| System | What it is | How it's honest |
 |---|---|---|
-| Valuation | median abs. % error (5-fold, held-out) | **19.6%** |
-| Valuation | vs. naive baseline | **+29.3%** better |
-| Valuation | honest held-out interval coverage (split-conformal) | **0.776** |
-| Comparables | same-make precision@5 | **1.00** |
-| Report | faithfulness (deterministic claim-grounding) | **1.000** · neg-control 0.000 |
-| Guardrails | confidence-disclosure contract | **90 checks, 0 fail** |
-| Integration | full E2E + adversarial + API suites | **53 checks, all green** |
-| CV detector | mAP@0.5 (held-out) | **0.732** · glass_shatter 0.98 |
+| **👁 Damage detection** | YOLOv8-small fine-tuned on ~18k images (CarDD + VehiDE), 8 damage classes | Runs **in the browser** via ONNX — photos never leave your device; mAP@0.5 = **0.732**, reported not rounded |
+| **📈 Explainable pricing** | XGBoost quantile regression on log-price, with **SHAP** attribution | **Split-conformal** confidence interval calibrated on held-out data (80.0% coverage) — no false precision |
+| **🔍 Comparable retrieval** | Hybrid RAG: sentence embeddings + BM25 + structured similarity over real Dubizzle listings | Same-make preference; retriever proven at its data-limited ceiling (see [research](docs/RESEARCH.md)) |
+| **🧾 Report + assistant** | LLM writes the report and answers questions (Gemini → Groq → deterministic fallback) | A **Verifier** rejects any number that doesn't trace to a computed value — faithfulness **1.000** |
 
-Full methodology and every number: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Design decisions: [`DECISIONS.md`](DECISIONS.md).
+---
 
-## 🏗️ Architecture
+## Features
+
+**For sellers (free, forever)**
+- Instant valuation with a **SHAP breakdown** of every price driver
+- **On-device damage scan** + a guided "walk-around" capture flow
+- **Repair-cost estimator** with a *worth-fixing?* verdict
+- **Sell-timing forecast** — this car aged forward through the real model
+- **Market analytics** — price-vs-mileage, market-position gauge, comparables (dark/light, responsive)
+- **Grounded chat assistant** and a citation-checked written report
+- **PDF export**, **shareable public links** with social preview cards, an **appraisal certificate**
+- "**Describe your car**" plain-English intake · **installable PWA** (scanner works offline)
+
+**For businesses (paid tiers)**
+- **Dealer fleet valuation** — bulk CSV in, valued CSV out (`/dealer`)
+- **Developer API** with keys + per-tier usage metering (`/developers`)
+- **Plans** Free / Pro / Dealer (`/pricing`, Stripe test-mode) · **white-label PDF** reports
+
+---
+
+## Architecture
 
 ```
-Web app (Vercel) ──HTTPS · REST+SSE──▶ Orchestration API (FastAPI + LangGraph · Render)
-                                          │
-   Intake → Damage(CV) → Valuation → Comparables → Report → Verifier → Confidence
-                              │            │              │
-                    CV detector       XGBoost+SHAP   Comparables RAG
-                  (YOLOv8 · HF Space) (in-process)   (pgvector / local)
-                              │
-                    Report Agent (Gemini → Groq → template) ─▶ Verifier (hard citation gate)
+ Next.js 14 (Vercel)  ──►  FastAPI (Render)  ──►  LangGraph agent pipeline
+   • on-device CV (WASM)      • /valuate  /estimate      intake → CV → pricing
+   • Recharts, PWA            • /chat  /valuate/stream          → RAG → report
+   • Supabase auth            • API-key auth + metering          → Verifier gate
+                              └──►  Supabase (auth · pgvector · shares · api keys)
+   Kaggle (GPU training)  ·  GitHub Actions (CI · corpus cron · keep-alive)
 ```
 
-## 🧰 Tech stack — all free tier
+**Deep-learning & ML applied:** CNN object detection · transfer learning · IoU/NMS · mAP · ONNX quantization · gradient-boosted trees · quantile regression · **split-conformal prediction** · **SHAP** · sentence embeddings · BM25 · cross-encoder reranking · LangGraph agents · retrieval-augmented generation · deterministic verification.
 
-| Layer | Tech | Host (free) |
-|---|---|---|
-| Frontend | Next.js 14 · Tailwind · framer-motion · Recharts | **Vercel** Hobby |
-| Orchestration API | FastAPI · LangGraph | **Render** free web service |
-| CV inference | YOLOv8 → ONNX · onnxruntime (no torch) | **Hugging Face** Space (CPU Basic) |
-| Data + vectors | Postgres · pgvector | **Supabase** free |
-| LLM | Gemini Flash → Groq Llama 3.3 (fallback) | free tiers |
-| Training | YOLOv8 + XGBoost | **Kaggle** GPU (offline) |
-| CI/CD | 3 deploy workflows + Supabase keep-alive | **GitHub Actions** |
+---
 
-## ▶️ Run locally
+## Results & honest evaluation
+
+| Metric | Value | Source |
+|---|---:|---|
+| CV detection — mAP@0.5 | **0.732** | `eval/cv_eval_report.json` |
+| Report faithfulness | **1.000** | `eval/faithfulness_report.json` |
+| Conformal coverage (target 80%) | **80.0%** | `eval/uncertainty_study.json` |
+| Retrieval same-make P@5 (easy bench) | **1.000** | `eval/comparables_eval.json` |
+| Accessibility (axe-core, 6 pages) | **0** violations | WCAG 2.1 AA |
+
+Two research findings — both argued *against* the obvious design choice — are written up in **[docs/RESEARCH.md](docs/RESEARCH.md)**:
+- **Uncertainty (D3):** raw quantile regression promises 80% coverage but delivers **54.8%**; the "±25% rule of thumb" delivers **56.3%**. Only split-conformal keeps its promise.
+- **Retrieval (D5):** we *proved* the retriever is at its mathematical ceiling — the limit is corpus size, not the algorithm, so data growth is the only lever.
+
+---
+
+## Run locally
 
 ```bash
-# 1) Backend (loads models once; USE_TF=0 pins the torch backend)
-cd backend-api && USE_TF=0 uvicorn main:app --port 8000
+# backend
+cd backend-api
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+USE_TF=0 uvicorn main:app --port 8000
 
-# 2) Frontend (new terminal)
+# frontend (new terminal)
 cd frontend
+npm install
 echo "NEXT_PUBLIC_API_URL=http://127.0.0.1:8000" > .env.local
-npm install && npm run dev            # → http://localhost:3000
-
-# 3) Full evaluation + integration suite
-./eval/run_all.sh
+npm run dev   # → http://localhost:3000
 ```
 
-## 🚀 Deploy (all free-tier)
+Optional: set `GEMINI_API_KEY` or `GROQ_API_KEY` for LLM-written reports (a deterministic writer is used otherwise); set `ENABLE_LOCAL_CV=1` to run the detector server-side instead of in the browser.
 
-Full click-by-click checklist: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). In short:
+---
 
-1. **Hugging Face** — new Space → SDK **Docker**, hardware **CPU basic (free)**, name `autovaluate-cv`. The `deploy-cv-space.yml` workflow mirrors `cv-service/` on each push; drop the trained `best.onnx` into `cv-service/model/`.
-2. **Render** — New Web Service → connect repo → root `backend-api/` (reads `render.yaml`). Set env: `GEMINI_API_KEY`, `GROQ_API_KEY`, `CV_SERVICE_URL`, `SUPABASE_*`, `ALLOWED_ORIGINS`.
-3. **Vercel** — Import repo → root `frontend/` → set `NEXT_PUBLIC_API_URL` to the Render URL.
-4. **Supabase** — new project → run `backend-api/agents/load_comparables_supabase.py --create-schema` to seed pgvector. Keep-alive workflow prevents the 7-day auto-pause.
+## Tests & evaluation
 
-GitHub Actions secrets (each workflow skips gracefully until set): `RENDER_DEPLOY_HOOK`, `VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID`, `HF_TOKEN`/`HF_USERNAME`/`HF_SPACE`, `SUPABASE_URL`/`SUPABASE_ANON_KEY`.
+```bash
+cd backend-api && USE_TF=0 python ../eval/faithfulness_eval.py     # grounding
+USE_TF=0 python ../eval/comparables_eval.py                        # retrieval
+python ../eval/uncertainty_study.py                                # D3
+USE_TF=0 python ../eval/retrieval_ablation.py                      # D5
+cd ../frontend && npm run build                                    # typecheck + build
+```
 
-> **Free-tier notes:** Render free spins down after 15 min idle (~1 min cold boot — the UI shows a waking state). The comparables torch stack exceeds Render's 512 MB; production uses an ONNX query-embedder + Supabase pgvector ([`DECISIONS.md`](DECISIONS.md) ADR-014).
+---
 
-## 👥 Team
+## Accessibility & responsiveness
 
-MAIB · SP Jain School of Global Management (Dubai)
+Verified with a real headless browser: **zero horizontal overflow** at 320 / 375 / 768 / 1440 px, and **zero WCAG 2.1 AA violations** (axe-core) across all six pages. Full dark/light theming; the damage scanner works offline as an installed PWA.
 
-| Name | ID |
-|---|---|
-| Krishna Mathur | AS25DXB018 |
-| Yash Petkar | AS25DXB020 |
-| Atharva Soundankar | AS25DXB021 |
-| _member 4 — TBC_ | — |
+---
 
-## 🔒 Data & honesty
+## Repository
 
-Every dataset is real, public, and verifiable — CarDD, VehiDE (vision), and freshly-scraped real Dubizzle listings (tabular). **No synthetic or LLM-generated training data** ([`DECISIONS.md`](DECISIONS.md) ADR-011). This is an automated estimate, **not a certified appraisal** — the system says so and recommends a professional inspection when confidence is limited.
+```
+frontend/        Next.js 14 app — UI, on-device CV (lib/cv-browser.ts), charts, PWA
+backend-api/     FastAPI + LangGraph agents, XGBoost model, RAG, Verifier, API keys
+cv-service/      trained YOLOv8 ONNX model (also served in-browser from frontend/public)
+eval/            evaluation + research scripts and reports
+docs/            ROADMAP · ARCHITECTURE · RESEARCH · DECISIONS · presentation (deck + script)
+notebooks/       CV training + valuation EDA notebooks
+data/            processed comparables corpus
+```
+
+---
+
+## Team
+
+**SP Jain School of Global Management — group project**
+
+| Member | ID | Focus |
+|---|---|---|
+| **Krishna Mathur** | AS25DXB018 | Deep learning — the on-device damage detector |
+| **Yash Petkar** | AS25DXB020 | Valuation model, data pipeline & live product build |
+| **Atharva Soundankar** | AS25DXB021 | Agentic backend, orchestration & RAG retrieval |
+| **[ Fourth member ]** | AS25DXB0__ | Frontend, UX & product |
+
+---
+
+<div align="center">
+
+*An automated estimate — not a certified appraisal. Every figure traces back to a computed value.*
+
+</div>

@@ -8,6 +8,42 @@
 
 ---
 
+## ✅ COMPLETED (Krishna's turn — 2026-07-15)
+
+Everything in this plan is now **built, verified, and pushed**. Status:
+
+| Item | Status |
+|---|---|
+| Phase A (in-browser CV) | ✅ + **fixed a production break** (ORT wasm 404'd on Vercel; moved copy to `postinstall`) |
+| Phase B (what-if + `/estimate`) | ✅ live |
+| Phase C (conversational RAG assistant) | ✅ live — Verifier-gated; admits user-quoted figures |
+| Phase D (share links + OG cards) | ✅ live (`shared_valuations` table) |
+| Phase E (weekly corpus cron) | ✅ armed (`APIFY_TOKEN` set) |
+| Phase F (repair-cost estimator) | ✅ live |
+| Phase G (sell-timing forecast) | ✅ live |
+| Phase H (dealer bulk CSV) | ✅ live `/dealer` |
+| Phase I (API keys + metering) | ✅ built (`supabase_api_keys_schema.sql`, SECURITY DEFINER, fails closed) |
+| Phase J (plans + Stripe test) | ✅ `/pricing` |
+| Phase K (white-label PDF) | ✅ |
+| Phase L (UX: palette, onboarding, PWA, gauges) | ✅ |
+| M1 guided capture · M6 compare · M7 describe-your-car · M11 PWA | ✅ live |
+| D3 uncertainty study · D5 retrieval ablation + tuning | ✅ `docs/RESEARCH.md` — both argue against the obvious design choice |
+| Responsive audit (320/375/768/1440) | ✅ **zero horizontal overflow** |
+| Accessibility (axe-core, 6 pages) | ✅ **0 WCAG 2.1 AA violations** |
+| Silent demo-mode bug | ✅ fixed (wake-ping + always-attempt-backend + keep-alive cron) |
+| 13-slide deck + 15-min script | ✅ `AutoValuate_Deck_v2.pptx` / `AutoValuate_Script_v2.md` |
+
+**Remaining (genuinely optional / needs data or money):** D1 photo-aware ablation (needs
+retained listing photos), D2 severity head (needs labels), D4 mAP-under-quantization (needs
+CarDD val set on Kaggle), M10 Arabic/RTL, real Stripe live keys, corpus growth (running
+weekly via Phase E). See `RESEARCH.md` for why the first three are specified-not-estimated.
+
+**Ops the user still controls:** run `supabase_api_keys_schema.sql` to activate API-key
+auth; the Vercel free-tier deploy cap (100/day) throttled some pushes — they deploy when it
+resets.
+
+---
+
 ## 🤝 Handoff — Krishna picks up the remaining work
 
 **Merged to `main` 2026‑07‑14** (commit `1127e37`, via PR #1). Sprint‑1 (A/B/L) + the MVP
