@@ -35,6 +35,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
+import api_keys
 from agents import chat_agent
 from graph import orchestrator
 
@@ -71,6 +72,28 @@ _hits: dict[str, deque] = defaultdict(deque)
 @app.middleware("http")
 async def _rate_limit(request: Request, call_next):
     if request.method == "POST" and request.url.path.startswith(_RATE_PATHS):
+        path = request.url.path
+
+        # Programmatic caller with an API key (Phase I): verify + meter against the
+        # key's tier quota instead of the anonymous per-IP limit.
+        key = api_keys.extract_key(request.headers.get("authorization"))
+        if key:
+            verdict = await run_in_threadpool(api_keys.consume, key, path)
+            if not verdict.allowed:
+                status = 429 if "quota" in verdict.reason else 401
+                return JSONResponse(
+                    status_code=status,
+                    content={"ok": False, "error": verdict.reason},
+                    headers={"X-RateLimit-Limit": str(verdict.quota),
+                             "X-RateLimit-Remaining": str(max(verdict.quota - verdict.used, 0))},
+                )
+            response = await call_next(request)
+            response.headers["X-RateLimit-Limit"] = str(verdict.quota)
+            response.headers["X-RateLimit-Remaining"] = str(max(verdict.quota - verdict.used, 0))
+            response.headers["X-AutoValuate-Tier"] = verdict.tier or "free"
+            return response
+
+        # Anonymous (the web app): unchanged per-IP sliding window.
         ip = request.client.host if request.client else "unknown"
         now = time.monotonic()
         q = _hits[ip]

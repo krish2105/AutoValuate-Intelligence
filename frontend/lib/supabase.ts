@@ -90,6 +90,58 @@ export async function shareValuation(result: ValuationResult): Promise<string> {
   return slug;
 }
 
+// ---- Phase I: API keys + usage (see supabase_api_keys_schema.sql) ----
+
+export interface ApiKeyRow {
+  id: string;
+  name: string;
+  tier: string;
+  revoked: boolean;
+  created_at: string;
+  calls_24h?: number;
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Mint an API key. The plaintext is generated here, shown to the user ONCE, and never
+ * stored — only its SHA-256 hash goes to the database. A leaked database therefore
+ * yields no usable credentials.
+ */
+export async function createApiKey(name: string): Promise<string> {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const plaintext = `av_live_${secret}`;
+
+  const { error } = await supabase.from("api_keys").insert({
+    name: name.trim() || "default",
+    key_hash: await sha256Hex(plaintext),
+  });
+  if (error) throw error;
+  return plaintext; // the only time this value exists outside the caller's machine
+}
+
+export async function listApiKeys(): Promise<ApiKeyRow[]> {
+  const { data, error } = await supabase
+    .from("api_keys")
+    .select("id, name, tier, revoked, created_at, api_usage(count)")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    id: r.id, name: r.name, tier: r.tier, revoked: r.revoked, created_at: r.created_at,
+    calls_24h: r.api_usage?.[0]?.count ?? 0,
+  }));
+}
+
+export async function revokeApiKey(id: string): Promise<void> {
+  const { error } = await supabase.from("api_keys").update({ revoked: true }).eq("id", id);
+  if (error) throw error;
+}
+
 /** Fetch a shared report by slug (anonymous read). Returns null when it doesn't exist. */
 export async function loadSharedValuation(slug: string): Promise<SharedValuation | null> {
   const { data, error } = await supabase
