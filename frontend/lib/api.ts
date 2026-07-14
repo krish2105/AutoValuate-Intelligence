@@ -96,7 +96,8 @@ async function runDemo(input: VehicleInput, h: StreamHandlers) {
 
 export async function apiInfo(): Promise<{ online: boolean; llm: boolean; cv: boolean }> {
   try {
-    const res = await fetch(`${API}/`, { cache: "no-store" });
+    // short timeout so a cold/asleep backend never hangs the page
+    const res = await fetch(`${API}/`, { cache: "no-store", signal: AbortSignal.timeout(6000) });
     const j = await res.json();
     return { online: true, llm: !!j.llm_provider_configured, cv: !!j.cv_service_configured };
   } catch {
