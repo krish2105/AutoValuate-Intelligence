@@ -56,3 +56,47 @@ export async function clearValuationsCloud(): Promise<void> {
   // RLS ensures this only deletes the current user's rows
   await supabase.from("valuations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
+
+// ---- Phase D: public share links (works for guests — see supabase_shared_schema.sql) ----
+
+export interface SharedValuation {
+  slug: string;
+  created_at: string;
+  label: string;
+  mid_aed: number;
+  result: ValuationResult;
+}
+
+/** URL-safe, unguessable-enough slug. The slug is the capability, so give it real entropy. */
+function makeSlug(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 12);
+}
+
+/** Publish a read-only copy of a valuation and return its public slug. */
+export async function shareValuation(result: ValuationResult): Promise<string> {
+  const v = result.vehicle;
+  // never publish the user's photos — strip them before the report leaves the device
+  const slim: ValuationResult = { ...result, vehicle: { ...v, photos: [] } };
+  const slug = makeSlug();
+  const { error } = await supabase.from("shared_valuations").insert({
+    slug,
+    label: `${v.year} ${v.make} ${v.model}`.slice(0, 120),
+    mid_aed: Math.round(result.valuation.price_mid_aed),
+    result: slim,
+  });
+  if (error) throw error;
+  return slug;
+}
+
+/** Fetch a shared report by slug (anonymous read). Returns null when it doesn't exist. */
+export async function loadSharedValuation(slug: string): Promise<SharedValuation | null> {
+  const { data, error } = await supabase
+    .from("shared_valuations")
+    .select("slug, created_at, label, mid_aed, result")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as SharedValuation;
+}

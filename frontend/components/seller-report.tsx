@@ -7,6 +7,7 @@ import { downloadReportPdf } from "@/lib/pdf";
 import { downloadCertificatePdf } from "@/lib/certificate";
 import { chunkReport, displayForCitation, reportView } from "@/lib/report";
 import { SectionCard, Pill } from "./ui";
+import { ShareButton } from "./share-button";
 
 function evidenceFor(evidence: ValuationResult["evidence"], id: string): string | null {
   for (const group of Object.values(evidence)) {
@@ -48,6 +49,7 @@ export function SellerReport({ result }: { result: ValuationResult }) {
           >
             <Download className="h-3.5 w-3.5" /> PDF
           </button>
+          <ShareButton result={result} />
           <Pill tone={result.verification.passed ? "good" : "warn"}>{result.verification.passed ? "verified" : "flagged"}</Pill>
         </div>
       }
