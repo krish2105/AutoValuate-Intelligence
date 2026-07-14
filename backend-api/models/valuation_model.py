@@ -65,8 +65,6 @@ def predict(vehicle: dict[str, Any], top_k: int = 6) -> dict[str, Any]:
     Returns a dict with the price range, calibrated interval, confidence, and a
     SHAP explanation (each feature's AED contribution vs the market baseline).
     """
-    import shap  # imported lazily; heavy at import time
-
     bundle = _load()
     ref_year = bundle.get("reference_year", 2026)
     v = _derive(vehicle, ref_year)
@@ -79,10 +77,13 @@ def predict(vehicle: dict[str, Any], top_k: int = 6) -> dict[str, Any]:
     low = math.expm1(log_q50 - delta)
     high = math.expm1(log_q50 + delta)
 
-    # SHAP explanation on the q50 model (log-space contributions -> approx AED)
-    explainer = shap.TreeExplainer(bundle["models"]["q50"])
-    sv = explainer.shap_values(X)[0]
-    base = float(explainer.expected_value)
+    # SHAP explanation via XGBoost's built-in TreeSHAP (pred_contribs) — identical
+    # values to the shap library, but no heavy shap/numba import (fits the free tier).
+    import xgboost as xgb
+    booster = bundle["models"]["q50"].get_booster()
+    contribs_raw = booster.predict(xgb.DMatrix(X), pred_contribs=True)[0]  # (n_features + 1,)
+    sv = contribs_raw[:-1]
+    base = float(contribs_raw[-1])
     contribs = []
     for feat, s in zip(bundle["features"], sv):
         # convert log-space contribution to an approximate AED delta around the mid
