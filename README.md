@@ -17,7 +17,7 @@
 | Surface | URL | Status |
 |---|---|---|
 | **Web app** (Vercel) | **https://auto-valuate-intelligence.vercel.app** | 🟢 live |
-| **Valuation API** (Render) | `https://autovaluate-api.onrender.com` | deploying |
+| **Valuation API** (Render) | https://autovaluate-api.onrender.com | 🟢 live |
 | **Damage detector** | in-process (onnxruntime) in the API · `ENABLE_LOCAL_CV` | mAP 0.732 |
 
 > Runs fully locally today (see [Run locally](#-run-locally)). Deploy steps for all three free tiers are in [Deploy](#-deploy-all-free-tier). The app degrades to a demo result if the API is asleep, so the link is never blank.
