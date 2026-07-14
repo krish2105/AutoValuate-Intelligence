@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FileText, Quote, Download } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
 import { downloadReportPdf } from "@/lib/pdf";
+import { chunkParagraph, displayForCitation } from "@/lib/report";
 import { SectionCard, Pill } from "./ui";
 
 function evidenceFor(evidence: ValuationResult["evidence"], id: string): string | null {
@@ -41,20 +42,24 @@ export function SellerReport({ result }: { result: ValuationResult }) {
       }
     >
       <div className="space-y-3 text-sm leading-relaxed text-fg/90">
-        {paras.map((p, pi) => (
+        {(() => { let base = 0; return paras.map((p, pi) => {
+          const chunks = chunkParagraph(p, report, base);
+          base += p.length + 2; // account for the "\n\n" the split removed
+          return (
           <p key={pi}>
-            {p.split(/(\[[A-Z]\d+\])/g).map((chunk, ci) => {
-              const m = chunk.match(/^\[([A-Z]\d+)\]$/);
-              if (!m) return <span key={ci}>{chunk}</span>;
-              const id = m[1];
+            {chunks.map((chunk, ci) => {
+              if (!chunk.cite) return <span key={ci}>{chunk.text}</span>;
+              const id = chunk.cite;
               const detail = evidenceFor(evidence, id);
+              const value = displayForCitation(evidence, id);
+              const label = chunk.injected && value ? value : id;
               return (
                 <button
                   key={ci}
                   onClick={() => setOpen(open === `${pi}-${ci}` ? null : `${pi}-${ci}`)}
                   className="relative mx-0.5 inline-flex items-center rounded-md bg-accent/12 px-1.5 py-0.5 align-baseline text-[11px] font-semibold text-accent transition hover:bg-accent/20"
                 >
-                  {id}
+                  {label}
                   <AnimatePresence>
                     {open === `${pi}-${ci}` && detail && (
                       <motion.span
@@ -70,7 +75,8 @@ export function SellerReport({ result }: { result: ValuationResult }) {
               );
             })}
           </p>
-        ))}
+          );
+        }); })()}
       </div>
       <p className="mt-4 flex items-center gap-1.5 border-t pt-3 text-xs text-muted">
         <span className="tnum text-fg">{result.verification.numbers_checked}</span> numbers and

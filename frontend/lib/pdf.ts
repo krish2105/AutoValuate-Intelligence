@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import type { ValuationResult } from "./types";
 import { aed, km, titleCase } from "./utils";
+import { resolveReportPlain } from "./report";
 
 /** Build a clean, text-based PDF of the valuation report (no screenshotting). */
 export function downloadReportPdf(r: ValuationResult) {
@@ -61,7 +62,9 @@ export function downloadReportPdf(r: ValuationResult) {
   y += 6; rule();
 
   line("Summary", 11, { bold: true });
-  line(r.report.replace(/\[[A-Z]\d+\]/g, ""), 10, { gap: 8 });
+  for (const para of resolveReportPlain(r).split("\n\n")) {
+    line(para, 10, { gap: 6 });
+  }
 
   line("Confidence", 11, { bold: true, color: [180, 100, 20] });
   line(r.confidence.statement, 9, { color: [100, 116, 139], gap: 6 });

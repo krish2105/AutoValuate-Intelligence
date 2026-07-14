@@ -9,6 +9,7 @@ produces a Verifier-passing report even before keys exist.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from llm_client.client import LLMClient
@@ -92,13 +93,47 @@ def _template(vehicle: dict, ev: dict, condition: dict) -> str:
     )
 
 
+_CITE = re.compile(r"\[([A-Z]\d+)\]")
+
+
+def _numeric_ids(ev: dict) -> set[str]:
+    """Citation ids that must carry an inline number (valuation / drivers / comparable prices)."""
+    ids: set[str] = set()
+    for grp in ("valuation", "drivers", "comparables"):
+        ids.update(ev.get(grp, {}).keys())
+    return ids
+
+
+def _underfilled(text: str, ev: dict) -> bool:
+    """
+    True when the LLM cited a numeric fact without writing the number inline
+    (e.g. 'ranges from [V1] to [V3]'), which renders as blanks once the [id]
+    markers are resolved. Such reports are rejected in favour of the template.
+    """
+    numeric = _numeric_ids(ev)
+    for m in _CITE.finditer(text):
+        if m.group(1) not in numeric:
+            continue  # textual citations (e.g. [D0] 'not available') need no number
+        window = text[max(0, m.start() - 8):m.start()]
+        if not any(ch.isdigit() for ch in window):
+            return True
+    return False
+
+
 def write_report(vehicle: dict, valuation: dict, condition: dict, comparables: list[dict],
                  llm: LLMClient | None = None) -> dict:
     llm = llm or LLMClient()
     ev = build_evidence(vehicle, valuation, condition, comparables)
     prompt = _evidence_text(ev) + (
-        "\n\nWrite the seller report now. Use ONLY the evidence above and cite every number with its "
-        "[id]. Do not output any AED figure that is not in the evidence.")
+        "\n\nWrite the seller report now. Use ONLY the evidence above. ALWAYS write the figure "
+        "itself immediately before its [id] — e.g. 'a mid-point of AED 58,269 [V2]', never a bare "
+        "'[V2]' with no number in front of it. Do not output any AED figure that is not in the evidence.")
     result = llm.generate(SYSTEM, prompt, temperature=0.3,
                           template_fn=lambda: _template(vehicle, ev, condition))
-    return {"report": result.text, "provider": result.provider, "model": result.model, "evidence": ev}
+    text, provider, model = result.text, result.provider, result.model
+    # Quality gate: an LLM report that cites numbers without stating them inline
+    # would read with blanks — fall back to the citation-correct deterministic writer.
+    if provider != "template" and _underfilled(text, ev):
+        text = _template(vehicle, ev, condition)
+        provider, model = "template", "deterministic-fallback"
+    return {"report": text, "provider": provider, "model": model, "evidence": ev}
