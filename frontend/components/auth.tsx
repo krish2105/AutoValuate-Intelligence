@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogIn, LogOut, User, X, Loader2, Mail } from "lucide-react";
+import { LogIn, LogOut, User, X, Loader2, Mail, Sparkles } from "lucide-react";
 import { supabase, signIn, signUp, signOut, type Session } from "@/lib/supabase";
 
 export function useAuth() {
@@ -64,6 +64,13 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
             <button onClick={() => { setMode(mode === "in" ? "up" : "in"); setMsg(null); }} className="mt-3 w-full text-center text-xs text-muted hover:text-accent">
               {mode === "in" ? "New here? Create an account" : "Already have an account? Sign in"}
             </button>
+            <div className="my-3 flex items-center gap-3 text-[11px] text-dim">
+              <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
+            </div>
+            <button onClick={onClose} className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-medium transition hover:border-accent/40 hover:text-accent">
+              <Sparkles className="h-4 w-4" /> Continue without an account
+            </button>
+            <p className="mt-2 text-center text-[11px] text-muted">You can value cars right away — an account just syncs your history across devices.</p>
           </motion.div>
         </>
       )}
