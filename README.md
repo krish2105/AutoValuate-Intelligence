@@ -63,16 +63,66 @@ Three AI systems work together, and the final report cites every claim back to t
 
 ## Architecture
 
-```
- Next.js 14 (Vercel)  ──►  FastAPI (Render)  ──►  LangGraph agent pipeline
-   • on-device CV (WASM)      • /valuate  /estimate      intake → CV → pricing
-   • Recharts, PWA            • /chat  /valuate/stream          → RAG → report
-   • Supabase auth            • API-key auth + metering          → Verifier gate
-                              └──►  Supabase (auth · pgvector · shares · api keys)
-   Kaggle (GPU training)  ·  GitHub Actions (CI · corpus cron · keep-alive)
+```mermaid
+flowchart LR
+    subgraph Client["🖥️ Browser — Next.js 14 on Vercel"]
+        UI["UI · Recharts · PWA"]
+        CV["👁 On-device YOLOv8<br/>(onnxruntime-web)<br/>photos never leave device"]
+    end
+
+    subgraph API["⚙️ FastAPI on Render"]
+        EP["/valuate · /estimate<br/>/chat · /valuate/stream"]
+        KEYS["API-key auth<br/>+ usage metering"]
+    end
+
+    subgraph Pipeline["🧠 LangGraph agent pipeline"]
+        direction LR
+        I["Intake"] --> A["Aggregate<br/>condition"]
+        A --> P["Pricing<br/>XGBoost + SHAP<br/>+ conformal"]
+        P --> R["Retrieval<br/>hybrid RAG"]
+        R --> W["Report<br/>(LLM)"]
+        W --> V["✅ Verifier<br/>gate"]
+    end
+
+    subgraph Data["🗄️ Supabase"]
+        DB["auth · pgvector<br/>shares · api keys"]
+    end
+
+    CV -->|"client_condition"| EP
+    UI --> EP
+    EP --> Pipeline
+    KEYS --> DB
+    R -.->|comparables| DB
+    W -.->|"Gemini → Groq → template"| LLM["LLM providers"]
+
+    Train["🎓 Kaggle GPU<br/>training"] -.->|best.onnx| CV
+    GH["🔁 GitHub Actions<br/>CI · corpus cron · keep-alive"] -.-> API
 ```
 
 **Deep-learning & ML applied:** CNN object detection · transfer learning · IoU/NMS · mAP · ONNX quantization · gradient-boosted trees · quantile regression · **split-conformal prediction** · **SHAP** · sentence embeddings · BM25 · cross-encoder reranking · LangGraph agents · retrieval-augmented generation · deterministic verification.
+
+---
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="docs/presentation/shots/01_hero.png" alt="Cinematic hero" /><br/><sub><b>Cinematic hero</b> — self-drawing GT line-art, live telemetry ticker</sub></td>
+<td width="50%"><img src="docs/presentation/shots/02_valuation_shap.png" alt="Valuation + SHAP" /><br/><sub><b>Explainable valuation</b> — SHAP shows every price driver in AED</sub></td>
+</tr>
+<tr>
+<td><img src="docs/presentation/shots/03_damage_cv.png" alt="On-device damage scan" /><br/><sub><b>On-device damage scan</b> — YOLOv8 in the browser + severity radar</sub></td>
+<td><img src="docs/presentation/shots/04_repair.png" alt="Repair estimate" /><br/><sub><b>Repair estimate</b> — itemised cost + a worth-fixing verdict</sub></td>
+</tr>
+<tr>
+<td><img src="docs/presentation/shots/05_market_charts.png" alt="Market analytics" /><br/><sub><b>Market analytics</b> — price-vs-mileage, market-position gauge</sub></td>
+<td><img src="docs/presentation/shots/07_report_verifier.png" alt="Grounded report" /><br/><sub><b>Grounded report</b> — every figure checked by the Verifier</sub></td>
+</tr>
+<tr>
+<td><img src="docs/presentation/shots/09_dealer.png" alt="Dealer fleet valuation" /><br/><sub><b>Dealer fleet valuation</b> — bulk CSV in, valued CSV out</sub></td>
+<td><img src="docs/presentation/shots/12_pricing.png" alt="Plans & pricing" /><br/><sub><b>Plans & pricing</b> — Free / Pro / Dealer, metered API</sub></td>
+</tr>
+</table>
 
 ---
 
