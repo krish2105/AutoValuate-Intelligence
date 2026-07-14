@@ -12,6 +12,7 @@ import { ReasoningTrace } from "@/components/reasoning-trace";
 import { ValuationDashboard } from "@/components/valuation-dashboard";
 import { DamageReport } from "@/components/damage-report";
 import { Comparables } from "@/components/comparables";
+import { MarketAnalytics } from "@/components/market-analytics";
 import { SellerReport } from "@/components/seller-report";
 import { ConfidencePanel } from "@/components/confidence-panel";
 import { HistoryDrawer } from "@/components/history-drawer";
@@ -189,6 +190,7 @@ export default function Home() {
                 <ConfidencePanel c={result.confidence} />
                 <ValuationDashboard v={result.valuation} />
                 <DamageReport c={result.condition} />
+                <MarketAnalytics result={result} />
                 <Comparables items={result.comparables} />
                 <SellerReport result={result} />
               </motion.div>
