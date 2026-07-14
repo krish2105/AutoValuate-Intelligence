@@ -11,6 +11,8 @@ export interface PaletteAction {
   id: string;
   label: string;
   hint?: string;
+  /** extra search terms — users type "theme"/"dark", not the literal label */
+  keywords?: string;
   icon: React.ReactNode;
   run: () => void;
 }
@@ -54,29 +56,32 @@ export function CommandPalette({
   const actions: PaletteAction[] = useMemo(() => {
     const close = (fn: () => void) => () => { setOpen(false); fn(); };
     const base: PaletteAction[] = [
-      { id: "new", label: "New valuation", hint: "value another car", icon: <Car className="h-4 w-4" />, run: close(onNewValuation) },
-      { id: "history", label: "Open history", hint: "past valuations", icon: <Clock className="h-4 w-4" />, run: close(onOpenHistory) },
+      { id: "new", label: "New valuation", hint: "value another car", keywords: "appraise start again reset vehicle", icon: <Car className="h-4 w-4" />, run: close(onNewValuation) },
+      { id: "history", label: "Open history", hint: "past valuations", keywords: "saved recent previous", icon: <Clock className="h-4 w-4" />, run: close(onOpenHistory) },
       {
         id: "theme", label: theme === "dark" ? "Switch to light mode" : "Switch to dark mode",
+        keywords: "theme dark light mode appearance contrast",
         icon: theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />,
         run: close(() => setTheme(theme === "dark" ? "light" : "dark")),
       },
-      { id: "model", label: "Open the model report card", hint: "public metrics", icon: <ShieldCheck className="h-4 w-4" />, run: close(() => { window.location.href = "/model"; }) },
+      { id: "model", label: "Open the model report card", hint: "public metrics", keywords: "metrics eval accuracy map conformal faithfulness", icon: <ShieldCheck className="h-4 w-4" />, run: close(() => { window.location.href = "/model"; }) },
     ];
     if (!hasResult) return base;
     return [
       ...base,
-      { id: "valuation", label: "Jump to the valuation", icon: <Gauge className="h-4 w-4" />, run: close(() => onScrollTo("results")) },
-      { id: "analytics", label: "Jump to market analytics", icon: <BarChart3 className="h-4 w-4" />, run: close(() => onScrollTo("results")) },
-      { id: "report", label: "Jump to the seller report", icon: <FileText className="h-4 w-4" />, run: close(() => onScrollTo("results")) },
-      { id: "assistant", label: "Ask the assistant", icon: <MessageSquare className="h-4 w-4" />, run: close(() => onScrollTo("results")) },
+      { id: "valuation", label: "Jump to the valuation", keywords: "price estimate value shap", icon: <Gauge className="h-4 w-4" />, run: close(() => onScrollTo("results")) },
+      { id: "analytics", label: "Jump to market analytics", keywords: "charts graphs comparables mileage scatter", icon: <BarChart3 className="h-4 w-4" />, run: close(() => onScrollTo("results")) },
+      { id: "report", label: "Jump to the seller report", keywords: "pdf export summary certificate", icon: <FileText className="h-4 w-4" />, run: close(() => onScrollTo("results")) },
+      { id: "assistant", label: "Ask the assistant", keywords: "chat question ai help", icon: <MessageSquare className="h-4 w-4" />, run: close(() => onScrollTo("results")) },
     ];
   }, [theme, setTheme, hasResult, onNewValuation, onOpenHistory, onScrollTo]);
 
   const results = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return actions;
-    return actions.filter((a) => a.label.toLowerCase().includes(needle) || a.hint?.toLowerCase().includes(needle));
+    return actions.filter((a) =>
+      `${a.label} ${a.hint ?? ""} ${a.keywords ?? ""}`.toLowerCase().includes(needle),
+    );
   }, [q, actions]);
 
   useEffect(() => { setSel(0); }, [q]);
