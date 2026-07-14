@@ -47,7 +47,7 @@ export function SellerReport({ result }: { result: ValuationResult }) {
           const id = chunk.cite;
           const detail = evidenceFor(evidence, id);
           const value = displayForCitation(evidence, id);
-          const label = chunk.injected && value ? value : id;
+          const label = chunk.injected && /\d/.test(value) ? value : id;
           return (
             <button
               key={ci}

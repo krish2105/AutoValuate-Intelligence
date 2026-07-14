@@ -61,7 +61,12 @@ export function chunkReport(report: string): ReportChunk[] {
 export function resolveReportPlain(result: ValuationResult): string {
   const { evidence } = result;
   const out = chunkReport(result.report)
-    .map((c) => (c.cite === null ? c.text : c.injected ? displayForCitation(evidence, c.cite) : ""))
+    .map((c) => {
+      if (c.cite === null) return c.text;
+      if (!c.injected) return ""; // number already inline → drop the bare marker
+      const v = displayForCitation(evidence, c.cite);
+      return /\d/.test(v) ? v : ""; // inject numeric facts only; textual citations (e.g. 'not available') drop
+    })
     .join("");
   return out
     .replace(/ {2,}/g, " ")
