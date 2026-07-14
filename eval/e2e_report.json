@@ -3,8 +3,8 @@
   "passed": 18,
   "failed": 0,
   "pass_rate": 1.0,
-  "elapsed_sec": 9.6,
-  "avg_sec_per_case": 0.53,
+  "elapsed_sec": 9.7,
+  "avg_sec_per_case": 0.54,
   "cases": [
     {
       "id": "bench-01",

@@ -1,0 +1,26 @@
+name: Deploy backend (Render)
+
+# Triggers a Render deploy when the orchestration API changes on main.
+# Render itself builds from backend-api/ (see backend-api/render.yaml).
+# Secret required: RENDER_DEPLOY_HOOK (Render dashboard -> service -> Settings -> Deploy Hook).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend-api/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            echo "RENDER_DEPLOY_HOOK not set — skipping (add it in repo Settings → Secrets)."
+            exit 0
+          fi
+          curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          echo "Render deploy triggered."
