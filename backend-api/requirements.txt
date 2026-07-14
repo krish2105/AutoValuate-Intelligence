@@ -1,0 +1,33 @@
+# AutoValuate orchestration API (Render) — pinned in Phase 6
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-multipart
+httpx
+sse-starlette
+
+# Agents / orchestration
+langgraph
+langchain-core
+
+# Retrieval (comparables RAG)
+llama-index-core
+sentence-transformers
+rank-bm25
+
+# Valuation model (loaded in-process)
+xgboost
+shap
+scikit-learn
+joblib
+pandas
+numpy
+
+# Data plane
+supabase
+psycopg[binary]
+
+# LLM providers
+google-generativeai
+groq

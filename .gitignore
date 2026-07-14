@@ -1,0 +1,47 @@
+# ---- Secrets (NEVER commit) ----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+kaggle.json
+service-account*.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+
+# ---- Node / Next.js ----
+node_modules/
+.next/
+out/
+.vercel/
+npm-debug.log*
+yarn-error.log*
+.pnp.*
+
+# ---- Data (large, downloaded, not versioned) ----
+data/raw/
+data/processed/
+*.parquet
+*.csv.gz
+
+# ---- Model weights (only final exported weights are committed deliberately) ----
+*.pt
+*.pth
+runs/
+wandb/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

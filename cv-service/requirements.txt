@@ -1,0 +1,8 @@
+# AutoValuate CV inference service (Hugging Face Space, CPU Basic) — pinned in Phase 3
+fastapi
+uvicorn[standard]
+python-multipart
+onnxruntime
+numpy
+opencv-python-headless
+pillow
