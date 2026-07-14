@@ -5,6 +5,39 @@ import type { ValuationResult } from "@/lib/types";
 import { aed, titleCase } from "@/lib/utils";
 import { SectionCard, Pill } from "./ui";
 
+// Mirror of backend-api/agents/repair_cost.py so demo/offline results still get a repair
+// estimate. class -> (low, high) AED per instance at moderate severity.
+const BASE: Record<string, [number, number]> = {
+  scratch: [150, 600], dent: [300, 1200], crack: [400, 1500], glass_shatter: [600, 2500],
+  lamp_broken: [350, 2000], tire_flat: [150, 900], punctured: [400, 1800], missing_part: [500, 3500],
+};
+const SEV: Record<string, number> = { minor: 0.6, moderate: 1.0, severe: 1.6 };
+
+function severity(conf: number, impact: number): "minor" | "moderate" | "severe" {
+  if (conf >= 0.75 || impact >= 4) return "severe";
+  if (conf >= 0.5 || impact >= 2) return "moderate";
+  return "minor";
+}
+
+function deriveRepair(result: ValuationResult) {
+  const c = result.condition;
+  if (!c?.cv_available || !c.findings?.length) return null;
+  let lo = 0, hi = 0;
+  const items = c.findings.map((f) => {
+    const band = BASE[String(f.damage_type).toLowerCase()];
+    if (!band) return null;
+    const n = Math.max(1, Math.min(f.instances || 1, 4));
+    const sev = severity(f.max_confidence || 0, f.value_impact_pct || 0);
+    const l = Math.round(band[0] * SEV[sev] * n), h = Math.round(band[1] * SEV[sev] * n);
+    lo += l; hi += h;
+    return { damage_type: f.damage_type, instances: n, severity: sev, low_aed: l, high_aed: h };
+  }).filter(Boolean) as NonNullable<ValuationResult["repair"]>["items"];
+  if (!items.length) return null;
+  items.sort((a, b) => b.high_aed - a.high_aed);
+  return { available: true, items, total_low_aed: lo, total_high_aed: hi };
+}
+
+
 const SEV_TONE: Record<string, "good" | "warn" | "bad"> = {
   minor: "good",
   moderate: "warn",
@@ -19,7 +52,7 @@ const SEV_TONE: Record<string, "good" | "warn" | "bad"> = {
  * "worth fixing?" comparison is the decision the seller actually has to make.
  */
 export function RepairEstimateCard({ result }: { result: ValuationResult }) {
-  const repair = result.repair;
+  const repair = result.repair?.available ? result.repair : deriveRepair(result);
   if (!repair?.available || repair.items.length === 0) return null;
 
   const { total_low_aed: lo, total_high_aed: hi, items } = repair;

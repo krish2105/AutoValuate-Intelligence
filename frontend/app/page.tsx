@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Activity, Clock, Radio, ArrowDown, ShieldCheck } from "lucide-react";
 import type { TraceStep, ValuationResult, VehicleInput } from "@/lib/types";
-import { streamValuation, apiInfo } from "@/lib/api";
+import { streamValuation, apiInfo, wakeBackend } from "@/lib/api";
 import { loadHistory, saveToHistory, clearHistory, type HistoryItem } from "@/lib/history";
 import { Logo, Reveal, SectionCard } from "@/components/ui";
 import { Hero } from "@/components/hero";
@@ -57,7 +57,15 @@ export default function Home() {
     setHistory(loadHistory());
   }
 
-  useEffect(() => { apiInfo().then((i) => setOnline(i.online)); }, []);
+  // Wake the (free-tier, sleeping) backend immediately, then probe it. Without the wake
+  // ping the probe times out on a cold dyno and the app used to silently serve DEMO data.
+  useEffect(() => {
+    wakeBackend();
+    apiInfo().then((i) => setOnline(i.online));
+    // re-probe once the cold start has had time to finish, so the header stops saying "demo"
+    const t = setTimeout(() => apiInfo().then((i) => setOnline(i.online)), 20_000);
+    return () => clearTimeout(t);
+  }, []);
   useEffect(() => { refreshHistory(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session]);
 
   async function run(input: VehicleInput) {
@@ -72,7 +80,7 @@ export default function Home() {
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
       },
       onError: (msg) => { setLoading(false); setError(msg); },
-    }, abortRef.current.signal, undefined, online === false);
+    }, abortRef.current.signal, undefined, false);
   }
 
   function cancel() {
@@ -208,6 +216,7 @@ export default function Home() {
                 <ValuationDashboard v={result.valuation} />
                 <WhatIf result={result} online={online} />
                 <DamageReport c={result.condition} valuation={result.valuation} />
+                <RepairEstimateCard result={result} />
                 <MarketAnalytics result={result} />
                 <Forecast result={result} />
                 <Comparables items={result.comparables} />

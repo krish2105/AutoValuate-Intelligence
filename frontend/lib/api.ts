@@ -222,6 +222,16 @@ export async function askAssistant(
   }
 }
 
+/**
+ * Fire-and-forget wake-up ping. Render's free tier sleeps after 15 minutes idle and takes
+ * ~50s to cold-start; we kick it awake the moment the page loads so it is ready by the time
+ * the user submits, instead of the user paying the cold start (or, worse, being silently
+ * handed demo data because the health probe timed out).
+ */
+export function wakeBackend(): void {
+  fetch(`${API}/health`, { cache: "no-store", signal: AbortSignal.timeout(120_000) }).catch(() => {});
+}
+
 export async function apiInfo(): Promise<{ online: boolean; llm: boolean; cv: boolean }> {
   try {
     // short timeout so a cold/asleep backend never hangs the page

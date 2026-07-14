@@ -1,0 +1,28 @@
+name: Keep the API awake
+
+# Render's free tier sleeps a service after 15 minutes of inactivity, and the cold start
+# costs ~50 seconds. That is not just slow — it made the frontend give up on the health
+# probe and silently serve DEMO data instead of a real valuation. Pinging /health keeps the
+# dyno warm so real visitors (and live demos) hit the real model.
+#
+# GitHub's scheduler is best-effort and can drift several minutes, so we ping every 10
+# minutes to stay comfortably inside the 15-minute idle window.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 \
+              https://autovaluate-api.onrender.com/health || echo "000")
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "::warning::API did not respond 200 after 3 attempts (it may be cold-starting)"
