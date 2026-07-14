@@ -1,0 +1,32 @@
+{
+  "model": "XGBoost quantile regression (q10/q50/q90) on log_price",
+  "cv": "5-fold shuffled, seed 42 \u2014 held-out folds only",
+  "metrics": {
+    "MAE_AED": {
+      "mean": 39717.25,
+      "std": 9852.91
+    },
+    "RMSE_AED": {
+      "mean": 118641.38,
+      "std": 50027.95
+    },
+    "MAPE_pct": {
+      "mean": 27.56,
+      "std": 0.54
+    },
+    "median_APE_pct": {
+      "mean": 19.57,
+      "std": 1.59
+    },
+    "coverage_q10_q90": {
+      "mean": 0.59,
+      "std": 0.04
+    }
+  },
+  "baseline_make_model_median_MAE_AED": 55483.36,
+  "improvement_over_baseline_pct": 28.4,
+  "training_rows": 672,
+  "calibrated_interval_coverage": 0.799,
+  "conformal_delta_log": 0.4158,
+  "dataset": "Dubizzle UAE scrape July 2026 (real)"
+}

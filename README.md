@@ -10,9 +10,9 @@ Hybrid **Computer Vision + Tabular ML + Agentic-RAG** vehicle valuation SaaS, bu
 
 - [x] Phase 0 — from-zero repo & environment scaffold
 - [x] Phase 1 — data acquisition & prep
-- [ ] Phase 2 — CV model training (Kaggle)
+- [~] Phase 2 — CV model training (Kaggle) — data unified (14,437 train imgs, 8 classes); YOLOv8 training running
 - [ ] Phase 3 — CV inference service (Hugging Face Space)
-- [ ] Phase 4 — tabular valuation model
+- [x] Phase 4 — tabular valuation model (XGBoost + SHAP; 19.6% median error, beats baseline 28.4%, calibrated 80% interval)
 - [ ] Phase 5 — comparables RAG layer
 - [ ] Phase 6 — orchestration API & agent graph
 - [ ] Phase 7 — frontend

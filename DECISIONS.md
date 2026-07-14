@@ -86,12 +86,24 @@ Each entry records **what** was chosen and **why**, so the whole stack is defens
 
 ---
 
+## ADR-011 — The "10K UAE listings" Kaggle dataset is synthetic; pivot to freshly-scraped real Dubizzle listings
+
+**Decision:** Reject `alikalwar/uae-used-car-prices-and-features-10k-listings` (and its byte-identical mirror `mohamedsaad254/...`, same MD5) as training data. The primary valuation + comparables dataset is now a **fresh scrape of real Dubizzle UAE used-car listings** (via the Apify actor `agenscrape/dubizzle-uae-scraper`, ~1,400 listings across Dubai/Abu Dhabi/Sharjah/Ajman/RAK), with the real **Syarah Saudi used-cars dataset** (`turkibintalib/saudi-arabia-used-cars-dataset`, 8,035 scraped syarah.com listings) retained as a volume backup.
+
+**Why:** On statistical inspection, the alikalwar dataset fails every real-market signature: price has ~zero correlation with age (−0.001), mileage (+0.010) and condition (−0.010); a third of 2023+ cars show >200,000 km; same-model-year prices vary randomly. It is generated data, and training on it would violate this project's non-negotiable "no synthetic training data" rule — the model demonstrably could not beat a naive make/model-median baseline on it. The master prompt itself sanctions refreshing listings by scraping (Section 8). Scraped Dubizzle rows are verifiably real (each row carries its live listing URL — ideal for the citation-grounded comparables layer) and carry exactly the fields the spec calls for, including `regionalSpecs` (GCC/American/etc.), mileage, price, and seller type.
+
+**Honest trade-off:** ~1,400 rows is a small training set; expected valuation error bars are wider and are disclosed per the confidence contract. The Syarah dataset (8k rows, real, Saudi market) is kept in `data/raw/syarah/` as an optional robustness/enrichment source, clearly labelled as a different market if ever used.
+
+---
+
 ## Dataset licensing
 
 | Dataset | Use | License / terms |
 |---|---|---|
-| `alikalwar/uae-used-car-prices-and-features-10k-listings` | Valuation model + comparables | Kaggle public dataset; used for research/education. Attributed in README. |
-| `owaiskhan9654/uae-car-used-dataset` | Optional spec enrichment | CC0-1.0 (public domain) per Kaggle metadata. |
+| Dubizzle UAE scrape (via Apify `agenscrape/dubizzle-uae-scraper`, July 2026) | **Primary**: valuation model + comparables index | Publicly visible listings, collected for research/education; each row retains its source listing URL for attribution. No personal contact data is stored. |
+| `turkibintalib/saudi-arabia-used-cars-dataset` (Syarah) | Backup/robustness (different market, labelled) | Kaggle public dataset of scraped syarah.com listings. |
+| ~~`alikalwar/uae-used-car-prices-and-features-10k-listings`~~ | **Rejected** — synthetic (see ADR-011) | — |
+| `owaiskhan9654/uae-car-used-dataset` | Optional spec enrichment only | CC0-1.0 (public domain) per Kaggle metadata. |
 | `gabrielfcarvalho/cardd-with-yolo-annotations-images-labels` (CarDD) | CV training | CarDD released for academic research (see cardd-ustc.github.io / arXiv). YOLO-annotated mirror on Kaggle. |
 | `hendrichscullen/vehide-dataset-automatic-vehicle-damage-detection` (VehiDE) | CV training | Kaggle public dataset for vehicle-damage detection research. |
 

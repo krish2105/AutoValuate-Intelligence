@@ -1,124 +1,110 @@
 """
-AutoValuate — tabular data preparation (Phase 1).
+AutoValuate — tabular data preparation (Phase 1/4).
 
-Cleans and feature-engineers the UAE used-car listings dataset
-(alikalwar/uae-used-car-prices-and-features-10k-listings) into a modelling-ready
-table for the XGBoost valuation model (Phase 4) and the comparables RAG index (Phase 5).
+Cleans and feature-engineers REAL Dubizzle UAE used-car listings (scraped July 2026
+via Apify `agenscrape/dubizzle-uae-scraper`; see DECISIONS.md ADR-011) into a
+modelling-ready table for the XGBoost valuation model and the comparables RAG index.
 
 Reproducible: same input -> same output. No randomness. No synthetic rows.
 Run:  python data/prepare_tabular.py
-Reads:  data/raw/alt/uae_used_cars_10k.csv
+Reads:  data/raw/dubizzle/dubizzle_listings.csv
 Writes: data/processed/listings_clean.parquet   (modelling table)
-        data/processed/comparables.csv           (RAG-facing, human-readable)
+        data/processed/comparables.csv           (RAG-facing, keeps listing URL)
         data/processed/prep_report.json          (row counts, dropped, schema)
 """
 from __future__ import annotations
 import json
-import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-# Reference year for vehicle age. The listings snapshot is from Feb 2025; we age
-# against 2026 (project "current" year) so `age` reads correctly today.
-REFERENCE_YEAR = 2026
+REFERENCE_YEAR = 2026  # scrape date: July 2026
 
-RAW = Path("data/raw/alt/uae_used_cars_10k.csv")
+RAW = Path("data/raw/dubizzle/dubizzle_listings.csv")
 OUT_DIR = Path("data/processed")
 
-# Condition label -> (canonical name, ordinal severity 0..3, damage family).
-# Parsed from the free-text Description "Condition: X" tag. This is the real signal
-# that ties the CV damage detector's output back to a price adjustment.
-CONDITION_MAP = {
-    "no damage":         ("no_damage",        0, "none"),
-    "minor scratches":   ("minor_scratches",  1, "cosmetic"),
-    "repainted bumper":  ("repainted_bumper", 1, "cosmetic"),
-    "dented door":       ("dented_door",      2, "panel"),
-    "engine repaired":   ("engine_repaired",  3, "mechanical"),
-    "accident history":  ("accident_history", 3, "structural"),
+CANON_SPEC = {
+    "gcc specs": "GCC", "american specs": "American", "european specs": "European",
+    "japanese specs": "Japanese", "canadian specs": "Canadian", "korean specs": "Korean",
+    "chinese specs": "Chinese", "other": "Other",
 }
-
-EMIRATE_CANON = {
-    "dubai": "Dubai", "sharjah": "Sharjah", "abu dhabi": "Abu Dhabi",
-    "ajman": "Ajman", "al ain": "Al Ain", "ras al khaimah": "Ras Al Khaimah",
-    "umm al quwain": "Umm Al Quwain", "fujairah": "Fujairah",
-}
-
-
-def parse_condition(desc: str) -> str:
-    m = re.search(r"Condition:\s*([^.\"]+)", str(desc))
-    return m.group(1).strip().lower() if m else ""
 
 
 def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     report: dict = {"rows_in": int(len(df))}
 
+    df = df.drop_duplicates(subset="id").copy()
+    report["rows_after_dedupe"] = int(len(df))
+
+    # --- coerce numerics (scraper emits strings for some fields) ---
+    for col in ["price", "kilometers", "year", "noOfCylinders", "horsepower"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # horsepower arrives as a band label sometimes; keep numeric only, NaN otherwise
     # --- normalise strings ---
-    df["Make"] = df["Make"].str.strip().str.lower()
-    df["Model"] = df["Model"].str.strip().str.lower()
-    df["Location"] = (
-        df["Location"].str.strip().str.lower().map(EMIRATE_CANON).fillna("Other")
+    for col in ["make", "model", "bodyType", "transmissionType", "fuelType",
+                "sellerType", "exteriorColor", "city", "neighbourhood", "motorsTrim"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+    df["make"] = df["make"].str.lower()
+    df["model"] = df["model"].str.lower()
+    df["transmissionType"] = df["transmissionType"].str.replace(" Transmission", "", regex=False)
+    df["regionalSpecs"] = (
+        df["regionalSpecs"].astype(str).str.strip().str.lower().map(CANON_SPEC).fillna("Other")
     )
-    df["Transmission"] = (
-        df["Transmission"].str.replace(" Transmission", "", regex=False).str.strip()
-    )
-    df["Fuel Type"] = df["Fuel Type"].str.strip()
-    df["Body Type"] = df["Body Type"].str.strip()
-    df["Color"] = df["Color"].str.strip().str.lower()
-
-    # Cylinders: coerce to numeric, keep NaN as a real "unknown" category later
-    df["Cylinders"] = pd.to_numeric(df["Cylinders"], errors="coerce")
-
-    # --- condition from free text ---
-    cond_raw = df["Description"].map(parse_condition)
-    df["condition"] = cond_raw.map(lambda c: CONDITION_MAP.get(c, ("unknown", 1, "unknown"))[0])
-    df["condition_severity"] = cond_raw.map(lambda c: CONDITION_MAP.get(c, ("unknown", 1, "unknown"))[1])
-    df["damage_family"] = cond_raw.map(lambda c: CONDITION_MAP.get(c, ("unknown", 1, "unknown"))[2])
-
-    # --- engineered numerics ---
-    df["age"] = REFERENCE_YEAR - df["Year"]
-    df["mileage_per_year"] = (df["Mileage"] / df["age"].clip(lower=1)).round(0)
-    df["log_price"] = np.log1p(df["Price"])  # heavy right skew -> log target
 
     # --- sanity filters (documented, not silent) ---
     before = len(df)
-    df = df[(df["Year"] >= 2000) & (df["Year"] <= REFERENCE_YEAR)]
-    df = df[(df["Price"] >= 5_000) & (df["Price"] <= 5_000_000)]  # drop absurd luxury/typo tails
-    df = df[(df["Mileage"] >= 1_000) & (df["Mileage"] <= 400_000)]
-    df = df[df["age"] >= 0]
+    df = df[df["price"].between(3_000, 3_000_000)]          # drop AED 0 / typo tails
+    df = df[df["year"].between(1990, REFERENCE_YEAR)]
+    df = df[df["kilometers"].between(0, 500_000)]
+    df = df.dropna(subset=["make", "model", "price", "year", "kilometers"])
     report["rows_dropped_sanity"] = int(before - len(df))
 
-    df = df.drop_duplicates().reset_index(drop=True)
+    # --- engineered numerics ---
+    df["age"] = (REFERENCE_YEAR - df["year"]).clip(lower=0)
+    df["mileage_per_year"] = (df["kilometers"] / df["age"].clip(lower=1)).round(0)
+    df["log_price"] = np.log1p(df["price"])
+
+    df = df.reset_index(drop=True)
     report["rows_out"] = int(len(df))
-    report["price_median_aed"] = float(df["Price"].median())
-    report["mileage_median_km"] = float(df["Mileage"].median())
-    report["condition_counts"] = df["condition"].value_counts().to_dict()
-    report["make_count"] = int(df["Make"].nunique())
-    report["model_count"] = int(df["Model"].nunique())
+    report["price_median_aed"] = float(df["price"].median())
+    report["mileage_median_km"] = float(df["kilometers"].median())
+    report["year_range"] = [int(df["year"].min()), int(df["year"].max())]
+    report["make_count"] = int(df["make"].nunique())
+    report["model_count"] = int(df["model"].nunique())
+    report["city_counts"] = df["city"].value_counts().to_dict()
     report["reference_year"] = REFERENCE_YEAR
+
+    # real-data sanity: price must correlate sensibly with age/mileage
+    report["corr_log_price"] = {
+        "age": round(float(df["age"].corr(df["log_price"])), 3),
+        "kilometers": round(float(df["kilometers"].corr(df["log_price"])), 3),
+    }
     return df, report
 
 
 def main() -> None:
     if not RAW.exists():
-        raise SystemExit(f"Missing {RAW}. Download it first (see data/README.md).")
+        raise SystemExit(f"Missing {RAW}. Run the Dubizzle scrape first (see DECISIONS.md ADR-011).")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     df = pd.read_csv(RAW)
     clean_df, report = clean(df)
 
-    # Modelling table (features the XGBoost model consumes + target)
     model_cols = [
-        "Make", "Model", "Year", "age", "Mileage", "mileage_per_year",
-        "Body Type", "Cylinders", "Transmission", "Fuel Type", "Color",
-        "Location", "condition", "condition_severity", "damage_family",
-        "Price", "log_price",
+        "make", "model", "year", "age", "kilometers", "mileage_per_year",
+        "bodyType", "noOfCylinders", "horsepower", "transmissionType", "fuelType",
+        "regionalSpecs", "exteriorColor", "sellerType", "city",
+        "price", "log_price",
     ]
     clean_df[model_cols].to_parquet(OUT_DIR / "listings_clean.parquet", index=False)
 
-    # Comparables table (what the RAG layer indexes + shows the user) with a stable id
-    comp = clean_df[model_cols].copy()
-    comp.insert(0, "listing_id", [f"UAE-{i:05d}" for i in range(len(comp))])
+    # Comparables table: keeps the real listing id/url/title for citation grounding
+    comp_cols = ["id", "title", "url", "createdAt", "neighbourhood"] + model_cols
+    comp = clean_df[[c for c in comp_cols if c in clean_df.columns]].copy()
+    comp = comp.rename(columns={"id": "listing_id"})
     comp.to_csv(OUT_DIR / "comparables.csv", index=False)
 
     (OUT_DIR / "prep_report.json").write_text(json.dumps(report, indent=2))
