@@ -35,6 +35,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
+from agents import chat_agent
 from graph import orchestrator
 
 # ---- limits / config ----
@@ -42,7 +43,7 @@ MAX_PHOTOS = 8
 MAX_PHOTO_CHARS = 8_000_000          # ~6 MB decoded per photo (base64 is ~1.33x)
 RATE_LIMIT_MAX = int(os.environ.get("RATE_LIMIT_MAX", "20"))     # requests
 RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))  # seconds
-_RATE_PATHS = ("/valuate", "/estimate")   # rate-limited prefixes (never /health or /)
+_RATE_PATHS = ("/valuate", "/estimate", "/chat")   # rate-limited prefixes (never /health or /)
 # CORS: comma-separated origins (never wildcard). Defaults cover local dev + the
 # production Vercel app; the regex also allows this project's Vercel preview URLs.
 _origins = os.environ.get(
@@ -150,7 +151,7 @@ def root() -> dict:
         "status": "ok",
         "llm_provider_configured": orchestrator._LLM.has_live_provider,
         "cv_service_configured": bool(os.environ.get("CV_SERVICE_URL", "").strip()),
-        "endpoints": ["/health", "/valuate", "/valuate/stream", "/estimate"],
+        "endpoints": ["/health", "/valuate", "/valuate/stream", "/estimate", "/chat"],
     }
 
 
@@ -175,6 +176,38 @@ async def estimate(req: ValuationRequest) -> dict:
     consistent. Rate-limited + threadpooled like /valuate.
     """
     return await run_in_threadpool(orchestrator.estimate, req.model_dump())
+
+
+class ChatMessage(BaseModel):
+    role: str = Field(max_length=16)
+    content: str = Field(max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    """One question about a finished valuation. `context` is the valuation result."""
+    question: str = Field(min_length=1, max_length=500)
+    context: dict
+    history: list[ChatMessage] = Field(default_factory=list, max_length=10)
+
+    @field_validator("context")
+    @classmethod
+    def _needs_valuation(cls, v: dict) -> dict:
+        if not isinstance(v.get("valuation"), dict):
+            raise ValueError("context must include a valuation")
+        return v
+
+
+@app.post("/chat")
+async def chat(req: ChatRequest) -> dict:
+    """
+    Grounded Q&A over a completed valuation (Phase C). The answer is bound to the
+    evidence pack and passed through the same deterministic Verifier as the seller
+    report — an LLM answer containing an ungrounded number is rejected and replaced
+    by the deterministic writer, so the assistant can never quote an invented price.
+    """
+    return await run_in_threadpool(
+        chat_agent.answer, req.question, req.context, [m.model_dump() for m in req.history],
+    )
 
 
 @app.post("/valuate/stream")

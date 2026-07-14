@@ -19,6 +19,7 @@ import { Comparables } from "@/components/comparables";
 import { MarketAnalytics } from "@/components/market-analytics";
 import { SellerReport } from "@/components/seller-report";
 import { Negotiation } from "@/components/negotiation";
+import { Assistant } from "@/components/assistant";
 import { ConfidencePanel } from "@/components/confidence-panel";
 import { HistoryDrawer } from "@/components/history-drawer";
 import { useAuth, AuthModal, UserButton } from "@/components/auth";
@@ -198,6 +199,7 @@ export default function Home() {
                 <MarketAnalytics result={result} />
                 <Comparables items={result.comparables} />
                 <SellerReport result={result} />
+                <Assistant result={result} />
                 <Negotiation result={result} />
               </motion.div>
             )}

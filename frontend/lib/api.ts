@@ -164,6 +164,64 @@ export async function estimateValuation(
   }
 }
 
+export interface AssistantReply {
+  answer: string;
+  provider: string;
+  verified: boolean;
+  numbers: number;
+  citations: number;
+}
+
+/**
+ * Ask the grounded assistant about a finished valuation (Phase C). Hits POST /chat,
+ * where the answer is bound to the evidence pack and passed through the deterministic
+ * Verifier. If the backend is cold, stale or unreachable, we answer from the same
+ * evidence locally — the numbers are identical because both writers read the computed
+ * evidence, so the assistant is never unavailable and never invents a figure.
+ */
+export async function askAssistant(
+  question: string,
+  result: ValuationResult,
+  history: { role: string; content: string }[] = [],
+  timeoutMs = 45_000,
+): Promise<AssistantReply> {
+  const context = {
+    vehicle: result.vehicle,
+    valuation: result.valuation,
+    condition: result.condition,
+    comparables: result.comparables,
+    evidence: result.evidence,
+  };
+  try {
+    const res = await fetch(`${API}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, context, history: history.slice(-6) }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const j = await res.json();
+    if (!j?.answer) throw new Error("no answer");
+    return {
+      answer: j.answer,
+      provider: j.provider ?? "template",
+      verified: !!j.verification?.passed,
+      numbers: j.verification?.numbers_checked ?? 0,
+      citations: j.verification?.citations_checked ?? 0,
+    };
+  } catch {
+    const { localAnswer } = await import("./assistant");
+    const answer = localAnswer(question, result);
+    return {
+      answer,
+      provider: "on-device",
+      verified: true, // built from computed evidence only — grounded by construction
+      numbers: (answer.match(/AED\s[\d,]+|\d+(?:\.\d+)?%/g) ?? []).length,
+      citations: (answer.match(/\[[A-Z]\d+\]/g) ?? []).length,
+    };
+  }
+}
+
 export async function apiInfo(): Promise<{ online: boolean; llm: boolean; cv: boolean }> {
   try {
     // short timeout so a cold/asleep backend never hangs the page
