@@ -1,0 +1,205 @@
+"""
+LangGraph orchestrator (Phase 6): the valuation state machine.
+
+Intake → Aggregation (CV) → Valuation → Comparables → Report → Verifier,
+then a confidence-disclosure step that implements Section 15's contract exactly:
+states the valuation interval width, the per-damage CV confidence, and recommends
+a professional inspection whenever confidence is limited.
+
+Each node appends a trace entry so the frontend can stream the reasoning live.
+Exposes both `run()` (batch) and `stream_steps()` (generator for SSE).
+"""
+from __future__ import annotations
+
+from typing import Any, Iterator, TypedDict
+
+from langgraph.graph import END, StateGraph
+
+from agents import intake_agent, aggregation_agent, comparables_rag_agent, report_agent, verifier_agent
+from models import valuation_model
+from llm_client.client import LLMClient
+
+# single shared instances (models/index load once)
+_COMPARABLES = comparables_rag_agent.ComparablesAgent()
+_LLM = LLMClient()
+
+
+class State(TypedDict, total=False):
+    payload: dict
+    vehicle: dict
+    condition: dict
+    valuation: dict
+    comparables: list
+    report: dict
+    verdict: dict
+    confidence: dict
+    trace: list
+    error: str
+
+
+def _trace(state: State, step: str, status: str, detail: Any) -> list:
+    return state.get("trace", []) + [{"step": step, "status": status, "detail": detail}]
+
+
+# ---- nodes ---------------------------------------------------------------
+def n_intake(state: State) -> State:
+    try:
+        vehicle = intake_agent.validate(state["payload"])
+    except intake_agent.IntakeError as e:
+        return {"error": str(e), "trace": _trace(state, "intake", "error", str(e))}
+    return {"vehicle": vehicle,
+            "trace": _trace(state, "intake", "ok",
+                            f'{vehicle["year"]} {vehicle["make"]} {vehicle["model"]}, '
+                            f'{int(vehicle["kilometers"]):,} km, {len(vehicle["photos"])} photo(s)')}
+
+
+def n_aggregate(state: State) -> State:
+    cond = aggregation_agent.aggregate(state["vehicle"])
+    if cond["cv_available"]:
+        detail = f'condition {cond["condition_score"]}/100, {len(cond["findings"])} damage type(s)'
+    else:
+        detail = f'CV skipped ({cond["reason"]})'
+    return {"condition": cond, "trace": _trace(state, "aggregation", "ok", detail)}
+
+
+def n_valuation(state: State) -> State:
+    val = valuation_model.predict(state["vehicle"])
+    # apply the CV condition adjustment to the market-condition price
+    factor = state["condition"].get("price_adjustment_factor", 1.0)
+    if factor != 1.0:
+        for k in ("price_low_aed", "price_mid_aed", "price_high_aed"):
+            val[k] = round(val[k] * factor)
+        val["condition_adjusted"] = True
+        val["condition_factor"] = factor
+    detail = (f'AED {int(val["price_low_aed"]):,}–{int(val["price_high_aed"]):,} '
+              f'(mid {int(val["price_mid_aed"]):,})')
+    return {"valuation": val, "trace": _trace(state, "valuation", "ok", detail)}
+
+
+def n_comparables(state: State) -> State:
+    comps = _COMPARABLES.find(state["vehicle"], k=5)
+    detail = f'{len(comps)} comparable(s), top match {comps[0]["similarity"] if comps else 0:.2f}'
+    return {"comparables": comps, "trace": _trace(state, "comparables", "ok", detail)}
+
+
+def n_report(state: State) -> State:
+    rep = report_agent.write_report(
+        state["vehicle"], state["valuation"], state["condition"], state["comparables"], llm=_LLM)
+    return {"report": rep,
+            "trace": _trace(state, "report", "ok", f'written via {rep["provider"]}')}
+
+
+def n_verify(state: State) -> State:
+    verdict = verifier_agent.verify(state["report"]["report"], state["report"]["evidence"])
+    status = "ok" if verdict["passed"] else "flagged"
+    detail = (f'{verdict["numbers_checked"]} numbers, {verdict["citations_checked"]} citations checked; '
+              + ("all grounded" if verdict["passed"] else f'{len(verdict["violations"])} violation(s)'))
+    return {"verdict": verdict, "trace": _trace(state, "verifier", status, detail)}
+
+
+def n_confidence(state: State) -> State:
+    val, cond = state["valuation"], state["condition"]
+    width = val.get("interval_pct_width", 0)
+    reasons, level = [], "high"
+    if width > 90:
+        level = "low"; reasons.append(f"wide price interval (±{width/2:.0f}% around mid)")
+    elif width > 60:
+        level = "medium"; reasons.append(f"moderate price interval (±{width/2:.0f}%)")
+    if not cond.get("cv_available"):
+        level = "low" if level != "low" else level
+        reasons.append("no visual damage assessment was performed")
+    else:
+        weak = [f["damage_type"] for f in cond["findings"] if f["max_confidence"] < 0.5]
+        if weak:
+            reasons.append(f"low detection confidence for: {', '.join(weak)}")
+
+    recommend = level in ("low", "medium")
+    disclosure = {
+        "level": level,
+        "valuation_interval_pct": width,
+        "cv_assessed": cond.get("cv_available", False),
+        "reasons": reasons,
+        "recommend_professional_inspection": recommend,
+        "statement": _disclosure_text(level, recommend, cond.get("cv_available", False)),
+    }
+    return {"confidence": disclosure,
+            "trace": _trace(state, "confidence", "ok", f'confidence: {level}')}
+
+
+def _disclosure_text(level: str, recommend: bool, cv: bool) -> str:
+    base = {
+        "high": "Confidence in this estimate is high given the available data.",
+        "medium": "Confidence in this estimate is moderate.",
+        "low": "Confidence in this estimate is limited.",
+    }[level]
+    cv_note = ("" if cv else " No photo-based damage assessment was performed, so the figure assumes "
+               "market-typical condition.")
+    rec = (" We recommend a professional inspection before relying on this number for a transaction."
+           if recommend else "")
+    disclaimer = (" This is an automated estimate, not a certified appraisal.")
+    return base + cv_note + rec + disclaimer
+
+
+# ---- graph ---------------------------------------------------------------
+def _build():
+    g = StateGraph(State)
+    g.add_node("intake_step", n_intake)
+    g.add_node("aggregation_step", n_aggregate)
+    g.add_node("valuation_step", n_valuation)
+    g.add_node("comparables_step", n_comparables)
+    g.add_node("report_step", n_report)
+    g.add_node("verifier_step", n_verify)
+    g.add_node("confidence_step", n_confidence)
+
+    g.set_entry_point("intake_step")
+
+    def after_intake(s: State) -> str:
+        return "aggregation_step" if not s.get("error") else END
+    g.add_conditional_edges("intake_step", after_intake,
+                            {"aggregation_step": "aggregation_step", END: END})
+    g.add_edge("aggregation_step", "valuation_step")
+    g.add_edge("valuation_step", "comparables_step")
+    g.add_edge("comparables_step", "report_step")
+    g.add_edge("report_step", "verifier_step")
+    g.add_edge("verifier_step", "confidence_step")
+    g.add_edge("confidence_step", END)
+    return g.compile()
+
+
+_GRAPH = _build()
+
+
+def run(payload: dict) -> dict:
+    final = _GRAPH.invoke({"payload": payload, "trace": []})
+    return _shape(final)
+
+
+def stream_steps(payload: dict) -> Iterator[dict]:
+    """Yield each node's trace entry as it completes (for SSE)."""
+    seen = 0
+    last: State = {}
+    for chunk in _GRAPH.stream({"payload": payload, "trace": []}, stream_mode="values"):
+        last = chunk
+        tr = chunk.get("trace", [])
+        while seen < len(tr):
+            yield {"type": "trace", "data": tr[seen]}
+            seen += 1
+    yield {"type": "result", "data": _shape(last)}
+
+
+def _shape(state: State) -> dict:
+    if state.get("error"):
+        return {"ok": False, "error": state["error"], "trace": state.get("trace", [])}
+    return {
+        "ok": True,
+        "vehicle": state["vehicle"],
+        "valuation": state["valuation"],
+        "condition": state["condition"],
+        "comparables": state["comparables"],
+        "report": state["report"]["report"],
+        "report_provider": state["report"]["provider"],
+        "evidence": state["report"]["evidence"],
+        "verification": state["verdict"],
+        "confidence": state["confidence"],
+        "trace": state["trace"],
+    }

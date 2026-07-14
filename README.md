@@ -14,7 +14,7 @@ Hybrid **Computer Vision + Tabular ML + Agentic-RAG** vehicle valuation SaaS, bu
 - [ ] Phase 3 — CV inference service (Hugging Face Space)
 - [x] Phase 4 — tabular valuation model (XGBoost + SHAP; 19.6% median error, beats baseline 28.4%, calibrated 80% interval)
 - [x] Phase 5 — comparables RAG layer (hybrid dense+BM25+structured+rerank; same-make precision@5 = 1.0; pgvector-ready)
-- [ ] Phase 6 — orchestration API & agent graph
+- [x] Phase 6 — orchestration API & agent graph (LangGraph 7-node graph, SSE trace, Verifier gate, confidence disclosure)
 - [ ] Phase 7 — frontend
 - [ ] Phase 8 — integration & end-to-end testing
 - [ ] Phase 9 — evaluation & guardrails

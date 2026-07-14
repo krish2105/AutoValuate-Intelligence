@@ -1,0 +1,31 @@
+# Render deploy config for the AutoValuate orchestration API (free web service).
+# Applied in Phase 10. Secrets (GEMINI_API_KEY, GROQ_API_KEY, SUPABASE_*, CV_SERVICE_URL)
+# are set in the Render dashboard, never committed.
+services:
+  - type: web
+    name: autovaluate-api
+    runtime: python
+    plan: free
+    rootDir: backend-api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: USE_TF
+        value: "0"
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CV_SERVICE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false

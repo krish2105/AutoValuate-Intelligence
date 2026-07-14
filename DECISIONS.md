@@ -104,6 +104,20 @@ Each entry records **what** was chosen and **why**, so the whole stack is defens
 
 ---
 
+## ADR-013 — Agent graph as a LangGraph state machine with a hard Verifier gate
+
+**Decision:** The orchestration API is a LangGraph `StateGraph`: Intake → Aggregation(CV) → Valuation → Comparables → Report → Verifier → Confidence, each node appending a trace entry streamed to the UI over SSE. The Report agent may state ONLY numbers present in a citation-tagged evidence block; the **Verifier** is a deterministic, non-LLM gate that parses every AED figure, percentage, and `[citation]` in the report and fails any that doesn't trace to a computed value.
+
+**Why:** Citation grounding is the project's honesty guarantee — enforced as code, not a prompt suggestion. The Verifier caught its own gaps during testing (SHAP driver AED impacts and rounded coverage weren't indexed) and was fixed until a real report passed with 13 numbers / 14 citations all grounded. The LLM client (`google-genai` Gemini Flash → Groq Llama 3.3 → deterministic template) means the whole graph runs end-to-end before any API key exists, so the pipeline is always demonstrable; the template report is citation-correct by construction and passes the same Verifier.
+
+## ADR-014 — Render 512 MB free tier cannot hold torch; production embeds via pgvector + light query encoder
+
+**Decision (deployment plan, Phase 10):** The comparables corpus is **pre-embedded** into the committed artifact / Supabase pgvector, so the corpus never needs torch at runtime. On Render free (512 MB), the backend will embed the *query* with a lightweight ONNX MiniLM via `onnxruntime` (~90 MB) instead of `sentence-transformers`+torch (~1 GB), and delegate ANN search to Supabase pgvector's `match_comparables`. BM25 + structured rerank stay in pure Python (negligible RAM).
+
+**Why:** The dev/demo backend uses the full `sentence-transformers` stack (accurate, simple, tested — same numbers), but it does not fit 512 MB. Rather than pretend it deploys as-is, the production path swaps only the query-embedding component to ONNX and pushes vector search to Postgres. This keeps the free-tier promise real. The swap is isolated behind `LocalStore` / `SupabaseStore` (ADR-012), so no agent code changes. **Status: query-ONNX-embedder + SupabaseStore are wired and tested in Phase 10 once the Supabase project exists.**
+
+---
+
 ## Dataset licensing
 
 | Dataset | Use | License / terms |

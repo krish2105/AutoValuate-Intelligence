@@ -91,6 +91,24 @@ Every comparable returns its real `listing_id` + source `url` → direct citatio
 
 ---
 
+## Orchestration API (Phase 6)
+
+FastAPI + LangGraph `StateGraph` on Render. Seven nodes, each streamed to the UI via SSE:
+**Intake → Aggregation (CV) → Valuation → Comparables → Report → Verifier → Confidence.**
+
+- **LLM client:** `google-genai` Gemini Flash → Groq Llama 3.3 fallback → deterministic template
+  (pipeline runs end-to-end before any key exists; template report is citation-correct by construction).
+- **Verifier gate (deterministic, no LLM):** parses every AED figure, %, and `[citation]` in the report;
+  fails any ungrounded number. Verified end-to-end: a real report passed with **13 numbers / 14 citations,
+  all grounded**; an invalid payload is rejected at intake.
+- **Confidence disclosure (Section 15):** states interval width + per-damage CV confidence, and recommends
+  professional inspection when confidence is limited or no visual assessment ran.
+- **Endpoints:** `GET /health`, `POST /valuate`, `POST /valuate/stream` (SSE). Tested via TestClient.
+- **Free-tier note (ADR-014):** torch-heavy comparables stack exceeds Render's 512 MB; production swaps the
+  query embedder to ONNX + Supabase pgvector (Phase 10).
+
+---
+
 ## Report faithfulness (Ragas) — _pending Phase 9_
 
 Target: faithfulness ≥ 0.90 on the generated seller report vs. the retrieved comparables and

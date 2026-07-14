@@ -1,33 +1,34 @@
-# AutoValuate orchestration API (Render) — pinned in Phase 6
-fastapi
-uvicorn[standard]
-pydantic
-pydantic-settings
-python-multipart
-httpx
-sse-starlette
+# AutoValuate orchestration API (Render free web service)
+# NOTE: sentence-transformers+torch (dev/demo backend) exceeds Render's 512MB tier.
+# Production (Phase 10) swaps query embedding to onnxruntime + Supabase pgvector — see
+# DECISIONS.md ADR-014. Keep torch-heavy deps in the [dev] group when deploying to Render.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-multipart==0.0.20
+httpx==0.28.1
+sse-starlette==2.1.3
 
 # Agents / orchestration
-langgraph
-langchain-core
+langgraph==0.2.60
+langchain-core==0.3.28
 
-# Retrieval (comparables RAG)
-llama-index-core
-sentence-transformers
-rank-bm25
+# Valuation model (in-process)
+xgboost==2.1.3
+shap==0.46.0
+scikit-learn==1.6.0
+joblib==1.4.2
+pandas==2.2.3
+numpy==2.2.1
 
-# Valuation model (loaded in-process)
-xgboost
-shap
-scikit-learn
-joblib
-pandas
-numpy
-
-# Data plane
-supabase
-psycopg[binary]
+# Comparables retrieval — pure-Python parts (light)
+rank-bm25==0.2.2
 
 # LLM providers
-google-generativeai
-groq
+google-genai==1.9.0
+groq==0.13.0
+
+# --- dev/demo comparables backend (heavy; NOT installed on Render free) ---
+# sentence-transformers==3.3.1   # pulls torch ~1GB; use ONNX query embedder in prod
+# onnxruntime==1.20.1            # production query-embedding path (Phase 10)
