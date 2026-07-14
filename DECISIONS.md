@@ -68,4 +68,31 @@ Each entry records **what** was chosen and **why**, so the whole stack is defens
 
 ---
 
-_Licensing notes for each dataset are added in Phase 1._
+## ADR-009 — Primary valuation dataset swapped to real used-car *listings*
+
+**Decision:** Use `alikalwar/uae-used-car-prices-and-features-10k-listings` (Kaggle, 10,000 real UAE used-car listings) as the primary training set for the valuation model and the source for the comparables index. Keep the master-prompt-named `owaiskhan9654/uae-car-used-dataset` as an optional spec-enrichment source only.
+
+**Why:** On inspection, `owaiskhan9654/uae-car-used-dataset` is not used-car listings — it is a DriveArabia **new-car spec/price guide** (`Approx Cost` MSRP range, `Power`, `Torque`, `Fuel Econ`), with **no mileage, no per-listing sale price, and no condition**. A mileage-aware used-car valuation model — the core of this product — cannot be trained on it. The `alikalwar` dataset has exactly the fields the master prompt *described* (`Make, Model, Year, Price, Mileage, Body Type, Cylinders, Transmission, Fuel Type, Color, Location, Description`), plus a parsed **condition** signal in the description that bridges the CV damage output to a price adjustment. Both datasets are real and public — the "no synthetic data" rule is preserved; only the named source was corrected to match its own stated intent.
+
+**Data facts (after `data/prepare_tabular.py`):** 9,995 clean rows, 65 makes, 485 models, price median AED 102,625, mileage median 154,360 km, 6 near-balanced condition classes (~1,600 each).
+
+---
+
+## ADR-010 — CV data is unified on Kaggle, not downloaded locally
+
+**Decision:** The ~5.25 GB of CV images (CarDD 3 GB + VehiDE 2.25 GB) are never downloaded to the dev laptop. Annotation unification runs in `notebooks/01_cv_data_prep.ipynb` **on Kaggle**, where both datasets are already available as free attachable inputs, and training (notebook 02) consumes the combined output there.
+
+**Why:** Downloading 5 GB locally only to re-upload to Kaggle for GPU training wastes disk and bandwidth for zero benefit. Kaggle mounts datasets read-only at `/kaggle/input/`, so the prep + train pipeline lives entirely where the data and the free GPU are. `gabrielfcarvalho/cardd-with-yolo-annotations-images-labels` is already in YOLO format; VehiDE (COCO) is converted and both are remapped to one unified 6-class damage schema, with any unmapped source class printed and halting the merge (no silent drops).
+
+---
+
+## Dataset licensing
+
+| Dataset | Use | License / terms |
+|---|---|---|
+| `alikalwar/uae-used-car-prices-and-features-10k-listings` | Valuation model + comparables | Kaggle public dataset; used for research/education. Attributed in README. |
+| `owaiskhan9654/uae-car-used-dataset` | Optional spec enrichment | CC0-1.0 (public domain) per Kaggle metadata. |
+| `gabrielfcarvalho/cardd-with-yolo-annotations-images-labels` (CarDD) | CV training | CarDD released for academic research (see cardd-ustc.github.io / arXiv). YOLO-annotated mirror on Kaggle. |
+| `hendrichscullen/vehide-dataset-automatic-vehicle-damage-detection` (VehiDE) | CV training | Kaggle public dataset for vehicle-damage detection research. |
+
+No synthetic or LLM-generated training data is used anywhere in this project.

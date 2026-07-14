@@ -9,7 +9,7 @@ Hybrid **Computer Vision + Tabular ML + Agentic-RAG** vehicle valuation SaaS, bu
 🚧 **Under construction** — building phase by phase per [`MASTER_PROMPT.md`](MASTER_PROMPT.md). See the roadmap in Section 14 of that file.
 
 - [x] Phase 0 — from-zero repo & environment scaffold
-- [ ] Phase 1 — data acquisition & prep
+- [x] Phase 1 — data acquisition & prep
 - [ ] Phase 2 — CV model training (Kaggle)
 - [ ] Phase 3 — CV inference service (Hugging Face Space)
 - [ ] Phase 4 — tabular valuation model
