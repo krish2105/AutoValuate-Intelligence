@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ImagePlus, X, Sparkles, Loader2 } from "lucide-react";
+import { ImagePlus, X, Sparkles, Loader2, Wand2 } from "lucide-react";
 import type { VehicleInput } from "@/lib/types";
 import type { ClientCondition } from "@/lib/cv-browser";
+import { parseVehicle } from "@/lib/parse-vehicle";
 import { cn } from "@/lib/utils";
 import { BrowserCV } from "./browser-cv";
 import { GuidedCapture } from "./guided-capture";
@@ -36,6 +37,16 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
   const [clientCondition, setClientCondition] = useState<ClientCondition | null>(null);
   const [drag, setDrag] = useState(false);
   const [mode, setMode] = useState<"quick" | "guided">("quick");
+  const [desc, setDesc] = useState("");
+  const [parsed, setParsed] = useState<string[]>([]);
+
+  /** M7: parse a plain-English description into the structured form (deterministic, offline). */
+  function applyDescription() {
+    const { matched, ...fields } = parseVehicle(desc);
+    if (!matched.length) { setParsed([]); return; }
+    setV((p) => ({ ...p, ...fields }));
+    setParsed(matched);
+  }
   const fileRef = useRef<HTMLInputElement>(null);
   const set = (k: keyof VehicleInput, val: any) => setV((p) => ({ ...p, [k]: val }));
 
@@ -65,6 +76,39 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
       onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit({ ...v, photos, client_condition: clientCondition }); }}
       className="space-y-5"
     >
+      {/* M7 — describe your car in plain English */}
+      <div>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Wand2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <input
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyDescription(); } }}
+              aria-label="Describe your car in plain English"
+              placeholder="Describe it: “2019 Toyota Corolla GCC, 90k km, automatic petrol sedan”"
+              className={cn(inputCls, "pl-9")}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={applyDescription}
+            disabled={!desc.trim()}
+            className="shrink-0 rounded-xl border px-3 py-2.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-accent disabled:opacity-50"
+          >
+            Fill form
+          </button>
+        </div>
+        <AnimatePresence>
+          {parsed.length > 0 && (
+            <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="mt-1.5 text-xs text-good">
+              Filled {parsed.join(", ")} — check the fields below and adjust anything I got wrong.
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* capture mode switch */}
       <div className="flex items-center gap-1 rounded-xl border bg-surface-2/40 p-1" role="tablist" aria-label="Photo capture mode">
         {([["quick", "Quick upload"], ["guided", "Guided walk-around"]] as const).map(([m, label]) => (
