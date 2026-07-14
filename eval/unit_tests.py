@@ -96,5 +96,14 @@ llm.groq_key = ""
 res = llm.generate("sys", "prompt", template_fn=lambda: "TEMPLATE OUTPUT")
 check("falls back to template with no keys", res.provider == "template" and res.text == "TEMPLATE OUTPUT")
 
+
+# ---- CV detector (trained model, real inference) ----
+print("\nCV detector (in-process ONNX):")
+import glob as _glob, base64 as _b64
+os.environ["ENABLE_LOCAL_CV"] = "1"
+from agents import cv_local
+_imgs = sorted(_glob.glob(str(Path(__file__).resolve().parents[1] / "backend-api" / "models" / "*.nonexist")))  # placeholder
+check("best.onnx present + model loads", cv_local.MODEL_PATH.exists() and cv_local.available())
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

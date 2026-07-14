@@ -16,9 +16,9 @@
 
 | Surface | URL | Status |
 |---|---|---|
-| **Web app** (Vercel) | `https://autovaluate.vercel.app` | deploying |
+| **Web app** (Vercel) | **https://auto-valuate-intelligence.vercel.app** | 🟢 live |
 | **Valuation API** (Render) | `https://autovaluate-api.onrender.com` | deploying |
-| **Damage-detector API** (Hugging Face) | `https://<user>-autovaluate-cv.hf.space` | deploying |
+| **Damage detector** | in-process (onnxruntime) in the API · `ENABLE_LOCAL_CV` | mAP 0.732 |
 
 > Runs fully locally today (see [Run locally](#-run-locally)). Deploy steps for all three free tiers are in [Deploy](#-deploy-all-free-tier). The app degrades to a demo result if the API is asleep, so the link is never blank.
 
@@ -37,13 +37,13 @@ Three AI systems work together, and the final report cites every claim back to t
 | Area | Metric | Value |
 |---|---|---|
 | Valuation | median abs. % error (5-fold, held-out) | **19.6%** |
-| Valuation | vs. naive baseline | **+28.4%** better |
-| Valuation | calibrated 80% interval (split-conformal) | **0.799** coverage |
+| Valuation | vs. naive baseline | **+29.3%** better |
+| Valuation | honest held-out interval coverage (split-conformal) | **0.776** |
 | Comparables | same-make precision@5 | **1.00** |
 | Report | faithfulness (deterministic claim-grounding) | **1.000** · neg-control 0.000 |
 | Guardrails | confidence-disclosure contract | **90 checks, 0 fail** |
 | Integration | full E2E + adversarial + API suites | **53 checks, all green** |
-| CV detector | mAP@0.5 | _training on Kaggle; lands here_ |
+| CV detector | mAP@0.5 (held-out) | **0.732** · glass_shatter 0.98 |
 
 Full methodology and every number: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Design decisions: [`DECISIONS.md`](DECISIONS.md).
 

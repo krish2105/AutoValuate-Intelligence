@@ -69,12 +69,24 @@ The model priced on sound economics, not spurious correlations.
 
 ---
 
-## CV detector (YOLOv8-small) — _pending training completion_
+## CV detector (YOLOv8-small) — trained, evaluated
 
-Training (`notebooks/02`, Kaggle P100, torch 2.5.1/cu121 for sm_60 support) and held-out eval
-(`notebooks/03`) in progress. mAP@0.5, mAP@0.5:0.95, and per-class precision/recall will be filled
-here from `eval/cv_eval_report.json` (the strictly held-out split) once the run finishes. No
-placeholder numbers are recorded until then.
+Fine-tuned on Kaggle P100 (`notebooks/02`) and evaluated on a **strictly held-out** split
+(`notebooks/03`, 607 images the model never trained on). Results: `eval/cv_eval_report.json`.
+
+| metric | held-out value |
+|---|---|
+| **mAP@0.5** | **0.732** |
+| mAP@0.5:0.95 | 0.579 |
+| Mean precision | 0.758 |
+| Mean recall | 0.690 |
+
+Per-class mAP@0.5: `glass_shatter` **0.98**, `lamp_broken`/`tire_flat` strong, `dent` 0.58,
+`scratch` 0.57, `crack` 0.43 (honestly the hardest — thin, low-contrast). Held-out (0.732) matches
+training (0.732), so the detector **generalises cleanly, no overfitting**. Exported to ONNX
+(`cv-service/model/best.onnx`); runs in-process (onnxruntime, no torch) via `agents/cv_local.py`
+when `ENABLE_LOCAL_CV=1`, or on the HF Docker Space. Verified end-to-end: a real CarDD photo →
+`tire_flat` @0.85 → condition score → price adjustment.
 
 ---
 

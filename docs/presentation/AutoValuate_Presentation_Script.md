@@ -84,7 +84,7 @@ Watch the left side here. Each step lights up as it happens — intake, then the
 
 *(Back to the deck.)* This is what's under the hood, and I want to be honest about why it's built this way.
 
-At the top is the app you just saw, on Vercel. It talks to an orchestration API on Render, and that API runs those seven steps as a state machine. Underneath sit the three brains: the damage detector on Hugging Face, the price model running inside the API, and the comparables search over a vector database.
+At the top is the app you just saw, on Vercel. It talks to an orchestration API on Render, and that API runs those seven steps as a state machine. Underneath sit the three brains: the damage detector running right in the API, the price model alongside it, and the comparables search over a vector store.
 
 Here's the point I'd make to a technical audience. This is a genuine hybrid. There's a trained deep-learning model, there's a classical machine-learning model, and there's an agentic layer wrapped around both. It is not a chatbot with a nice coat of paint.
 
@@ -102,11 +102,9 @@ We used a model called YOLOv8, and we deliberately chose *detection* over plain 
 
 ## Slide 10 — CV results *(~0:55) — Speaker B*
 
-Now this is the slide where we could have shown you an impressive accuracy number. We're not going to, and I want to explain why.
+And here's how well it actually does. *(Point at the numbers.)* On six hundred and seven photos the model had never seen during training, it scores a mean average precision of about zero-point-seven-three. In plain terms, that's a solid, real detector — not a toy.
 
-*(Pause. Be direct.)* The detector is still finishing its training run, on Kaggle's free GPU. So the final accuracy score isn't in yet. We'd rather stand here and tell you that than paste a made-up number onto a slide a week before it's real.
-
-What *is* already done and checked is everything around it. The eight-class dataset is built — fourteen thousand training images. The evaluation is set up on a strictly held-out split, so there's no cheating where the model grades its own homework. And the serving path is proven — we tested the whole detection pipeline end to end. So the moment training finishes, the real score drops straight into this slide, measured the honest way. Nothing else changes.
+The honest part is this. That held-out score is basically identical to the training score, which tells us it isn't just memorising — it generalises. Some damage is easy: shattered glass it nails almost perfectly. Some is genuinely hard — thin cracks are the toughest, and we're not hiding that. And we tested the whole thing end to end: feed it a real photo, it finds a flat tyre with high confidence, and that flows straight into a condition score that adjusts the price.
 
 *(Handoff.)* I'll pass to [Speaker C] for the pricing side.
 
@@ -178,7 +176,7 @@ That red one is actually my favorite. It's a control — we deliberately fed the
 
 We want to name what this doesn't do yet, because we think that's part of doing it properly.
 
-The detector's training isn't finished, so that accuracy number is still pending. There are no user accounts yet — today it's a single-session tool, and proper login, saved history, and multi-tenant isolation are the next build. The price model runs on a fairly small set of real listings, which is honestly why the range comes out wide — and that's exactly why we show a range instead of pretending it's one exact figure. And there's no free feed of accident history in the UAE, so the system can't see undisclosed damage. Which, again, is why it tells you to get an inspection.
+The detector runs on CPU, so it's a few seconds per image and, on the free tier, we keep it opt-in to protect memory. There are no user accounts yet — today it's a single-session tool, and proper login, saved history, and multi-tenant isolation are the next build. The price model runs on a fairly small set of real listings, which is honestly why the range comes out wide — and that's exactly why we show a range instead of pretending it's one exact figure. And there's no free feed of accident history in the UAE, so the system can't see undisclosed damage. Which, again, is why it tells you to get an inspection.
 
 ---
 

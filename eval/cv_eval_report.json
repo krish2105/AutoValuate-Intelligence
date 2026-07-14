@@ -1,0 +1,51 @@
+{
+  "eval_split": "held-out deterministic half of val (607 images)",
+  "overall": {
+    "mAP50": 0.7323,
+    "mAP50_95": 0.5786,
+    "precision_mean": 0.7579,
+    "recall_mean": 0.69
+  },
+  "per_class": {
+    "dent": {
+      "precision": 0.6689,
+      "recall": 0.5253,
+      "mAP50": 0.5836,
+      "mAP50_95": 0.3416
+    },
+    "scratch": {
+      "precision": 0.5973,
+      "recall": 0.525,
+      "mAP50": 0.5696,
+      "mAP50_95": 0.3419
+    },
+    "crack": {
+      "precision": 0.5412,
+      "recall": 0.3701,
+      "mAP50": 0.4334,
+      "mAP50_95": 0.2415
+    },
+    "glass_shatter": {
+      "precision": 0.9816,
+      "recall": 0.9904,
+      "mAP50": 0.995,
+      "mAP50_95": 0.9436
+    },
+    "lamp_broken": {
+      "precision": 0.7778,
+      "recall": 0.8558,
+      "mAP50": 0.8762,
+      "mAP50_95": 0.7233
+    },
+    "tire_flat": {
+      "precision": 0.9803,
+      "recall": 0.8737,
+      "mAP50": 0.9359,
+      "mAP50_95": 0.8798
+    }
+  },
+  "onnx_parity": {
+    "checked_images": 5,
+    "note": "raw ONNX candidate count >= NMS'd pt count is expected; Space applies its own NMS"
+  }
+}

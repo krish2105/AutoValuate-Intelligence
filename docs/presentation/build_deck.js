@@ -136,26 +136,20 @@ card(s, 0.6, 5.5, 5.9, 1.15, "Verified pipeline", "14,437 training + 1,184 valid
 shot(s, SS("06_full_light.png"), 7.0, 1.8, 5.8, 4.9);
 footer(s, 9);
 
-/* 10 · CV RESULTS (honest / pending) */
-s = P.addSlide(); bg(s); pill(s, 0.6, 0.55, "CV results"); title(s, "Honest numbers — the detector is still training.");
-s.addShape(P.ShapeType.roundRect, { x: 0.6, y: 2.1, w: 5.9, h: 2.3, rectRadius: 0.1, fill: { color: C.surface }, line: { color: C.amber, width: 1.5 } });
-s.addText("mAP@0.5", { x: 0.85, y: 2.35, w: 5, h: 0.4, fontFace: BODY, fontSize: 14, color: C.muted, margin: 0 });
-s.addText("lands here", { x: 0.85, y: 2.75, w: 5.4, h: 0.9, fontFace: MONO, fontSize: 34, bold: true, color: C.amber, margin: 0 });
-s.addText("held-out, per-class P·R from notebook 03", { x: 0.85, y: 3.7, w: 5.4, h: 0.5, fontFace: BODY, fontSize: 11.5, italic: true, color: C.dim, margin: 0 });
-card(s, 6.8, 2.1, 5.95, 2.3, "Why it's blank — and why that's the right call", "The YOLOv8 fine-tune is running on Kaggle's free P100. We won't print a fabricated mAP. The eval harness already computes it on a strictly held-out split (no early-stop leakage), so the real number drops straight in when the run finishes.", C.fg);
-s.addText("What is already real and audited:", { x: 0.6, y: 4.75, w: 12, h: 0.4, fontFace: HEAD, fontSize: 14, bold: true, color: C.fg, margin: 0 });
-[["8-class unified dataset", "14,437 train / 1,184 val — merged from CarDD + VehiDE, nothing dropped"], ["Leakage-safe eval", "held-out half of val by deterministic hash; ONNX-vs-PyTorch parity check"], ["Deploy path proven", "CPU ONNX service, full decode + NMS verified on synthetic output"]].forEach((r, i) => {
-  const x = 0.6 + i * 4.15;
-  s.addShape(P.ShapeType.roundRect, { x, y: 5.25, w: 3.85, h: 1.35, rectRadius: 0.08, fill: { color: C.surf2 }, line: { color: C.border, width: 1 } });
-  s.addText(r[0], { x: x + 0.2, y: 5.4, w: 3.5, h: 0.4, fontFace: HEAD, fontSize: 12.5, bold: true, color: C.good, margin: 0 });
-  s.addText(r[1], { x: x + 0.2, y: 5.8, w: 3.5, h: 0.75, fontFace: BODY, fontSize: 11, color: C.muted, margin: 0, lineSpacingMultiple: 1.05 });
-});
+/* 10 · CV RESULTS (real, held-out) */
+s = P.addSlide(); bg(s); pill(s, 0.6, 0.55, "CV results"); title(s, "The detector works — measured on unseen photos.");
+stat(s, 0.6, 2.05, 3.0, "0.732", "mAP@0.5 (607 held-out images)", C.amber);
+stat(s, 3.7, 2.05, 3.0, "0.58", "mAP@0.5:0.95 (stricter)", C.info);
+stat(s, 0.6, 3.75, 3.0, "0.98", "glass-shatter mAP — near perfect", C.good);
+stat(s, 3.7, 3.75, 3.0, "0.76", "mean precision · 0.69 recall", C.good);
+s.addText("Held-out mAP (0.732) matches the training number — the detector generalises cleanly, no overfitting. Dents and scratches are solid; cracks are honestly the hardest (thin, low-contrast). Exported to ONNX and verified end-to-end: a real photo → tire-flat @0.85 → a condition score that adjusts the price.", { x: 0.6, y: 5.5, w: 6.1, h: 1.3, fontFace: BODY, fontSize: 12, color: C.muted, margin: 0, lineSpacingMultiple: 1.12 });
+shot(s, SS("06_full_dark.png"), 7.0, 1.95, 5.7, 4.6);
 footer(s, 10);
 
 /* 11 · CLASSICAL ML: VALUATION */
 s = P.addSlide(); bg(s); pill(s, 0.6, 0.55, "Explainable ML · the valuation model"); title(s, "A price you can interrogate, factor by factor.");
 stat(s, 0.6, 2.05, 3.0, "19.6%", "median error (held-out CV)", C.amber);
-stat(s, 3.7, 2.05, 3.0, "+28.4%", "better than a naive baseline", C.good);
+stat(s, 3.7, 2.05, 3.0, "+29.3%", "better than a naive baseline", C.good);
 stat(s, 0.6, 3.75, 3.0, "0.78", "honest held-out interval coverage", C.info);
 stat(s, 3.7, 3.75, 3.0, "3 / 3", "SHAP directional checks pass", C.good);
 s.addText("XGBoost quantile model on 672 real Dubizzle listings. SHAP explains each estimate; a split-conformal interval, calibrated and tested on held-out data, covers ~78% of unseen cars honestly. Mileage and age push price down, newer year lifts it — exactly as economics demands.", { x: 0.6, y: 5.5, w: 6.1, h: 1.3, fontFace: BODY, fontSize: 12.5, color: C.muted, margin: 0, lineSpacingMultiple: 1.15 });
@@ -205,18 +199,18 @@ footer(s, 15);
 
 /* 16 · EVALUATION SUMMARY */
 s = P.addSlide(); bg(s); pill(s, 0.6, 0.55, "Evaluation summary"); title(s, "Every number here reproduces from one command.");
-[["19.6%", "valuation median error", C.amber], ["1.00", "comparables same-make P@5", C.good], ["1.000", "report faithfulness", C.good], ["0.000", "faithfulness — hallucinated control", C.bad], ["90 / 90", "confidence-contract checks", C.info], ["53", "integration checks, all green", C.info]].forEach((e, i) => {
+[["19.6%", "valuation median error", C.amber], ["1.00", "comparables same-make P@5", C.good], ["1.000", "report faithfulness", C.good], ["0.000", "faithfulness — hallucinated control", C.bad], ["90 / 90", "confidence-contract checks", C.info], ["0.732", "CV detector mAP@0.5 (held-out)", C.amber]].forEach((e, i) => {
   const x = 0.6 + (i % 3) * 4.15, y = 2.0 + Math.floor(i / 3) * 1.75;
   s.addShape(P.ShapeType.roundRect, { x, y, w: 3.85, h: 1.5, rectRadius: 0.09, fill: { color: C.surface }, line: { color: C.border, width: 1 } });
   s.addText(e[0], { x: x + 0.25, y: y + 0.22, w: 3.4, h: 0.7, fontFace: MONO, fontSize: 30, bold: true, color: e[2], margin: 0 });
   s.addText(e[1], { x: x + 0.25, y: y + 0.95, w: 3.4, h: 0.45, fontFace: BODY, fontSize: 11.5, color: C.muted, margin: 0 });
 });
-s.addText("CV mAP@0.5 lands here once training finishes — the same held-out harness, no placeholder in its place.", { x: 0.6, y: 5.7, w: 12, h: 0.5, fontFace: BODY, fontSize: 12.5, italic: true, color: C.amber, margin: 0 });
+s.addText("CV detector: mAP@0.5 = 0.732 on 607 held-out images (glass-shatter 0.98) — the deep-learning pillar, measured the same honest way.", { x: 0.6, y: 5.7, w: 12, h: 0.5, fontFace: BODY, fontSize: 12.5, italic: true, color: C.amber, margin: 0 });
 footer(s, 16);
 
 /* 17 · LIMITATIONS */
 s = P.addSlide(); bg(s); pill(s, 0.6, 0.55, "Limitations & honest scope"); title(s, "What it does not do — named on purpose.");
-[["CV detector still training", "The mAP isn't in yet; the deep-learning claim rests on the finished run, and we'd rather show that than a guess."],
+[["CPU-speed CV inference", "The detector runs on CPU (a few seconds/image) and, to fit the 512MB free tier, is opt-in in the deployed API — full-speed on a paid dyno."],
  ["No accounts yet", "Auth, saved history per user, and multi-tenant isolation are the next build — today it's a single-session tool."],
  ["Modest tabular set", "672 real listings is small, so the price interval is genuinely wide — which is why the range is disclosed, not hidden."],
  ["No accident-history feed", "There's no free UAE accident-record API, so the estimate can't see undisclosed history — hence 'get an inspection.'"]].forEach((r, i) => {

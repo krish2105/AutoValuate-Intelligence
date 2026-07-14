@@ -41,13 +41,15 @@ def _call_cv(url: str, photo: str, timeout: float) -> list[dict]:
 
 
 def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
+    from . import cv_local
     url = os.environ.get("CV_SERVICE_URL", "").strip()
     photos = vehicle.get("photos", []) or []
+    use_local = cv_local.available()
 
-    if not url or not photos:
+    if (not url and not use_local) or not photos:
         return {
             "cv_available": False,
-            "reason": "no CV service configured" if not url else "no photos provided",
+            "reason": ("no photos provided" if (url or use_local) else "no CV service configured"),
             "condition_score": None,
             "price_adjustment_factor": 1.0,
             "findings": [],
@@ -58,7 +60,7 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     assessed = 0
     for i, photo in enumerate(photos):
         try:
-            dets = _call_cv(url, photo, timeout)
+            dets = cv_local.detect(photo) if use_local else _call_cv(url, photo, timeout)
             assessed += 1
         except Exception:
             continue  # skip unreachable/failed image, keep going
