@@ -1,0 +1,73 @@
+{
+  "queries": 6,
+  "mean_same_make_precision@5": 1.0,
+  "queries_with_exact_model_match": "5/6",
+  "per_query": [
+    {
+      "query": "2019 toyota corolla",
+      "same_make_precision@5": 1.0,
+      "same_model_count@5": 5,
+      "median_comp_price_aed": 47500,
+      "top": [
+        "2019 toyota corolla 211457km AED31000",
+        "2018 toyota corolla 171000km AED29999",
+        "2022 toyota corolla 59000km AED47500"
+      ]
+    },
+    {
+      "query": "2020 nissan patrol",
+      "same_make_precision@5": 1.0,
+      "same_model_count@5": 5,
+      "median_comp_price_aed": 116000,
+      "top": [
+        "2020 nissan patrol 143000km AED143000",
+        "2019 nissan patrol 135000km AED75000",
+        "2021 nissan patrol 144000km AED162000"
+      ]
+    },
+    {
+      "query": "2018 mercedes-benz c-class",
+      "same_make_precision@5": 1.0,
+      "same_model_count@5": 4,
+      "median_comp_price_aed": 124950,
+      "top": [
+        "2021 mercedes-benz c-class 81000km AED119999",
+        "2020 mercedes-benz c-class 136000km AED89500",
+        "2021 mercedes-benz c-class 42156km AED124950"
+      ]
+    },
+    {
+      "query": "2017 ford mustang",
+      "same_make_precision@5": 1.0,
+      "same_model_count@5": 4,
+      "median_comp_price_aed": 69000,
+      "top": [
+        "2017 ford mustang 110000km AED69000",
+        "2017 ford mustang 98306km AED109950",
+        "2020 ford mustang 115000km AED67000"
+      ]
+    },
+    {
+      "query": "2019 lexus lx",
+      "same_make_precision@5": 1.0,
+      "same_model_count@5": 0,
+      "median_comp_price_aed": 135000,
+      "top": [
+        "2019 lexus lx-series 134000km AED240000",
+        "2019 lexus gx-series 127000km AED135000",
+        "2019 lexus ux-series 28539km AED85000"
+      ]
+    },
+    {
+      "query": "2020 honda civic",
+      "same_make_precision@5": 1.0,
+      "same_model_count@5": 5,
+      "median_comp_price_aed": 37500,
+      "top": [
+        "2020 honda civic 75000km AED32500",
+        "2020 honda civic 109000km AED47500",
+        "2020 honda civic 120000km AED47000"
+      ]
+    }
+  ]
+}

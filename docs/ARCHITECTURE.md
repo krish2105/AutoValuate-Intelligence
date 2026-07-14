@@ -75,6 +75,22 @@ placeholder numbers are recorded until then.
 
 ---
 
+## Comparables RAG (Phase 5)
+
+`backend-api/agents/comparables_rag_agent.py` — hybrid dense (MiniLM) + BM25 + structured
+similarity + cross-encoder rerank over the 672 real listings. Validated (`eval/comparables_eval.json`):
+
+| metric | value |
+|---|---|
+| Mean same-make precision@5 | **1.00** |
+| Queries with exact-model match | 5 / 6 |
+| Backend (local) | committed 1 MB joblib artifact — no external service needed |
+| Backend (production) | Supabase pgvector (schema + idempotent loader ready) |
+
+Every comparable returns its real `listing_id` + source `url` → direct citation grounding for the report agent.
+
+---
+
 ## Report faithfulness (Ragas) — _pending Phase 9_
 
 Target: faithfulness ≥ 0.90 on the generated seller report vs. the retrieved comparables and

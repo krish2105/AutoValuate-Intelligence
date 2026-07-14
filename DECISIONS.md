@@ -96,6 +96,14 @@ Each entry records **what** was chosen and **why**, so the whole stack is defens
 
 ---
 
+## ADR-012 — Comparables RAG: hybrid retrieval with structured similarity dominant, local artifact + pgvector
+
+**Decision:** "Find similar cars" combines dense (MiniLM `all-MiniLM-L6-v2`, 384-dim), sparse (BM25), and **structured** (make/model/body/year/mileage proximity) signals, with structured weighted highest (0.55), then a cross-encoder (`ms-marco-MiniLM-L-6-v2`) rerank blended 50/50 with structured similarity. The index ships as a committed 1 MB joblib artifact (`backend-api/models/comparables_index.joblib`) so the backend needs no external service locally; Supabase pgvector (schema + loader written) is the drop-in production backend serving the identical rows/embeddings.
+
+**Why:** For *comparable cars*, domain similarity (same make/model, near year/mileage) is what "comparable" actually means — pure semantic embedding would surface superficially-similar text. Structured-dominant weighting reflects that, while dense+BM25 handle model-name variants and spec nuance. Validated on 6 hand-picked queries: **same-make precision@5 = 1.0**, exact-model matches on 5/6 (`eval/comparables_eval.json`). All comparables carry their real `listing_id` + source `url` for citation grounding. Local artifact keeps the demo alive with zero Supabase dependency; pgvector scales it when the free project is provisioned.
+
+---
+
 ## Dataset licensing
 
 | Dataset | Use | License / terms |
