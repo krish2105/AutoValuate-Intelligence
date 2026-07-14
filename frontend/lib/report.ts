@@ -19,45 +19,38 @@ export function displayForCitation(evidence: Evidence, id: string): string {
   return "";
 }
 
-const CITE = /\[([A-Z]\d+)\]/g;
+const CITE_SPLIT = /(\[[A-Z]\d+\])/g;
+const CITE_ONE = /^\[([A-Z]\d+)\]$/;
 
 export interface ReportChunk {
   /** literal text (empty for a citation chunk) */
   text: string;
   /** citation id when this chunk is a marker, else null */
   cite: string | null;
-  /** when true, no number precedes this marker — it should render as the value */
+  /** when true, no number sits on either side of the marker — render it as the value */
   injected: boolean;
 }
 
-/** True when the last few chars of plain text carry a real digit (a number is inline). */
-function tailHasDigit(tail: string): boolean {
-  return /\d/.test(tail.slice(-8));
-}
-
 /**
- * Tokenize a report into text + citation chunks. `injected` is decided from the
- * *plain text* preceding each marker only — digits inside other [id] tokens never
- * count, so 'to [V3]' after '[V1]' is correctly seen as having no inline number.
+ * Tokenize a report into text + citation chunks. A marker is `injected` only when
+ * neither the plain text before it nor after it carries a digit — digits inside
+ * *other* [id] tokens never count. This handles both 'from [V1] to' (blank → inject)
+ * and '[V1] AED 23,822' (number follows → keep as bare id, no duplicate).
  */
 export function chunkReport(report: string): ReportChunk[] {
+  const parts = report.split(CITE_SPLIT); // [text, "[V1]", text, "[V2]", text, ...]
   const chunks: ReportChunk[] = [];
-  let last = 0;
-  let prevTail = "";
-  for (const m of report.matchAll(CITE)) {
-    const start = m.index ?? 0;
-    if (start > last) {
-      const text = report.slice(last, start);
-      chunks.push({ text, cite: null, injected: false });
-      prevTail = text;
+  for (let i = 0; i < parts.length; i++) {
+    const m = parts[i].match(CITE_ONE);
+    if (!m) {
+      if (parts[i]) chunks.push({ text: parts[i], cite: null, injected: false });
+      continue;
     }
-    const injected = !tailHasDigit(prevTail);
+    const before = (parts[i - 1] ?? "").slice(-8);
+    const after = (parts[i + 1] ?? "").slice(0, 8);
+    const injected = !/\d/.test(before) && !/\d/.test(after);
     chunks.push({ text: "", cite: m[1], injected });
-    // an injected value acts as a number for any marker that immediately follows
-    if (injected) prevTail = "0";
-    last = start + m[0].length;
   }
-  if (last < report.length) chunks.push({ text: report.slice(last), cite: null, injected: false });
   return chunks;
 }
 
@@ -72,9 +65,11 @@ export function resolveReportPlain(result: ValuationResult): string {
     .join("");
   return out
     .replace(/ {2,}/g, " ")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/\(\s*\)/g, "")
     .replace(/\s+([,.;:])/g, "$1")
     .replace(/,\s*(,|\.)/g, "$1")
-    .replace(/\(\s*\)/g, "")
     .replace(/\s+(at|of|from|to|and)\s*([.,;])/gi, "$2")
     .replace(/[ \t]+\n/g, "\n")
     .trim();
