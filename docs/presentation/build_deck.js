@@ -82,10 +82,10 @@ footer(s, 3);
 
 /* 4 · MARKET OPPORTUNITY  (refined with research) */
 s = P.addSlide(); bg(s); pill(s, 0.6, 0.55, "Market opportunity"); title(s, "A big, high-churn market going online.");
-stat(s, 0.6, 2.2, 3.9, "~2x", "UAE used-to-new car sales ratio — resale is the bigger market", C.amber);
-stat(s, 4.7, 2.2, 3.9, "High", "expat turnover → cars change hands fast and often", C.info);
-stat(s, 8.8, 2.2, 3.9, "Rising", "buyers now start online — instant valuation is table-stakes", C.good);
-card(s, 0.6, 4.25, 12.1, 2.1, "Why now", "The used-car market here is worth tens of billions and still growing, and the buying journey has moved online. Marketplaces and dealers increasingly want a trustworthy, instant, damage-aware price to reduce disputes and speed up deals. That's the wedge: a verified estimate that anyone can generate in seconds and defend with evidence.", C.fg);
+stat(s, 0.6, 2.2, 3.9, "$35.8B", "UAE used-car market by 2030 — up from $20.6B in 2025 (~11% CAGR)", C.amber);
+stat(s, 4.7, 2.2, 3.9, "40%", "of used-car sales now online, up from 25% in 2023", C.info);
+stat(s, 8.8, 2.2, 3.9, "~2x", "used-to-new sales — resale is the bigger market", C.good);
+card(s, 0.6, 4.35, 12.1, 2.0, "Why now", "The market is worth tens of billions and growing ~11% a year, and the buying journey has moved online fast. Incumbents each cover part of it — CarSwitch runs a managed inspection service, SellAnyCar buys cars outright (and is often accused of undervaluing), dubizzle is classifieds. None gives a seller an instant, transparent, damage-aware price with the reasoning shown. That's the wedge.", C.fg);
 footer(s, 4);
 
 /* 5 · WHY EXISTING TOOLS FALL SHORT */
