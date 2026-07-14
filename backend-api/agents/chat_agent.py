@@ -126,12 +126,39 @@ def _fallback(question: str, ev: dict, ctx: dict) -> str:
     )
 
 
+_NUM = re.compile(r"(?:AED\s*)?(\d[\d,]*(?:\.\d+)?)\s*(?:AED|k)?", re.I)
+
+
+def _user_figures(question: str, history: list[dict]) -> dict:
+    """
+    Figures the USER stated (e.g. "is AED 120,000 a good deal?").
+
+    These must be admissible in the answer. A natural reply quotes the asking price back
+    ("AED 120,000 is above the fair band"), and that number is the user's own input — not
+    something the model invented — so rejecting it is wrong. Without this the Verifier
+    kills every good LLM answer to the single most common question and we always fall
+    back to the template. Only numbers the user actually typed are allowed in.
+    """
+    said = " ".join([question] + [h.get("content", "") for h in history if h.get("role") == "user"])
+    out: dict[str, Any] = {}
+    for i, m in enumerate(_NUM.finditer(said), 1):
+        try:
+            val = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        if val > 0:
+            out[f"U{i}"] = {"label": "figure stated by the user", "aed": val, "value": val}
+    return out
+
+
 def answer(question: str, ctx: dict, history: list[dict] | None = None,
            llm: LLMClient | None = None) -> dict[str, Any]:
     """Answer one question about a completed valuation, grounded + Verifier-gated."""
     llm = llm or LLMClient()
     history = history or []
     ev = _evidence_for(ctx)
+    # Verify against the evidence PLUS whatever figures the user themselves quoted.
+    ver_ev = {**ev, "user": _user_figures(question, history)}
 
     prompt = (
         _evidence_text(ev)
@@ -144,12 +171,13 @@ def answer(question: str, ctx: dict, history: list[dict] | None = None,
                        template_fn=lambda: _fallback(question, ev, ctx))
     text, provider = res.text, res.provider
 
-    # Verifier gate: an ungrounded number is never served — fall back to the deterministic writer.
-    ver = verify(text, ev)
+    # Verifier gate: a number the model invented is never served — fall back to the
+    # deterministic writer. Figures the user quoted are admissible (see _user_figures).
+    ver = verify(text, ver_ev)
     if not ver["passed"] and provider != "template":
         text = _fallback(question, ev, ctx)
         provider = "template"
-        ver = verify(text, ev)
+        ver = verify(text, ver_ev)
 
     return {
         "answer": text,
