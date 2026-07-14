@@ -1,0 +1,67 @@
+{
+  "queries": 6,
+  "with_rerank": {
+    "hybrid (shipped)": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.303
+    },
+    "dense only": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.327
+    },
+    "BM25 only": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.327
+    },
+    "structured only": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.303
+    },
+    "no structured": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.303
+    },
+    "dense-dominant": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.303
+    }
+  },
+  "hybrid_only": {
+    "hybrid (shipped)": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.293
+    },
+    "dense only": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.325
+    },
+    "BM25 only": {
+      "same_make_precision@5": 0.933,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.356
+    },
+    "structured only": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.276
+    },
+    "no structured": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.344
+    },
+    "dense-dominant": {
+      "same_make_precision@5": 1.0,
+      "exact_model_hit_rate": 0.833,
+      "price_dispersion_cv": 0.309
+    }
+  }
+}

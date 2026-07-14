@@ -1,0 +1,33 @@
+{
+  "target_coverage": 0.8,
+  "n_total": 671,
+  "n_train": 402,
+  "n_calibration": 134,
+  "n_test": 135,
+  "split": "60/20/20 train/calibration/test \u2014 every method scored on the SAME untouched test rows",
+  "methods": {
+    "raw-quantile": {
+      "coverage": 0.5481481481481482,
+      "mean_width_aed": 65313.20703125,
+      "calibrated": false
+    },
+    "split-conformal": {
+      "coverage": 0.8,
+      "mean_width_aed": 107447.640625,
+      "calibrated": true,
+      "delta_log": 0.505458658653076,
+      "shipped": true
+    },
+    "CQR": {
+      "coverage": 0.762962962962963,
+      "mean_width_aed": 103944.03125,
+      "calibrated": true,
+      "delta_log": 0.19140500392333593
+    },
+    "naive-pct-25": {
+      "coverage": 0.562962962962963,
+      "mean_width_aed": 50945.859375,
+      "calibrated": false
+    }
+  }
+}
