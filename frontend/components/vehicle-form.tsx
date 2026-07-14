@@ -6,6 +6,7 @@ import type { VehicleInput } from "@/lib/types";
 import type { ClientCondition } from "@/lib/cv-browser";
 import { cn } from "@/lib/utils";
 import { BrowserCV } from "./browser-cv";
+import { GuidedCapture } from "./guided-capture";
 
 const BODY = ["SUV", "Sedan", "Coupe", "Hatchback", "Pick Up Truck", "Van", "Convertible", "Wagon"];
 const SPECS = ["GCC", "American", "European", "Japanese", "Canadian", "Korean", "Chinese", "Other"];
@@ -34,6 +35,7 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
   const [photos, setPhotos] = useState<string[]>([]);
   const [clientCondition, setClientCondition] = useState<ClientCondition | null>(null);
   const [drag, setDrag] = useState(false);
+  const [mode, setMode] = useState<"quick" | "guided">("quick");
   const fileRef = useRef<HTMLInputElement>(null);
   const set = (k: keyof VehicleInput, val: any) => setV((p) => ({ ...p, [k]: val }));
 
@@ -63,7 +65,29 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
       onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit({ ...v, photos, client_condition: clientCondition }); }}
       className="space-y-5"
     >
-      {/* photo dropzone */}
+      {/* capture mode switch */}
+      <div className="flex items-center gap-1 rounded-xl border bg-surface-2/40 p-1" role="tablist" aria-label="Photo capture mode">
+        {([["quick", "Quick upload"], ["guided", "Guided walk-around"]] as const).map(([m, label]) => (
+          <button
+            key={m}
+            type="button"
+            role="tab"
+            aria-selected={mode === m}
+            onClick={() => { setMode(m); setPhotos([]); setClientCondition(null); }}
+            className={cn(
+              "flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+              mode === m ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === "guided" ? (
+        <GuidedCapture onPhotos={setPhotos} />
+      ) : (
+      /* photo dropzone */
       <div
         role="button"
         tabIndex={0}
@@ -88,9 +112,10 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
           <p className="text-xs text-muted">Up to 8 images · scanned for damage on-device, in your browser</p>
         </div>
       </div>
+      )}
 
       <AnimatePresence>
-        {photos.length > 0 && (
+        {mode === "quick" && photos.length > 0 && (
           <motion.div layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
             className="flex flex-wrap gap-2">
             {photos.map((src, i) => (
