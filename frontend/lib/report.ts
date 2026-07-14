@@ -22,6 +22,22 @@ export function displayForCitation(evidence: Evidence, id: string): string {
 const CITE_SPLIT = /(\[[A-Z]\d+\])/g;
 const CITE_ONE = /^\[([A-Z]\d+)\]$/;
 
+/**
+ * Some LLM reports place the citation before its number ('range of [V1] AED
+ * 51,301'), which reads awkwardly as a leading marker. Move any [id] that is
+ * immediately followed by a number to sit after it ('AED 51,301 [V1]'), the
+ * convention the rest of the pipeline expects. Idempotent for well-formed text.
+ */
+export function normalizeCitationOrder(report: string): string {
+  let prev: string;
+  let out = report;
+  do {
+    prev = out;
+    out = out.replace(/(\[[A-Z]\d+\])(\s*)((?:AED\s*)?[-+]?\d[\d,]*(?:\.\d+)?%?)/g, "$2$3 $1");
+  } while (out !== prev);
+  return out.replace(/ {2,}/g, " ");
+}
+
 export interface ReportChunk {
   /** literal text (empty for a citation chunk) */
   text: string;
@@ -37,7 +53,8 @@ export interface ReportChunk {
  * *other* [id] tokens never count. This handles both 'from [V1] to' (blank → inject)
  * and '[V1] AED 23,822' (number follows → keep as bare id, no duplicate).
  */
-export function chunkReport(report: string): ReportChunk[] {
+export function chunkReport(rawReport: string): ReportChunk[] {
+  const report = normalizeCitationOrder(rawReport);
   const parts = report.split(CITE_SPLIT); // [text, "[V1]", text, "[V2]", text, ...]
   const chunks: ReportChunk[] = [];
   for (let i = 0; i < parts.length; i++) {
