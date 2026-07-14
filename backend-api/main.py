@@ -43,14 +43,22 @@ MAX_PHOTO_CHARS = 8_000_000          # ~6 MB decoded per photo (base64 is ~1.33x
 RATE_LIMIT_MAX = int(os.environ.get("RATE_LIMIT_MAX", "20"))     # requests
 RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))  # seconds
 _RATE_PATHS = ("/valuate",)          # rate-limited prefixes (never /health or /)
-# CORS: comma-separated origins; default to local dev only (never wildcard by default).
-_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+# CORS: comma-separated origins (never wildcard). Defaults cover local dev + the
+# production Vercel app; the regex also allows this project's Vercel preview URLs.
+_origins = os.environ.get(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000,https://auto-valuate-intelligence.vercel.app",
+)
 ALLOWED_ORIGINS = [o.strip() for o in _origins.split(",") if o.strip()]
+ALLOWED_ORIGIN_REGEX = os.environ.get(
+    "ALLOWED_ORIGIN_REGEX", r"https://auto-valuate-intelligence[a-z0-9-]*\.vercel\.app"
+)
 
 app = FastAPI(title="AutoValuate Intelligence API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )

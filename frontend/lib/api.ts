@@ -1,7 +1,8 @@
 import type { TraceStep, ValuationResult, VehicleInput } from "./types";
 import { demoResult } from "./demo";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Deployed default = the live Render API; local dev overrides via .env.local (localhost).
+const API = process.env.NEXT_PUBLIC_API_URL || "https://autovaluate-api.onrender.com";
 const DEFAULT_TIMEOUT_MS = 90_000; // generous for a Render cold start
 
 export interface StreamHandlers {
