@@ -15,7 +15,9 @@ from typing import Any, Iterator, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from agents import intake_agent, aggregation_agent, comparables_rag_agent, report_agent, verifier_agent
+from agents import (
+    intake_agent, aggregation_agent, comparables_rag_agent, report_agent, repair_cost, verifier_agent,
+)
 from models import valuation_model
 from llm_client.client import LLMClient
 
@@ -269,6 +271,9 @@ def _shape(state: State) -> dict:
         "vehicle": state["vehicle"],
         "valuation": state["valuation"],
         "condition": state["condition"],
+        # Phase F: itemised repair estimate derived from the same detections that
+        # adjusted the price — makes the detection -> cost -> value chain explicit.
+        "repair": repair_cost.estimate(state["condition"]),
         "comparables": state["comparables"],
         "report": state["report"]["report"],
         "report_provider": state["report"]["provider"],

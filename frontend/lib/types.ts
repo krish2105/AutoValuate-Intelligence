@@ -92,12 +92,28 @@ export interface Verification {
   citations_checked: number;
 }
 
+export interface RepairItem {
+  damage_type: string;
+  instances: number;
+  severity: "minor" | "moderate" | "severe";
+  low_aed: number;
+  high_aed: number;
+}
+
+export interface RepairEstimate {
+  available: boolean;
+  items: RepairItem[];
+  total_low_aed: number;
+  total_high_aed: number;
+}
+
 export interface ValuationResult {
   ok: boolean;
   error?: string;
   vehicle: VehicleInput;
   valuation: Valuation;
   condition: Condition;
+  repair?: RepairEstimate;
   comparables: Comparable[];
   report: string;
   report_provider: string;

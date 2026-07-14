@@ -17,6 +17,7 @@ import { WhatIf } from "@/components/what-if";
 import { DamageReport } from "@/components/damage-report";
 import { Comparables } from "@/components/comparables";
 import { MarketAnalytics } from "@/components/market-analytics";
+import { RepairEstimateCard } from "@/components/repair-estimate";
 import { SellerReport } from "@/components/seller-report";
 import { Negotiation } from "@/components/negotiation";
 import { Assistant } from "@/components/assistant";
