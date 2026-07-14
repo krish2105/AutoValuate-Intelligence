@@ -23,6 +23,8 @@ import { Assistant } from "@/components/assistant";
 import { ConfidencePanel } from "@/components/confidence-panel";
 import { HistoryDrawer } from "@/components/history-drawer";
 import { useAuth, AuthModal, UserButton } from "@/components/auth";
+import { CommandPalette } from "@/components/command-palette";
+import { Onboarding } from "@/components/onboarding";
 import { saveValuationCloud, loadValuationsCloud, clearValuationsCloud } from "@/lib/supabase";
 
 export default function Home() {
@@ -101,6 +103,12 @@ export default function Home() {
               className="grid h-10 w-10 place-items-center rounded-full border bg-surface/70 backdrop-blur transition hover:bg-surface-2">
               <Clock className="h-[18px] w-[18px]" />
             </button>
+            <CommandPalette
+              hasResult={!!result}
+              onNewValuation={() => appraiseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              onOpenHistory={() => setDrawer(true)}
+              onScrollTo={() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            />
             <UserButton session={session} onSignIn={() => setAuthOpen(true)} />
             <ThemeToggle />
           </div>
@@ -220,6 +228,7 @@ export default function Home() {
         onClear={() => { if (session) { clearValuationsCloud().then(refreshHistory); } else { setHistory(clearHistory()); } }}
       />
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      <Onboarding />
     </div>
   );
 }

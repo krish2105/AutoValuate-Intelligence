@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Archivo } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { PWA } from "@/components/pwa";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
@@ -11,6 +12,9 @@ const display = Archivo({ subsets: ["latin"], variable: "--font-display", displa
 export const metadata: Metadata = {
   title: "AutoValuate Intelligence — explainable car valuation",
   description: "Upload photos of a car, get an instant, explainable, damage-aware fair-market valuation for the UAE.",
+  applicationName: "AutoValuate",
+  appleWebApp: { capable: true, title: "AutoValuate", statusBarStyle: "black-translucent" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
@@ -33,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
           <div className="grain" aria-hidden />
           {children}
+          <PWA />
         </Providers>
       </body>
     </html>
