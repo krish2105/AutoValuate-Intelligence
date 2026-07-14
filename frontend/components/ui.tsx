@@ -23,8 +23,11 @@ export function SectionCard({
 }: { title: string; subtitle?: string; icon?: ReactNode; children: ReactNode; className?: string; right?: ReactNode }) {
   return (
     <section className={cn("card p-5 sm:p-6", className)}>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+      {/* flex-wrap + min-w-0: a card's action row (Certificate · PDF · Share · verified) is
+          far too wide to sit beside the title on a phone. Without wrapping it pushed the card
+          107px past the viewport and made the whole page scroll horizontally. */}
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 items-center gap-3">
           {icon && <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/12 text-accent">{icon}</div>}
           <div>
             <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] sm:text-[15px]">
@@ -34,7 +37,7 @@ export function SectionCard({
             {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
           </div>
         </div>
-        {right}
+        {right && <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{right}</div>}
       </div>
       {children}
     </section>

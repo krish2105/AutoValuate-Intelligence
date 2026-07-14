@@ -94,9 +94,11 @@ export default function Home() {
     <div className="mx-auto max-w-6xl px-4 pb-24 pt-5 sm:px-6">
       {/* header */}
       <header className="sticky top-3 z-30 mb-8">
-        <div className="glass flex items-center justify-between rounded-2xl px-3 py-2.5 sm:px-4">
+        {/* wrap on very narrow phones (320px): the action row is 16px too wide to sit
+            beside the logo, and wrapping beats hiding controls the user needs. */}
+        <div className="glass flex flex-wrap items-center justify-between gap-y-2 rounded-2xl px-3 py-2.5 sm:px-4">
           <Logo />
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2/70 px-2 py-1 text-[11px] font-medium sm:px-2.5">
               <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-good" : "bg-warn"} ${online ? "animate-pulse" : ""}`} />
               <span className="hidden sm:inline">{online === null ? "checking…" : online ? "API live" : "demo mode"}</span>
