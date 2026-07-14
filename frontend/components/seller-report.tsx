@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FileText, Quote, Download } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
 import { downloadReportPdf } from "@/lib/pdf";
-import { chunkReport, displayForCitation } from "@/lib/report";
+import { chunkReport, displayForCitation, reportView } from "@/lib/report";
 import { SectionCard, Pill } from "./ui";
 
 function evidenceFor(evidence: ValuationResult["evidence"], id: string): string | null {
@@ -21,12 +21,15 @@ function evidenceFor(evidence: ValuationResult["evidence"], id: string): string 
 /** Splits report text into runs, turning [ID] markers into interactive citation chips. */
 export function SellerReport({ result }: { result: ValuationResult }) {
   const [open, setOpen] = useState<string | null>(null);
-  const { report, evidence, report_provider } = result;
-
-  const chunks = chunkReport(report);
+  const { evidence } = result;
+  const view = reportView(result);
+  const chunks = chunkReport(view.text);
+  const subtitle = view.hasCitations
+    ? `Synthesized via ${view.provider} · every figure citation-grounded`
+    : "Structured from computed evidence · every figure grounded";
   return (
     <SectionCard
-      title="Seller report" subtitle={`Synthesized via ${report_provider} · every figure citation-grounded`}
+      title="Seller report" subtitle={subtitle}
       icon={<FileText className="h-4.5 w-4.5" />}
       right={
         <div className="flex items-center gap-2">

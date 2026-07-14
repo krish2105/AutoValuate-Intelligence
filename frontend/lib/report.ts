@@ -1,5 +1,5 @@
 import type { ValuationResult } from "./types";
-import { aed } from "./utils";
+import { aed, km, titleCase } from "./utils";
 
 type Evidence = ValuationResult["evidence"];
 
@@ -71,13 +71,69 @@ export function chunkReport(rawReport: string): ReportChunk[] {
   return chunks;
 }
 
+const _NUMERIC_GROUPS = ["valuation", "drivers", "comparables"];
+
+/** Citation ids that must carry an inline number. */
+function numericIds(evidence: Evidence): Set<string> {
+  const ids = new Set<string>();
+  for (const g of _NUMERIC_GROUPS) for (const id of Object.keys(evidence[g] ?? {})) ids.add(id);
+  return ids;
+}
+
 /**
- * Resolve a report to plain prose for the PDF: inject the evidenced value when no
- * number precedes a marker, drop the bare [id] when a number is already inline.
+ * A report is "messy" when, after normalizing citation order, a numeric fact is
+ * still cited without its number written immediately before the marker. Such LLM
+ * output reads awkwardly (scattered id chips, orphaned fragments); we swap in the
+ * clean deterministic template instead. Mirrors the backend quality gate so the
+ * result is pristine even if the backend template fallback hasn't deployed.
  */
+export function isMessyReport(report: string, evidence: Evidence): boolean {
+  const numeric = numericIds(evidence);
+  const parts = normalizeCitationOrder(report).split(CITE_SPLIT);
+  for (let i = 0; i < parts.length; i++) {
+    const m = parts[i].match(CITE_ONE);
+    if (!m || !numeric.has(m[1])) continue;
+    const before = (parts[i - 1] ?? "").slice(-8);
+    if (!/\d/.test(before)) return true;
+  }
+  return false;
+}
+
+/** Clean, citation-free seller report built deterministically from computed evidence. */
+export function buildTemplateReport(r: ValuationResult): string {
+  const v = r.valuation;
+  const car = `${r.vehicle.year} ${titleCase(String(r.vehicle.make))} ${titleCase(String(r.vehicle.model))}`;
+  const factors = v.explanation.top_factors.slice(0, 3)
+    .map((f) => `${titleCase(String(f.feature))} (${f.approx_aed_impact >= 0 ? "+" : ""}${Math.round(f.approx_aed_impact).toLocaleString("en-AE")} AED)`)
+    .join(", ");
+  const comps = r.comparables
+    .map((c) => `${c.year} ${titleCase(String(c.make))} ${titleCase(String(c.model))} ${km(c.kilometers)} at ${aed(c.price_aed)}`)
+    .join("; ");
+  const cond = r.condition.cv_available
+    ? `The photo assessment gave a condition score of ${r.condition.condition_score}/100, reflecting detected damage that affects value.`
+    : "A visual damage assessment was not available for this valuation, so the estimate assumes market-typical condition — a professional inspection is recommended to confirm.";
+  return [
+    `Based on the details provided, the ${car} has an estimated fair-market value between ${aed(v.price_low_aed)} and ${aed(v.price_high_aed)}, with a mid-point of ${aed(v.price_mid_aed)}. This range is a calibrated ${Math.round(v.interval_coverage * 100)}% confidence interval.`,
+    `The main factors behind this estimate are ${factors}. On held-out testing the pricing model carries a median error of about ${v.model_meta.cv_median_ape_pct}%, so treat the mid-point as a guide, not a guarantee.`,
+    cond,
+    `Comparable live listings support this range: ${comps}. If confidence is limited or the car has damage beyond what the photos show, a professional inspection is the safest next step before you set a final asking price.`,
+  ].join("\n\n");
+}
+
+/** The report to display: clean template when the LLM output is messy, else the LLM report. */
+export function reportView(r: ValuationResult): { text: string; provider: string; hasCitations: boolean } {
+  if (isMessyReport(r.report, r.evidence)) {
+    return { text: buildTemplateReport(r), provider: "structured evidence writer", hasCitations: false };
+  }
+  return { text: normalizeCitationOrder(r.report), provider: r.report_provider, hasCitations: true };
+}
+
+/** Resolve a report to plain prose for the PDF (no citation markers). */
 export function resolveReportPlain(result: ValuationResult): string {
+  const view = reportView(result);
+  if (!view.hasCitations) return view.text.trim();
   const { evidence } = result;
-  const out = chunkReport(result.report)
+  const out = chunkReport(view.text)
     .map((c) => {
       if (c.cite === null) return c.text;
       if (!c.injected) return ""; // number already inline → drop the bare marker
