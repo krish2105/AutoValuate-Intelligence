@@ -39,7 +39,7 @@ Every figure is reproducible from the repo (`eval/run_all.sh`; source of truth: 
 - [x] Phase 8 — integration & E2E testing
 - [x] Phase 9 — evaluation & guardrails
 - [x] Phase 10 — deployment, CI/CD & polish
-- [ ] Phase 11 — presentation deck + script
+- [x] Phase 11 — presentation deck (16 slides, real screenshots + numbers) + natural human script (~9 min)
 
 ## Live links
 
