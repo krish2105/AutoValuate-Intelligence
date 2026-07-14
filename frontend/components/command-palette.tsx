@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
   Search, Command, CornerDownLeft, Car, Clock, Sun, Moon, FileText,
-  MessageSquare, BarChart3, ShieldCheck, Gauge,
+  MessageSquare, BarChart3, ShieldCheck, Gauge, Table2,
 } from "lucide-react";
 
 export interface PaletteAction {
@@ -65,6 +65,7 @@ export function CommandPalette({
         run: close(() => setTheme(theme === "dark" ? "light" : "dark")),
       },
       { id: "model", label: "Open the model report card", hint: "public metrics", keywords: "metrics eval accuracy map conformal faithfulness", icon: <ShieldCheck className="h-4 w-4" />, run: close(() => { window.location.href = "/model"; }) },
+      { id: "dealer", label: "Fleet valuation (bulk CSV)", hint: "value many cars", keywords: "dealer bulk csv fleet inventory batch", icon: <Table2 className="h-4 w-4" />, run: close(() => { window.location.href = "/dealer"; }) },
     ];
     if (!hasResult) return base;
     return [
