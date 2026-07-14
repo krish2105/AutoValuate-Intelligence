@@ -57,7 +57,10 @@ export function Magnetic({ children, strength = 0.25, className }: { children: R
 export function WordReveal({ text, className, delay = 0 }: { text: string; className?: string; delay?: number }) {
   const words = text.split(" ");
   return (
-    <span className={className} aria-label={text}>
+    <span className={className}>
+      {/* aria-label is not permitted on a bare span — screen readers ignored it entirely.
+          Expose the real string once, and hide the per-word animation from AT. */}
+      <span className="sr-only">{text}</span>
       {words.map((w, i) => (
         <span key={i} className="inline-block overflow-hidden pb-[0.08em] align-bottom" aria-hidden>
           <motion.span

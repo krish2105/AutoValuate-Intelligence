@@ -1,0 +1,70 @@
+{
+  "queries": 10,
+  "benchmark": "hard",
+  "results": {
+    "hybrid_only": {
+      "current (0.30/0.15/0.55)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.4924
+      },
+      "structured-heavy (0.15/0.05/0.80)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5255
+      },
+      "structured-only (0/0/1)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5064
+      },
+      "structured-dominant (0.20/0.10/0.70)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5057
+      },
+      "balanced (0.40/0.20/0.40)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5182
+      },
+      "dense-heavy (0.70/0.10/0.20)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.4914
+      }
+    },
+    "with_rerank": {
+      "current (0.30/0.15/0.55)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5569
+      },
+      "structured-heavy (0.15/0.05/0.80)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5569
+      },
+      "structured-only (0/0/1)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5629
+      },
+      "structured-dominant (0.20/0.10/0.70)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5569
+      },
+      "balanced (0.40/0.20/0.40)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5569
+      },
+      "dense-heavy (0.70/0.10/0.20)": {
+        "same_make_precision@5": 0.78,
+        "exact_model_hit_rate": 0.8,
+        "price_dispersion_cv": 0.5614
+      }
+    }
+  }
+}

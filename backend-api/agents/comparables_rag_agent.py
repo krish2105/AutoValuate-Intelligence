@@ -146,6 +146,21 @@ class ComparablesAgent:
         order = np.argsort(-hybrid)
         cand = [i for i in order if self.store.records[i].get("listing_id") != qid][:candidate_pool]
 
+        # Same-make preference (D5 follow-up). The hard benchmark showed EVERY weighting
+        # scores the same (make P@5 ~0.78) — the weights are not the lever, comparability is.
+        # A "comparable" that isn't even the same make is not comparable, so same-make
+        # candidates are promoted ahead of the rest while preserving their relative order.
+        # When the corpus genuinely has no same-make listing we still return the next best
+        # (and `same_make_support` tells the confidence agent to widen/disclose).
+        qmake = str(vehicle.get("make", "")).strip().lower()
+        if qmake:
+            same = [i for i in cand if str(self.store.records[i].get("make", "")).lower() == qmake]
+            rest = [i for i in cand if i not in set(same)]
+            cand = same + rest
+            same_make_support = len(same)
+        else:
+            same_make_support = 0
+
         reranker = _reranker() if rerank and cand else None
         if reranker is not None:
             docs = [self.store.texts[i] for i in cand]
@@ -153,7 +168,10 @@ class ComparablesAgent:
             ce_n = _norm(ce)
             # blend rerank with structured similarity (comparability must stay dominant)
             blended = [(i, 0.5 * ce_n[j] + 0.5 * struct[i]) for j, i in enumerate(cand)]
-            blended.sort(key=lambda t: -t[1])
+            # sort by (is-same-make, score) so the reranker can reorder WITHIN a make bucket
+            # but can never promote a different make above a genuine same-make comparable.
+            blended.sort(key=lambda t: (str(self.store.records[t[0]].get("make", "")).lower() == qmake, t[1]),
+                         reverse=True)
             top = [i for i, _ in blended[:k]]
             scores = {i: float(s) for i, s in blended}
         else:

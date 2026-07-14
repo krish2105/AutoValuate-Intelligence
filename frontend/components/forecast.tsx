@@ -83,7 +83,8 @@ export function Forecast({ result }: { result: ValuationResult }) {
       icon={<CalendarClock className="h-4.5 w-4.5" />}
       right={<Pill tone={dropPct >= 12 ? "warn" : "info"}>−{dropPct}% / year</Pill>}
     >
-      <div className="h-52 w-full">
+      <p className="sr-only">Line chart projecting this car's value over the next three years, from {aed(mid)} today.</p>
+      <div className="h-52 w-full" aria-hidden>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={points} margin={{ top: 8, right: 14, bottom: 4, left: 4 }}>
             <CartesianGrid stroke={C.grid} strokeDasharray="3 3" />

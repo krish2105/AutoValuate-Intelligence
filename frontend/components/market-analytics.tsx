@@ -89,7 +89,8 @@ export function MarketAnalytics({ result }: { result: ValuationResult }) {
 
       {/* Price vs mileage */}
       <p className="mb-1 text-xs font-medium text-muted">Price vs mileage — your car in <span className="text-accent">amber</span></p>
-      <div className="h-56 w-full">
+      <p className="sr-only">Scatter chart: price versus mileage for {scatter.length} comparable listings, with your car's estimate of {aed(mid)} plotted against {km(you.km)}.</p>
+      <div className="h-56 w-full" aria-hidden>
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 10, right: 12, bottom: 4, left: 4 }}>
             <CartesianGrid stroke={C.grid} strokeDasharray="3 3" />
@@ -114,7 +115,8 @@ export function MarketAnalytics({ result }: { result: ValuationResult }) {
 
       {/* Estimate vs comparables */}
       <p className="mb-1 mt-6 text-xs font-medium text-muted">Your estimate vs each comparable</p>
-      <div className="h-56 w-full">
+      <p className="sr-only">Bar chart comparing your estimate of {aed(mid)} against each comparable listing's price.</p>
+      <div className="h-56 w-full" aria-hidden>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={bars} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 4 }}>
             <CartesianGrid stroke={C.grid} strokeDasharray="3 3" horizontal={false} />

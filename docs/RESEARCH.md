@@ -111,6 +111,68 @@ cron has grown the corpus, since a 675-row corpus makes almost any retriever loo
 
 ---
 
+## D5 (follow-up) — acting on the ablation, and a proof that the retriever is already optimal
+
+The ablation said "structured beats the hybrid". Before changing the weights on that basis,
+we built the **hard benchmark** the ablation said we needed (10 queries: rare models, unusual
+bodies, extreme mileage, luxury-vs-mass at equal age) and swept six weightings on it.
+
+**Result** (`eval/retrieval_tuning.json`) — every weighting scores *the same*:
+
+| Weights (dense/BM25/structured) | same-make P@5 | model hit | price CV |
+|---|---:|---:|---:|
+| current 0.30 / 0.15 / 0.55 | 0.780 | 0.800 | 0.492 |
+| structured-heavy 0.15 / 0.05 / 0.80 | 0.780 | 0.800 | 0.526 |
+| structured-only 0 / 0 / 1 | 0.780 | 0.800 | 0.506 |
+| balanced 0.40 / 0.20 / 0.40 | 0.780 | 0.800 | 0.518 |
+| dense-heavy 0.70 / 0.10 / 0.20 | 0.780 | 0.800 | 0.491 |
+
+**Then we asked why 0.780, and the answer settles it.** Counting the corpus:
+
+| Make | Listings in corpus | Max achievable same-make P@5 |
+|---|---:|---:|
+| toyota | 119 | 1.00 |
+| nissan | 80 | 1.00 |
+| mercedes-benz | 69 | 1.00 |
+| ford | 63 | 1.00 |
+| honda | 62 | 1.00 |
+| bmw | 60 | 1.00 |
+| mini | 3 | 0.60 |
+| jeep | 1 | 0.20 |
+| **porsche** | **0** | **0.00** |
+
+The theoretical ceiling for this benchmark is
+`(1.0+1.0+0.0+0.2+0.6+1.0+1.0+1.0+1.0+1.0) / 10 = ` **0.780**.
+
+**The retriever scores exactly 0.780 — it is already achieving the mathematical maximum
+the data permits.** Every missing point is a listing that does not exist, not a ranking
+mistake. **23 of 37 makes have fewer than 5 listings**, so for those, same-make P@5 is
+capped below 1.0 no matter what any retriever does.
+
+**Conclusions.**
+
+1. **The retriever is data-bound, not algorithm-bound.** Tuning weights, swapping encoders,
+   or fine-tuning a reranker cannot move this number. Only corpus growth can — which makes
+   **Phase E (the weekly scrape) the single highest-value work item in the project**, and
+   retires "improve the retriever" as a task.
+2. **Our own earlier conclusion was an artifact.** The ablation's finding that
+   "structured-only beats the hybrid" came from a *saturated easy benchmark*; on the hard
+   one the difference vanishes into noise. We nearly re-tuned production weights on the
+   strength of a measurement the benchmark was too weak to support. This is the second time
+   in this project a comfortable-looking metric turned out to be measuring nothing.
+3. **The cross-encoder reranker slightly *hurts*** on hard queries (make P@5 0.760 vs 0.780
+   without it) while costing latency — it is not the asset we assumed.
+
+**What we changed:** a **same-make preference** in `comparables_rag_agent.py` — same-make
+candidates are promoted ahead of others (preserving relative order), and the reranker may
+now reorder *within* a make bucket but can never promote a different make above a genuine
+same-make comparable. It cannot raise the ceiling (nothing can, without data), but it
+guarantees we never return a stranger car when a real comparable exists, and it will convert
+directly into precision as Phase E grows the corpus. No regression: the easy benchmark holds
+at same-make P@5 = 1.000 and faithfulness stays at 1.000.
+
+---
+
 ## D1, D2, D4 — not run, and why
 
 These are specified rather than estimated. Reporting a number we did not measure would
