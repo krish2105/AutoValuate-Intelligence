@@ -39,6 +39,7 @@ export async function streamValuation(input: VehicleInput, h: StreamHandlers, si
       if (!dataLine) return;
       const data = JSON.parse(dataLine);
       if (event === "trace") h.onStep(data as TraceStep);
+      else if (event === "error") h.onError(data?.error || "valuation failed");
       else if (event === "result") {
         if (data.ok === false) h.onError(data.error || "valuation failed");
         else h.onResult(data as ValuationResult, false);

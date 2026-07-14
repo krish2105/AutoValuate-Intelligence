@@ -1,7 +1,6 @@
-# AutoValuate orchestration API (Render free web service)
-# NOTE: sentence-transformers+torch (dev/demo backend) exceeds Render's 512MB tier.
-# Production (Phase 10) swaps query embedding to onnxruntime + Supabase pgvector — see
-# DECISIONS.md ADR-014. Keep torch-heavy deps in the [dev] group when deploying to Render.
+# AutoValuate orchestration API (Render free web service — fits 512 MB, NO torch).
+# Comparables embeddings run on fastembed (onnxruntime), not sentence-transformers/torch,
+# so the whole API stays well under the free-tier RAM cap (see DECISIONS.md ADR-014).
 
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
@@ -22,13 +21,10 @@ joblib==1.4.2
 pandas==2.2.3
 numpy==2.2.1
 
-# Comparables retrieval — pure-Python parts (light)
+# Comparables retrieval — torch-free (fastembed = onnxruntime + tokenizers, ~50 MB)
+fastembed==0.5.1
 rank-bm25==0.2.2
 
 # LLM providers
 google-genai==1.9.0
 groq==0.13.0
-
-# --- dev/demo comparables backend (heavy; NOT installed on Render free) ---
-# sentence-transformers==3.3.1   # pulls torch ~1GB; use ONNX query embedder in prod
-# onnxruntime==1.20.1            # production query-embedding path (Phase 10)

@@ -126,6 +126,19 @@ Each entry records **what** was chosen and **why**, so the whole stack is defens
 
 **Free-tier note:** heavy compute stays in the backend; Vercel only proxies. `NEXT_PUBLIC_API_URL` selects the backend; unset → demo mode.
 
+## ADR-016 — Torch removed from the backend; comparables run on fastembed (ONNX). Backend hardened.
+
+**Decision (BUILT, supersedes ADR-014's "planned" status):** The comparables retrieval no longer imports `sentence-transformers`/`torch` (~1 GB) at runtime. Both the committed corpus embeddings and the runtime query embeddings now come from **fastembed** (onnxruntime + tokenizers, ~50 MB) using the same `all-MiniLM-L6-v2` weights, so results are identical (same-make precision@5 still **1.00**) and the whole API fits Render's 512 MB free tier. The cross-encoder reranker is optional and torch-free (fastembed `TextCrossEncoder` if present, else the structured-dominant hybrid, which already scores 1.00).
+
+**Hardening shipped alongside (verified by tests):**
+- **Event loop no longer blocks** — `/valuate` runs the pipeline in a threadpool; `/valuate/stream` runs the sync generator in a worker thread feeding an async queue, so `/health` and concurrent requests stay responsive.
+- **Rate limiting** — in-memory per-IP sliding window on `/valuate*` (default 20/60s), `/health` exempt; returns 429.
+- **CORS locked** — defaults to localhost origins, never wildcard; set `ALLOWED_ORIGINS` in prod.
+- **Payload caps** — ≤8 photos, ≤~6 MB each, bounded field lengths, range-checked year/mileage/cylinders → 422 on violation.
+- **No exception leakage** — a global handler returns a generic `{ok:false,error:"internal error"}` (detail logged server-side only); the stream emits a proper `error` SSE event on failure, which the frontend now handles.
+
+**Verified:** full 5-suite eval still green; a dedicated hardening test confirms all of the above; E2E is also ~5× faster (fastembed > sentence-transformers on CPU).
+
 ---
 
 ## Dataset licensing

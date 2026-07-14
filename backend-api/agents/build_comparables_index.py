@@ -10,9 +10,6 @@ Reads:  data/processed/comparables.csv
 Writes: backend-api/models/comparables_index.joblib   (metadata + float32 embeddings)
 """
 from __future__ import annotations
-import os
-os.environ.setdefault("USE_TF", "0")  # force torch backend (avoids Keras3/TF clash)
-
 from pathlib import Path
 import joblib
 import numpy as np
@@ -20,6 +17,8 @@ import pandas as pd
 
 SRC = Path("data/processed/comparables.csv")
 OUT = Path(__file__).resolve().parents[1] / "models" / "comparables_index.joblib"
+# fastembed ONNX model (no torch) — same weights as the sentence-transformers model,
+# so the committed corpus embeddings and the runtime query embeddings match exactly.
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
@@ -38,17 +37,15 @@ def listing_text(r: pd.Series) -> str:
 def main() -> None:
     if not SRC.exists():
         raise SystemExit(f"Missing {SRC}. Run data/prepare_tabular.py first.")
-    from sentence_transformers import SentenceTransformer
+    from fastembed import TextEmbedding
 
     df = pd.read_csv(SRC)
     df["_text"] = df.apply(listing_text, axis=1)
-    print(f"embedding {len(df)} listings with {EMBED_MODEL} ...")
+    print(f"embedding {len(df)} listings with fastembed {EMBED_MODEL} ...")
 
-    model = SentenceTransformer(EMBED_MODEL)
-    emb = model.encode(
-        df["_text"].tolist(), batch_size=64, show_progress_bar=True,
-        normalize_embeddings=True,  # cosine == dot product
-    ).astype("float32")
+    model = TextEmbedding(model_name=EMBED_MODEL)
+    emb = np.asarray(list(model.embed(df["_text"].tolist())), dtype="float32")
+    # fastembed returns L2-normalized vectors, so cosine == dot product
 
     keep = [c for c in [
         "listing_id", "title", "url", "make", "model", "year", "kilometers",

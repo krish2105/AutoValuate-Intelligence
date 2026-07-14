@@ -10,9 +10,12 @@ Comparables RAG agent (Phase 5).
 Every returned comparable carries its real `listing_id` and source `url`, so the report
 agent can cite it directly (citation grounding, Section 6/15).
 
+Embeddings use **fastembed** (onnxruntime, no torch) so the whole retrieval path fits the
+Render free tier's 512 MB — the corpus embeddings in the committed artifact and the runtime
+query embeddings come from the same ONNX model, so they match exactly.
+
 Storage is pluggable: LocalStore (the committed joblib artifact — works with no external
-services) and, in production, Supabase pgvector (see load_comparables_supabase.py). Both
-expose the same `dense_search()` so the agent code is identical either way.
+services) and, in production, Supabase pgvector (see load_comparables_supabase.py).
 
 Usage:
     from comparables_rag_agent import ComparablesAgent
@@ -21,9 +24,6 @@ Usage:
                         "kilometers":90000,"bodyType":"Sedan"}, k=5)
 """
 from __future__ import annotations
-import os
-os.environ.setdefault("USE_TF", "0")
-
 import math
 import re
 from functools import lru_cache
@@ -43,14 +43,19 @@ def _tok(s: str) -> list[str]:
 
 @lru_cache(maxsize=1)
 def _embedder(model_name: str):
-    from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(model_name)
+    from fastembed import TextEmbedding
+    return TextEmbedding(model_name=model_name)
 
 
 @lru_cache(maxsize=1)
 def _reranker():
-    from sentence_transformers import CrossEncoder
-    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    """Optional torch-free cross-encoder. Returns None if unavailable — the
+    structured-dominant hybrid already ranks well without it (same-make P@5 = 1.0)."""
+    try:
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+        return TextCrossEncoder(model_name="Xenova/ms-marco-MiniLM-L-6-v2")
+    except Exception:
+        return None
 
 
 class LocalStore:
@@ -71,7 +76,7 @@ class LocalStore:
         return len(self.records)
 
     def embed_query(self, text: str) -> np.ndarray:
-        v = _embedder(self.model_name).encode([text], normalize_embeddings=True)[0]
+        v = next(iter(_embedder(self.model_name).embed([text])))  # fastembed, L2-normalized
         return np.ascontiguousarray(v, dtype=np.float32)
 
     def dense_scores(self, qvec: np.ndarray) -> np.ndarray:
@@ -141,16 +146,18 @@ class ComparablesAgent:
         order = np.argsort(-hybrid)
         cand = [i for i in order if self.store.records[i].get("listing_id") != qid][:candidate_pool]
 
-        if rerank and cand:
-            pairs = [(qtext, self.store.texts[i]) for i in cand]
-            ce = _reranker().predict(pairs)
-            ce_n = _norm(np.asarray(ce, dtype="float32"))
+        reranker = _reranker() if rerank and cand else None
+        if reranker is not None:
+            docs = [self.store.texts[i] for i in cand]
+            ce = np.asarray(list(reranker.rerank(qtext, docs)), dtype="float32")
+            ce_n = _norm(ce)
             # blend rerank with structured similarity (comparability must stay dominant)
             blended = [(i, 0.5 * ce_n[j] + 0.5 * struct[i]) for j, i in enumerate(cand)]
             blended.sort(key=lambda t: -t[1])
             top = [i for i, _ in blended[:k]]
             scores = {i: float(s) for i, s in blended}
         else:
+            # torch-free hybrid ranking (dense + BM25 + structured) — already strong
             top = cand[:k]
             scores = {i: float(hybrid[i]) for i in top}
 
