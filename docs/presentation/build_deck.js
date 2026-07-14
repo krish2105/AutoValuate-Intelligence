@@ -156,9 +156,9 @@ footer(s, 10);
 s = P.addSlide(); bg(s); pill(s, 0.6, 0.55, "Explainable ML · the valuation model"); title(s, "A price you can interrogate, factor by factor.");
 stat(s, 0.6, 2.05, 3.0, "19.6%", "median error (held-out CV)", C.amber);
 stat(s, 3.7, 2.05, 3.0, "+28.4%", "better than a naive baseline", C.good);
-stat(s, 0.6, 3.75, 3.0, "0.80", "calibrated price-interval coverage", C.info);
+stat(s, 0.6, 3.75, 3.0, "0.78", "honest held-out interval coverage", C.info);
 stat(s, 3.7, 3.75, 3.0, "3 / 3", "SHAP directional checks pass", C.good);
-s.addText("XGBoost quantile model on 672 real Dubizzle listings. SHAP explains each estimate; a split-conformal interval makes the stated 80% range mean 80%. Mileage and age push price down, newer year lifts it — exactly as economics demands.", { x: 0.6, y: 5.5, w: 6.1, h: 1.3, fontFace: BODY, fontSize: 12.5, color: C.muted, margin: 0, lineSpacingMultiple: 1.15 });
+s.addText("XGBoost quantile model on 672 real Dubizzle listings. SHAP explains each estimate; a split-conformal interval, calibrated and tested on held-out data, covers ~78% of unseen cars honestly. Mileage and age push price down, newer year lifts it — exactly as economics demands.", { x: 0.6, y: 5.5, w: 6.1, h: 1.3, fontFace: BODY, fontSize: 12.5, color: C.muted, margin: 0, lineSpacingMultiple: 1.15 });
 shot(s, SS("03_valuation_shap_dark.png"), 7.0, 1.9, 5.8, 4.6);
 footer(s, 11);
 

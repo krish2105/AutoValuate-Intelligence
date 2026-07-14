@@ -118,7 +118,7 @@ Thanks. Brain number two — the price model. This is the part that turns detail
 
 *(Point at the four stats.)* On held-out testing, its typical error is about twenty percent, and it beats a naive baseline by nearly thirty. It runs on real Dubizzle listings we scraped, not made-up data.
 
-Two things I'm proud of here. First, that price range you saw isn't decorative — we calibrated it so that when it says eighty percent confidence, it genuinely means eighty percent. Second, the bars on the right are SHAP values. SHAP, in plain terms, just shows which factors pushed the price up or down and by how much. And we sanity-checked it — more mileage pulls the price down, an older car pulls it down, a newer year lifts it. The model learned real economics, not noise.
+Two things I'm proud of here. First, that price range you saw isn't decorative — we calibrated it on separate data and then tested it on cars the model had never seen, and it honestly covers about seventy-eight percent of them. We report the real number, not a rounded-up one. Second, the bars on the right are SHAP values. SHAP, in plain terms, just shows which factors pushed the price up or down and by how much. And we sanity-checked it — more mileage pulls the price down, an older car pulls it down, a newer year lifts it. The model learned real economics, not noise.
 
 ---
 

@@ -14,7 +14,7 @@ export function demoResult(v: VehicleInput): ValuationResult {
       price_low_aed: 21894,
       price_mid_aed: mid,
       price_high_aed: 50294,
-      interval_coverage: 0.799,
+      interval_coverage: 0.776,
       interval_pct_width: 85.6,
       currency: "AED",
       explanation: {
@@ -45,13 +45,13 @@ export function demoResult(v: VehicleInput): ValuationResult {
       { listing_id: "16741980", url: "https://dubai.dubizzle.com/motors/used-cars/", make: v.make, model: v.model, year: 2023, kilometers: 61000, price_aed: 48999, bodyType: "Sedan", city: "Dubai", sellerType: "Dealer", similarity: 0.8, structured_sim: 0.75 },
     ],
     report:
-      `Based on the details provided, ${v.year} ${v.make} ${v.model} has an estimated fair-market value between AED 21,894 [V1] and AED 50,294 [V3], with a mid-point of AED 33,184 [V2]. This range is a calibrated 79% confidence interval [V4].\n\n` +
+      `Based on the details provided, ${v.year} ${v.make} ${v.model} has an estimated fair-market value between AED 21,894 [V1] and AED 50,294 [V3], with a mid-point of AED 33,184 [V2]. This range is a calibrated 78% confidence interval [V4].\n\n` +
       `The main factors behind this estimate are noOfCylinders (-8,322 AED [P1]), year (-6,444 AED [P2]), bodyType (-5,318 AED [P3]). On held-out testing the pricing model carries a median error of about 19.57% [V5], so treat the mid-point as a guide, not a guarantee.\n\n` +
       `A visual damage assessment was not available for this valuation [D0], so the estimate assumes a market-typical condition — a professional inspection is recommended to confirm.\n\n` +
       `Comparable live listings support this range: 2019 ${v.make} ${v.model} 211457km at AED 31,000 [C1]; 2018 ${v.make} ${v.model} 171000km at AED 29,999 [C2]; 2022 ${v.make} ${v.model} 59000km at AED 47,500 [C3]. If the model's confidence is limited, a professional inspection is the safest next step before you set a final asking price.`,
     report_provider: "template",
     evidence: {
-      valuation: { V1: { label: "estimated low", aed: 21894 }, V2: { label: "estimated mid", aed: mid }, V3: { label: "estimated high", aed: 50294 }, V4: { label: "interval coverage", value: 0.799 }, V5: { label: "model median error %", value: 19.57 } },
+      valuation: { V1: { label: "estimated low", aed: 21894 }, V2: { label: "estimated mid", aed: mid }, V3: { label: "estimated high", aed: 50294 }, V4: { label: "interval coverage", value: 0.776 }, V5: { label: "model median error %", value: 19.57 } },
       condition: { D0: { label: "visual inspection", value: "not available" } },
       comparables: {},
       drivers: {},

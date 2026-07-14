@@ -40,27 +40,30 @@ The originally-named Kaggle dataset was **rejected as synthetic** (DECISIONS.md 
 | metric | value |
 |---|---|
 | Median absolute % error | **19.6%** |
-| Mean absolute % error (MAPE) | 27.6% |
+| Mean absolute % error (MAPE) | 27.5% |
 | MAE | AED 39,717 |
 | RMSE | AED 118,641 (inflated by luxury tail to AED 2.17M) |
 | Naive make+model-median baseline MAE | AED 55,483 |
 | **Improvement over baseline** | **28.4%** |
-| Calibrated 80% interval coverage (split-conformal) | **0.799** (target 0.80) |
-| Conformal half-width (log) | 0.416 → band ≈ ×1.52 / ÷1.52 around mid |
+| **Honest** held-out interval coverage (split-conformal) | **0.776** (avg of 5 leakage-free splits; target 0.80) |
+| Conformal half-width (log) | 0.442 → band ≈ ×1.56 / ÷1.56 around mid |
 
-**Why conformal:** raw quantile intervals under-covered (0.59) on 672 rows, which would make the
-confidence disclosure dishonest. Split-conformal calibration on out-of-fold residuals restores true
-80% coverage — the stated price range means what it says.
+**Why conformal (audit-fixed):** the interval width is set on a **separate calibration split** and its
+coverage is measured on a **truly held-out test set** (averaged over 5 leakage-free 60/20/20 splits). An
+earlier version computed coverage on the same residuals used to set the width — tautological. The honest
+out-of-sample coverage is **0.776**: the interval covers ~78% of unseen cars, close to the 80% target and
+reported without inflation. It tightens with more data. `year` was dropped (perfectly collinear with `age`).
 
 ### SHAP explainability (`notebooks/06`, `eval/shap_report.json`)
-Top global drivers (mean |SHAP|): engine cylinders, year, mileage, make, model, body type.
+Top global drivers (mean |SHAP|): engine cylinders, age, mileage, make, body type.
 **Directional sanity checks — all pass:**
 
 | feature | SHAP correlation | expected | pass |
 |---|---|---|---|
 | mileage | −0.86 | negative | ✅ |
-| age | −0.90 | negative | ✅ |
-| year | +0.92 | positive | ✅ |
+| age | −0.92 | negative | ✅ |
+
+(`year` was dropped — it is perfectly collinear with `age`, which was destabilising the SHAP attribution.)
 
 The model priced on sound economics, not spurious correlations.
 
