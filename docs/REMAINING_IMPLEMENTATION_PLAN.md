@@ -8,10 +8,32 @@
 
 ---
 
-## ✅ MVP progress (Sprint 1 "wow" — shipped 2026‑07‑14, in working tree, **not yet pushed**)
+## 🤝 Handoff — Krishna picks up the remaining work
 
-The Sprint‑1 code is built and verified locally. **Nothing is pushed yet** (per instruction) —
-commit + deploy when ready.
+**Merged to `main` 2026‑07‑14** (commit `1127e37`, via PR #1). Sprint‑1 (A/B/L) + the MVP
+feature cut are live in the repo. `npm run build` is clean. **Krishna owns everything below.**
+
+**Do these first (unblock live paths — external, code can't do them):**
+1. **OPS‑1..4** (§2): Render auto‑deploy on, run `supabase_valuations_schema.sql`, optional
+   email‑confirm off, rotate Supabase keys.
+2. **Deploy check:** Vercel builds from `frontend/`; `prebuild` copies ORT wasm into
+   `public/ort` (gitignored) and `public/models/best.onnx` (committed, 43 MB) ships the model.
+   Confirm the browser CV loads on the live URL and that the 43 MB asset is acceptable on Vercel.
+
+**Then, in priority order (all free‑tier):**
+- **Sprint 2:** Phase C (conversational RAG assistant), Phase D (shareable links + OG cards),
+  Phase E (recurring data pipeline / corpus growth) — details in §3 below.
+- **Remaining MVP ideas** (see [`SAAS_BRAINSTORM.md`](SAAS_BRAINSTORM.md)): M1 guided photo capture,
+  M10 Arabic/RTL, D1 photo‑aware pricing ablation.
+- **Sprint 3 (SaaS):** Phases F–K (repair cost, forecast, dealer bulk, API keys, plans, white‑label).
+
+**Working‑with‑git note:** an invalid `GITHUB_TOKEN` env var can shadow keyring auth — prefix
+`gh`/`git` with `env -u GITHUB_TOKEN` if auth fails. New browser‑CV assets: keep `public/ort/`
+gitignored (regenerated on build); keep `public/models/best.onnx` committed.
+
+---
+
+## ✅ MVP progress (Sprint 1 "wow" + MVP cut — merged to `main` 2026‑07‑14)
 
 | Item | Status | Notes |
 |---|---|---|
@@ -19,7 +41,8 @@ commit + deploy when ready.
 | **Phase B — What‑if sliders + `/estimate`** | ✅ Done | New `POST /estimate` (model‑only, no RAG/LLM) + debounced sliders (mileage/year/condition) with a local optimistic fallback when the backend is cold. Verified: mileage 90k→210k km moved the estimate 33,184→28,709 AED. |
 | **Phase L charts (no new data)** | ✅ Done | Confidence gauge (`confidence-panel.tsx`), market‑position radial gauge (`market-analytics.tsx`), and damage‑severity radar (`damage-report.tsx`). All theme‑aware; verified rendering (gauges + 3‑axis radar polygons). |
 | **"Grand Marque" UI pass** (Phase L, partial) | ✅ Done | Luxury‑automotive frontend treatment: cinematic hero with a self‑drawing GT line‑art SVG + pointer spotlight + telemetry ticker (`components/hero.tsx`, `hero-car.tsx`), Archivo expanded‑caps display font, film‑grain overlay, magnetic CTA with shine sweep, odometer count‑ups on all AED values, spec‑sheet section titles (`components/fx.tsx`, `ui.tsx`, `valuation-dashboard.tsx`). All reduced‑motion safe, both themes. |
-| OPS‑1…4 | ⏳ You | External dashboard actions (Render/Supabase) — **cannot be automated from code**; do these to light up the live backend paths. |
+| **MVP feature cut** | ✅ Done | Demo garage (`demo-garage.tsx`), negotiation coach (`negotiation.tsx`, sell/buy, cited, copy), damage what‑if toggles (`damage-report.tsx`, tap‑to‑price‑repair + AED recovery), appraisal certificate (`lib/certificate.ts`, QR + tamper hash), public `/model` report card (`app/model/page.tsx` ← `lib/eval/*.json`). All verified. |
+| OPS‑1…4 | ⏳ Krishna | External dashboard actions (Render/Supabase) — **cannot be automated from code**; do these to light up the live backend paths. |
 
 **What changed (files):** `frontend/lib/cv-browser.ts` (new), `frontend/components/browser-cv.tsx`
 (new), `frontend/components/what-if.tsx` (new), `frontend/components/gauges.tsx` (new),
