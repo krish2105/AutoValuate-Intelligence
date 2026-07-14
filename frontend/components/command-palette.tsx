@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
   Search, Command, CornerDownLeft, Car, Clock, Sun, Moon, FileText,
-  MessageSquare, BarChart3, ShieldCheck, Gauge, Table2,
+  MessageSquare, BarChart3, ShieldCheck, Gauge, Table2, KeyRound, CreditCard,
 } from "lucide-react";
 
 export interface PaletteAction {
@@ -66,6 +66,8 @@ export function CommandPalette({
       },
       { id: "model", label: "Open the model report card", hint: "public metrics", keywords: "metrics eval accuracy map conformal faithfulness", icon: <ShieldCheck className="h-4 w-4" />, run: close(() => { window.location.href = "/model"; }) },
       { id: "dealer", label: "Fleet valuation (bulk CSV)", hint: "value many cars", keywords: "dealer bulk csv fleet inventory batch", icon: <Table2 className="h-4 w-4" />, run: close(() => { window.location.href = "/dealer"; }) },
+      { id: "developers", label: "API keys & usage", hint: "developers", keywords: "api key token developer usage quota", icon: <KeyRound className="h-4 w-4" />, run: close(() => { window.location.href = "/developers"; }) },
+      { id: "pricing", label: "Plans & pricing", keywords: "pricing plans upgrade billing subscription tier", icon: <CreditCard className="h-4 w-4" />, run: close(() => { window.location.href = "/pricing"; }) },
     ];
     if (!hasResult) return base;
     return [

@@ -18,6 +18,7 @@ import { DamageReport } from "@/components/damage-report";
 import { Comparables } from "@/components/comparables";
 import { MarketAnalytics } from "@/components/market-analytics";
 import { RepairEstimateCard } from "@/components/repair-estimate";
+import { Forecast } from "@/components/forecast";
 import { SellerReport } from "@/components/seller-report";
 import { Negotiation } from "@/components/negotiation";
 import { Assistant } from "@/components/assistant";
@@ -206,6 +207,7 @@ export default function Home() {
                 <WhatIf result={result} online={online} />
                 <DamageReport c={result.condition} valuation={result.valuation} />
                 <MarketAnalytics result={result} />
+                <Forecast result={result} />
                 <Comparables items={result.comparables} />
                 <SellerReport result={result} />
                 <Assistant result={result} />
