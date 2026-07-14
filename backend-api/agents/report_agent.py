@@ -107,9 +107,11 @@ def _numeric_ids(ev: dict) -> set[str]:
 
 def _underfilled(text: str, ev: dict) -> bool:
     """
-    True when the LLM cited a numeric fact with no number on either side of the
-    marker (e.g. 'ranges from [V1] to [V3]'), which renders as blanks once the
-    [id] markers are resolved. Such reports are rejected in favour of the template.
+    True unless every numeric citation follows the well-formed convention the prompt
+    asks for — the figure written immediately BEFORE its marker, e.g.
+    'a mid-point of AED 58,269 [V2]'. Reports that place the id before the number
+    ('range of [V1] AED 22,153') or omit it entirely render awkwardly or blank, so
+    they are rejected in favour of the citation-correct deterministic template.
     Digits inside neighbouring [id] tokens do not count — we scan plain text only.
     """
     numeric = _numeric_ids(ev)
@@ -119,8 +121,7 @@ def _underfilled(text: str, ev: dict) -> bool:
         if not m or m.group(1) not in numeric:
             continue  # textual citations (e.g. [D0] 'not available') need no number
         before = parts[i - 1][-8:] if i > 0 else ""
-        after = parts[i + 1][:8] if i + 1 < len(parts) else ""
-        if not any(c.isdigit() for c in before) and not any(c.isdigit() for c in after):
+        if not any(c.isdigit() for c in before):
             return True
     return False
 
