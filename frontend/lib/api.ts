@@ -3,7 +3,7 @@ import { demoResult } from "./demo";
 
 // Deployed default = the live Render API; local dev overrides via .env.local (localhost).
 const API = process.env.NEXT_PUBLIC_API_URL || "https://autovaluate-api.onrender.com";
-const DEFAULT_TIMEOUT_MS = 90_000; // generous for a Render cold start
+const DEFAULT_TIMEOUT_MS = 60_000; // covers a Render cold start (~50s), then demo-falls-back
 
 export interface StreamHandlers {
   onStep: (step: TraceStep) => void;
@@ -26,7 +26,11 @@ export async function streamValuation(
   h: StreamHandlers,
   externalSignal?: AbortSignal,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  assumeOffline: boolean = false,
 ) {
+  // If we already know the backend is unreachable, don't hang on it — demo now.
+  if (assumeOffline) return runDemo(input, h);
+
   const ctrl = new AbortController();
   let timedOut = false;
   let started = false;

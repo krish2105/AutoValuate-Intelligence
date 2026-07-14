@@ -15,6 +15,8 @@ import { Comparables } from "@/components/comparables";
 import { SellerReport } from "@/components/seller-report";
 import { ConfidencePanel } from "@/components/confidence-panel";
 import { HistoryDrawer } from "@/components/history-drawer";
+import { useAuth, AuthModal, UserButton } from "@/components/auth";
+import { saveValuationCloud, loadValuationsCloud, clearValuationsCloud } from "@/lib/supabase";
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
@@ -25,10 +27,25 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [drawer, setDrawer] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const { session } = useAuth();
   const resultsRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => { setHistory(loadHistory()); apiInfo().then((i) => setOnline(i.online)); }, []);
+  // History: cloud (per-user) when signed in, else local.
+  async function refreshHistory() {
+    if (session) {
+      try {
+        const rows = await loadValuationsCloud();
+        setHistory(rows.map((r) => ({ id: r.id, ts: new Date(r.created_at).getTime(), label: r.label, mid: Number(r.mid_aed), result: r.result })));
+        return;
+      } catch { /* fall through to local */ }
+    }
+    setHistory(loadHistory());
+  }
+
+  useEffect(() => { apiInfo().then((i) => setOnline(i.online)); }, []);
+  useEffect(() => { refreshHistory(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session]);
 
   async function run(input: VehicleInput) {
     setLoading(true); setSteps([]); setResult(null); setDemo(false); setError(null);
@@ -37,11 +54,12 @@ export default function Home() {
       onStep: (s) => setSteps((p) => [...p, s]),
       onResult: (r, isDemo) => {
         setResult(r); setDemo(isDemo); setLoading(false);
-        setHistory(saveToHistory(r));
+        if (session && !isDemo) { saveValuationCloud(r).then(refreshHistory).catch(() => setHistory(saveToHistory(r))); }
+        else setHistory(saveToHistory(r));
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
       },
       onError: (msg) => { setLoading(false); setError(msg); },
-    }, abortRef.current.signal);
+    }, abortRef.current.signal, undefined, online === false);
   }
 
   function cancel() {
@@ -67,6 +85,7 @@ export default function Home() {
               className="grid h-10 w-10 place-items-center rounded-full border bg-surface/70 backdrop-blur transition hover:bg-surface-2">
               <Clock className="h-[18px] w-[18px]" />
             </button>
+            <UserButton session={session} onSignIn={() => setAuthOpen(true)} />
             <ThemeToggle />
           </div>
         </div>
@@ -185,8 +204,9 @@ export default function Home() {
       <HistoryDrawer
         open={drawer} items={history} onClose={() => setDrawer(false)}
         onSelect={(it) => { setResult(it.result); setDemo(false); setSteps(it.result.trace); setDrawer(false); setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 120); }}
-        onClear={() => setHistory(clearHistory())}
+        onClear={() => { if (session) { clearValuationsCloud().then(refreshHistory); } else { setHistory(clearHistory()); } }}
       />
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   );
 }
