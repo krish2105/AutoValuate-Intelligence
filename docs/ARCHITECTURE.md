@@ -109,6 +109,25 @@ FastAPI + LangGraph `StateGraph` on Render. Seven nodes, each streamed to the UI
 
 ---
 
+## Integration & E2E testing (Phase 8)
+
+Three suites under `eval/`, all green (`eval/run_all.sh`):
+
+| Suite | Checks | Result |
+|---|---|---|
+| `unit_tests.py` — agent + **adversarial** guardrails | 15 | ✅ all pass |
+| `api_integration_test.py` — HTTP contract (REST + SSE) the frontend uses | 20 | ✅ all pass |
+| `e2e_test.py` — 18 fixed real UAE vehicles through the full graph | 18 | ✅ 18/18, 0.84 s/case |
+
+**Adversarial highlights (the honesty guarantee, proven):** the Verifier catches an injected
+ungrounded `AED 999,999`, a citation to non-existent evidence `[Z9]`, and an ungrounded percentage —
+and intake rejects malformed input. Benchmark spans common cars, luxury, and edge cases (unseen make,
+2007 model, 240k km, electric) — every case produces an ordered price range, 5 comparables, a
+citation-grounded report that **passes the Verifier**, and a confidence disclosure, with no errors.
+Benchmark set: `eval/benchmark_cases.json`; results: `eval/e2e_report.json`.
+
+---
+
 ## Report faithfulness (Ragas) — _pending Phase 9_
 
 Target: faithfulness ≥ 0.90 on the generated seller report vs. the retrieved comparables and

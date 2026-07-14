@@ -1,0 +1,23 @@
+{
+  "description": "Fixed benchmark of 18 real UAE vehicles for end-to-end system testing (Phase 8). Makes/models chosen from the actual Dubizzle dataset for retrieval realism, plus deliberate edge cases (unseen make, very old, very high mileage, electric).",
+  "cases": [
+    { "id": "bench-01", "make": "nissan", "model": "patrol", "year": 2020, "kilometers": 60000, "bodyType": "SUV", "noOfCylinders": 8, "regionalSpecs": "GCC", "city": "Dubai", "sellerType": "Owner", "expect_same_make": true },
+    { "id": "bench-02", "make": "toyota", "model": "land cruiser", "year": 2018, "kilometers": 120000, "bodyType": "SUV", "noOfCylinders": 8, "regionalSpecs": "GCC", "city": "Abu Dhabi", "sellerType": "Dealer", "expect_same_make": true },
+    { "id": "bench-03", "make": "toyota", "model": "corolla", "year": 2019, "kilometers": 90000, "bodyType": "Sedan", "noOfCylinders": 4, "regionalSpecs": "GCC", "city": "Dubai", "sellerType": "Owner", "expect_same_make": true },
+    { "id": "bench-04", "make": "honda", "model": "civic", "year": 2021, "kilometers": 45000, "bodyType": "Sedan", "noOfCylinders": 4, "regionalSpecs": "GCC", "city": "Sharjah", "sellerType": "Dealer", "expect_same_make": true },
+    { "id": "bench-05", "make": "lexus", "model": "lx-series", "year": 2019, "kilometers": 95000, "bodyType": "SUV", "noOfCylinders": 8, "regionalSpecs": "GCC", "city": "Dubai", "sellerType": "Dealer", "expect_same_make": true },
+    { "id": "bench-06", "make": "bmw", "model": "x5", "year": 2018, "kilometers": 105000, "bodyType": "SUV", "noOfCylinders": 6, "regionalSpecs": "European", "city": "Dubai", "sellerType": "Owner", "expect_same_make": true },
+    { "id": "bench-07", "make": "mercedes-benz", "model": "c-class", "year": 2017, "kilometers": 88000, "bodyType": "Sedan", "noOfCylinders": 4, "regionalSpecs": "GCC", "city": "Dubai", "sellerType": "Dealer", "expect_same_make": true },
+    { "id": "bench-08", "make": "hyundai", "model": "creta", "year": 2022, "kilometers": 38000, "bodyType": "SUV", "noOfCylinders": 4, "regionalSpecs": "GCC", "city": "Ajman", "sellerType": "Dealer", "expect_same_make": true },
+    { "id": "bench-09", "make": "toyota", "model": "rav 4", "year": 2023, "kilometers": 30000, "bodyType": "SUV", "noOfCylinders": 4, "regionalSpecs": "GCC", "city": "Dubai", "sellerType": "Dealer", "expect_same_make": true },
+    { "id": "bench-10", "make": "ford", "model": "mustang", "year": 2017, "kilometers": 70000, "bodyType": "Coupe", "noOfCylinders": 8, "regionalSpecs": "American", "city": "Dubai", "sellerType": "Owner", "expect_same_make": true },
+    { "id": "bench-11", "make": "nissan", "model": "sunny", "year": 2020, "kilometers": 72000, "bodyType": "Sedan", "noOfCylinders": 4, "regionalSpecs": "GCC", "city": "Sharjah", "sellerType": "Dealer", "expect_same_make": true },
+    { "id": "bench-12", "make": "toyota", "model": "prado", "year": 2016, "kilometers": 145000, "bodyType": "SUV", "noOfCylinders": 6, "regionalSpecs": "GCC", "city": "Al Ain", "sellerType": "Owner", "expect_same_make": true },
+    { "id": "bench-13", "make": "honda", "model": "accord", "year": 2015, "kilometers": 160000, "bodyType": "Sedan", "noOfCylinders": 4, "regionalSpecs": "GCC", "city": "Dubai", "sellerType": "Owner", "expect_same_make": true },
+    { "id": "bench-14", "make": "lexus", "model": "es-series", "year": 2021, "kilometers": 50000, "bodyType": "Sedan", "noOfCylinders": 6, "regionalSpecs": "GCC", "city": "Abu Dhabi", "sellerType": "Dealer", "expect_same_make": true },
+    { "id": "bench-15", "make": "mitsubishi", "model": "pajero", "year": 2014, "kilometers": 210000, "bodyType": "SUV", "noOfCylinders": 6, "regionalSpecs": "GCC", "city": "Sharjah", "sellerType": "Owner", "expect_same_make": false, "note": "edge: very high mileage, older" },
+    { "id": "bench-16", "make": "toyota", "model": "yaris", "year": 2007, "kilometers": 240000, "bodyType": "Hatchback", "noOfCylinders": 4, "regionalSpecs": "GCC", "city": "Ajman", "sellerType": "Owner", "expect_same_make": true, "note": "edge: very old + very high mileage" },
+    { "id": "bench-17", "make": "tesla", "model": "model 3", "year": 2022, "kilometers": 40000, "bodyType": "Sedan", "noOfCylinders": 0, "regionalSpecs": "American", "fuelType": "Electric", "city": "Dubai", "sellerType": "Owner", "expect_same_make": false, "note": "edge: unseen/rare make, electric" },
+    { "id": "bench-18", "make": "porsche", "model": "cayenne", "year": 2019, "kilometers": 65000, "bodyType": "SUV", "noOfCylinders": 6, "regionalSpecs": "GCC", "city": "Dubai", "sellerType": "Dealer", "expect_same_make": false, "note": "edge: luxury, thinner comparables" }
+  ]
+}
