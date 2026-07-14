@@ -21,50 +21,61 @@ export function displayForCitation(evidence: Evidence, id: string): string {
 
 const CITE = /\[([A-Z]\d+)\]/g;
 
-/** True when a real digit already sits just before this token (number is inline). */
-function numberPrecedes(text: string, offset: number): boolean {
-  return /\d/.test(text.slice(Math.max(0, offset - 8), offset));
-}
-
-/**
- * Resolve a report to plain prose: when a citation has no inline number in front
- * of it, substitute the evidenced value so the sentence never reads blank; when a
- * number is already inline, drop the bare [id] marker. Used for the PDF export.
- */
-export function resolveReportPlain(result: ValuationResult): string {
-  const { report, evidence } = result;
-  const out = report.replace(CITE, (_full, id: string, offset: number) => {
-    if (numberPrecedes(report, offset)) return "";
-    return displayForCitation(evidence, id);
-  });
-  // tidy the seams left by removed/added tokens
-  return out
-    .replace(/ {2,}/g, " ")
-    .replace(/\s+([,.;:])/g, "$1")
-    .replace(/\(\s*\)/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .trim();
-}
-
 export interface ReportChunk {
+  /** literal text (empty for a citation chunk) */
   text: string;
   /** citation id when this chunk is a marker, else null */
   cite: string | null;
-  /** when true, the marker replaces a missing number and should show the value */
+  /** when true, no number precedes this marker — it should render as the value */
   injected: boolean;
 }
 
-/** Split a paragraph into text + citation chunks for the interactive web renderer. */
-export function chunkParagraph(paragraph: string, fullReport: string, base: number): ReportChunk[] {
+/** True when the last few chars of plain text carry a real digit (a number is inline). */
+function tailHasDigit(tail: string): boolean {
+  return /\d/.test(tail.slice(-8));
+}
+
+/**
+ * Tokenize a report into text + citation chunks. `injected` is decided from the
+ * *plain text* preceding each marker only — digits inside other [id] tokens never
+ * count, so 'to [V3]' after '[V1]' is correctly seen as having no inline number.
+ */
+export function chunkReport(report: string): ReportChunk[] {
   const chunks: ReportChunk[] = [];
   let last = 0;
-  for (const m of paragraph.matchAll(CITE)) {
+  let prevTail = "";
+  for (const m of report.matchAll(CITE)) {
     const start = m.index ?? 0;
-    if (start > last) chunks.push({ text: paragraph.slice(last, start), cite: null, injected: false });
-    const globalOffset = base + start;
-    chunks.push({ text: "", cite: m[1], injected: !numberPrecedes(fullReport, globalOffset) });
+    if (start > last) {
+      const text = report.slice(last, start);
+      chunks.push({ text, cite: null, injected: false });
+      prevTail = text;
+    }
+    const injected = !tailHasDigit(prevTail);
+    chunks.push({ text: "", cite: m[1], injected });
+    // an injected value acts as a number for any marker that immediately follows
+    if (injected) prevTail = "0";
     last = start + m[0].length;
   }
-  if (last < paragraph.length) chunks.push({ text: paragraph.slice(last), cite: null, injected: false });
+  if (last < report.length) chunks.push({ text: report.slice(last), cite: null, injected: false });
   return chunks;
+}
+
+/**
+ * Resolve a report to plain prose for the PDF: inject the evidenced value when no
+ * number precedes a marker, drop the bare [id] when a number is already inline.
+ */
+export function resolveReportPlain(result: ValuationResult): string {
+  const { evidence } = result;
+  const out = chunkReport(result.report)
+    .map((c) => (c.cite === null ? c.text : c.injected ? displayForCitation(evidence, c.cite) : ""))
+    .join("");
+  return out
+    .replace(/ {2,}/g, " ")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/,\s*(,|\.)/g, "$1")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s+(at|of|from|to|and)\s*([.,;])/gi, "$2")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
