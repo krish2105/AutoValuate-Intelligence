@@ -58,12 +58,12 @@ Legend — **Effort:** S ≤1 day · M 2–4 days · L 1–2 weeks. **Cost:** al
 
 ### P0 — build next (biggest impact, all free)
 
-| # | Feature | What it is | Why | Effort |
-|---|---|---|---|---|
-| P0‑1 | **In‑browser damage detection (WASM)** | Run the trained YOLOv8 ONNX with `onnxruntime-web` in the browser. No server RAM. Photos never leave the device → privacy win. | Makes the "damage‑aware" headline real & free; huge demo moment. | M |
-| P0‑2 | **Conversational RAG assistant** | "Ask about this valuation" chat: grounded over the result + comparables + market, streaming, cited, with the same Verifier discipline. | Turns a one‑shot report into an interactive product; extends the agent story. | M |
-| P0‑3 | **Pro analytics charts** | Depreciation curve, price‑vs‑mileage scatter, market‑position percentile, comparables bar (see §6). | What a pitch audience remembers; makes the data tangible. | M |
-| P0‑4 | **What‑if sliders** | Live re‑valuation as the user drags mileage / condition / year. Debounced calls to the model. | "Interactive appraisal" feel; shows the model is real. | S–M |
+| # | Feature | What it is | Why | Effort | Status |
+|---|---|---|---|---|---|
+| P0‑1 | **In‑browser damage detection (WASM)** | Run the trained YOLOv8 ONNX with `onnxruntime-web` in the browser. No server RAM. Photos never leave the device → privacy win. | Makes the "damage‑aware" headline real & free; huge demo moment. | M | ✅ shipped (not pushed) |
+| P0‑2 | **Conversational RAG assistant** | "Ask about this valuation" chat: grounded over the result + comparables + market, streaming, cited, with the same Verifier discipline. | Turns a one‑shot report into an interactive product; extends the agent story. | M | ⏳ Sprint 2 |
+| P0‑3 | **Pro analytics charts** | Depreciation curve, price‑vs‑mileage scatter, market‑position percentile, comparables bar (see §6). | What a pitch audience remembers; makes the data tangible. | M | 🟡 partial (scatter+bars+market gauge+confidence gauge+severity radar done; depreciation curve needs Phase E) |
+| P0‑4 | **What‑if sliders** | Live re‑valuation as the user drags mileage / condition / year. Debounced calls to the model. | "Interactive appraisal" feel; shows the model is real. | S–M | ✅ shipped (not pushed) |
 
 ### P1 — strong follow‑ups
 
@@ -188,7 +188,7 @@ None of this requires leaving free tiers to *build and demo*.
 
 ## 9. Phased timeline
 
-**Sprint 1 (the "wow" sprint):** P0‑1 in‑browser CV · P0‑3 pro charts · P0‑4 what‑if sliders · UX design‑system pass.
+**Sprint 1 (the "wow" sprint):** ✅ P0‑1 in‑browser CV · 🟡 P0‑3 pro charts (gauges + radar done; depreciation curve deferred to Phase E) · ✅ P0‑4 what‑if sliders · ⏳ UX design‑system pass. *(Sprint‑1 code is in the working tree, not yet pushed.)*
 **Sprint 2 (the "product" sprint):** P0‑2 chatbot · P1‑3 shareable links + OG cards · P1‑1 data cron.
 **Sprint 3 (the "SaaS" sprint):** P2‑1 dealer bulk · P2‑2 API keys + metering · P2‑3 plans + test checkout · P1‑2 repair‑cost.
 

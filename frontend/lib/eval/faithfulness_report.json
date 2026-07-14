@@ -1,0 +1,197 @@
+{
+  "report_writer": "template",
+  "n_reports": 18,
+  "mean_faithfulness": 1.0,
+  "min_faithfulness": 1.0,
+  "mean_citation_validity": 1.0,
+  "mean_relevancy": 1.0,
+  "target_faithfulness": 0.9,
+  "meets_target": true,
+  "negative_control": {
+    "faithfulness": 0.0,
+    "citation_validity": 0.5,
+    "discriminates": true
+  },
+  "per_report": [
+    {
+      "id": "bench-01",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-02",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-03",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-04",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-05",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-06",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-07",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-08",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-09",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-10",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-11",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-12",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-13",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-14",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-15",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-16",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-17",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    },
+    {
+      "id": "bench-18",
+      "faithfulness": 1.0,
+      "citation_validity": 1.0,
+      "numbers": 13,
+      "citations": 14,
+      "violations": [],
+      "relevancy": 1.0,
+      "provider": "template"
+    }
+  ]
+}

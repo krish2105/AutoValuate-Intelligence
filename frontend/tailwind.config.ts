@@ -22,6 +22,7 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+        display: ["var(--font-display)", "var(--font-inter)", "system-ui", "sans-serif"],
       },
       borderRadius: { xl: "0.9rem", "2xl": "1.25rem", "3xl": "1.75rem" },
       boxShadow: {
@@ -34,12 +35,16 @@ const config: Config = {
         shimmer: { "100%": { transform: "translateX(100%)" } },
         "pulse-ring": { "0%": { transform: "scale(0.9)", opacity: "0.7" }, "70%,100%": { transform: "scale(1.6)", opacity: "0" } },
         float: { "0%,100%": { transform: "translateY(0)" }, "50%": { transform: "translateY(-8px)" } },
+        marquee: { from: { transform: "translateX(0)" }, to: { transform: "translateX(-50%)" } },
+        sheen: { from: { transform: "translateX(-150%) skewX(-18deg)" }, to: { transform: "translateX(250%) skewX(-18deg)" } },
       },
       animation: {
         "fade-up": "fade-up 0.5s cubic-bezier(0.16,1,0.3,1) both",
         shimmer: "shimmer 1.6s infinite",
         "pulse-ring": "pulse-ring 1.8s cubic-bezier(0.16,1,0.3,1) infinite",
         float: "float 6s ease-in-out infinite",
+        marquee: "marquee 32s linear infinite",
+        sheen: "sheen 2.6s cubic-bezier(0.16,1,0.3,1) infinite",
       },
     },
   },

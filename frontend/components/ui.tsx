@@ -27,7 +27,10 @@ export function SectionCard({
         <div className="flex items-center gap-3">
           {icon && <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/12 text-accent">{icon}</div>}
           <div>
-            <h2 className="text-sm font-semibold tracking-tight sm:text-base">{title}</h2>
+            <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] sm:text-[15px]">
+              <span aria-hidden className="mr-2 inline-block h-2.5 w-[3px] rounded-full bg-accent align-[-1px]" />
+              {title}
+            </h2>
             {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
           </div>
         </div>

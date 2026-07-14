@@ -1,5 +1,46 @@
-import type { TraceStep, ValuationResult, VehicleInput } from "./types";
+import type { Condition, TraceStep, Valuation, ValuationResult, VehicleInput } from "./types";
 import { demoResult } from "./demo";
+
+/**
+ * Fold an on-device (browser CV) condition into a result. The live backend already
+ * consumes `client_condition` and adjusts the price + returns cv_available:true — in
+ * that case we leave it alone. We only apply it client-side when the returned condition
+ * isn't CV-assessed (demo/offline, or a backend that predates the client_condition field),
+ * so the damage panel, price, and confidence still reflect the scan.
+ */
+function withClientCondition(result: ValuationResult, input: VehicleInput): ValuationResult {
+  const cc = input.client_condition;
+  if (!cc || result.condition?.cv_available) return result;
+
+  const condition: Condition = {
+    cv_available: true,
+    condition_score: cc.condition_score,
+    price_adjustment_factor: cc.price_adjustment_factor,
+    findings: cc.findings,
+    photos_assessed: cc.photos_assessed,
+    total_value_impact_pct: cc.total_value_impact_pct,
+    source: "browser",
+  };
+  const factor = cc.price_adjustment_factor ?? 1;
+  const v = result.valuation;
+  const valuation = factor !== 1
+    ? {
+        ...v,
+        price_low_aed: Math.round(v.price_low_aed * factor),
+        price_mid_aed: Math.round(v.price_mid_aed * factor),
+        price_high_aed: Math.round(v.price_high_aed * factor),
+        condition_adjusted: true,
+        condition_factor: factor,
+      }
+    : v;
+
+  return {
+    ...result,
+    valuation,
+    condition,
+    confidence: { ...result.confidence, cv_assessed: true },
+  };
+}
 
 // Deployed default = the live Render API; local dev overrides via .env.local (localhost).
 const API = process.env.NEXT_PUBLIC_API_URL || "https://autovaluate-api.onrender.com";
@@ -52,7 +93,7 @@ export async function streamValuation(
     else if (event === "error") h.onError(data?.error || "valuation failed");
     else if (event === "result") {
       if (data.ok === false) h.onError(data.error || "valuation failed");
-      else h.onResult(data as ValuationResult, false);
+      else h.onResult(withClientCondition(data as ValuationResult, input), false);
     }
   };
 
@@ -89,13 +130,38 @@ export async function streamValuation(
 }
 
 async function runDemo(input: VehicleInput, h: StreamHandlers) {
-  const result = demoResult(input);
+  const result = withClientCondition(demoResult(input), input);
   for (const step of result.trace) {
     await new Promise((r) => setTimeout(r, 480));
     h.onStep(step);
   }
   await new Promise((r) => setTimeout(r, 300));
   h.onResult(result, true);
+}
+
+/**
+ * Fast model-only re-valuation for the what-if sliders (Phase B). Hits POST /estimate
+ * (no comparables/RAG/LLM) so a dragged slider updates in <1s on a warm backend.
+ * Returns null on any failure so the caller can fall back to a local approximation.
+ */
+export async function estimateValuation(
+  input: VehicleInput,
+  signal?: AbortSignal,
+  timeoutMs = 15_000,
+): Promise<Valuation | null> {
+  try {
+    const res = await fetch(`${API}/estimate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: signal ?? AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.ok && j.valuation ? (j.valuation as Valuation) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function apiInfo(): Promise<{ online: boolean; llm: boolean; cv: boolean }> {

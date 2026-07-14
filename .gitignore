@@ -27,6 +27,11 @@ npm-debug.log*
 yarn-error.log*
 .pnp.*
 
+# onnxruntime-web wasm runtime is copied from node_modules by scripts/copy-ort.mjs
+# on predev/prebuild — derived, so regenerate rather than commit. (The YOLOv8 model
+# frontend/public/models/best.onnx IS committed deliberately — see REMAINING_IMPLEMENTATION_PLAN Phase A.)
+frontend/public/ort/
+
 # ---- Data (large, downloaded, not versioned) ----
 data/raw/
 data/processed/

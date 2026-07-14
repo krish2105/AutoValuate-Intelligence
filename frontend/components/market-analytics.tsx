@@ -8,6 +8,7 @@ import { BarChart3 } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
 import { aed, km } from "@/lib/utils";
 import { SectionCard, Pill } from "./ui";
+import { RadialGauge } from "./gauges";
 
 /** Theme-aware colors — CSS vars resolve to the active light/dark palette at render. */
 const C = {
@@ -66,20 +67,24 @@ export function MarketAnalytics({ result }: { result: ValuationResult }) {
       icon={<BarChart3 className="h-4.5 w-4.5" />}
       right={<Pill tone={percentile <= 50 ? "good" : "info"}>{percentile <= 50 ? `cheaper than ${100 - percentile}%` : `pricier than ${percentile}%`}</Pill>}
     >
-      {/* headline market-position stat */}
-      <div className="mb-5 flex flex-wrap items-end gap-x-6 gap-y-2">
-        <div>
-          <p className="text-xs text-muted">Your estimate</p>
-          <p className="tnum text-2xl font-semibold text-accent">{aed(mid)}</p>
+      {/* headline market-position stat + gauge */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+          <div>
+            <p className="text-xs text-muted">Your estimate</p>
+            <p className="tnum text-2xl font-semibold text-accent">{aed(mid)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted">Comparable range</p>
+            <p className="tnum text-sm font-medium">{aed(prices[0] ?? valuation.price_low_aed)} – {aed(prices[prices.length - 1] ?? valuation.price_high_aed)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted">Market position</p>
+            <p className="tnum text-sm font-medium">{percentile}<span className="text-muted">th percentile · {prices.length} listings</span></p>
+          </div>
         </div>
-        <div>
-          <p className="text-xs text-muted">Comparable range</p>
-          <p className="tnum text-sm font-medium">{aed(prices[0] ?? valuation.price_low_aed)} – {aed(prices[prices.length - 1] ?? valuation.price_high_aed)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted">Market position</p>
-          <p className="tnum text-sm font-medium">{percentile}<span className="text-muted">th percentile · {prices.length} listings</span></p>
-        </div>
+        <RadialGauge value={percentile} tone={percentile <= 50 ? "good" : "info"} size={112}
+          label="percentile" sublabel={percentile <= 50 ? "priced low" : "priced high"} format={(v) => `${Math.round(v)}`} />
       </div>
 
       {/* Price vs mileage */}

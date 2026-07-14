@@ -1,9 +1,11 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ImagePlus, X, Sparkles, Loader2 } from "lucide-react";
 import type { VehicleInput } from "@/lib/types";
+import type { ClientCondition } from "@/lib/cv-browser";
 import { cn } from "@/lib/utils";
+import { BrowserCV } from "./browser-cv";
 
 const BODY = ["SUV", "Sedan", "Coupe", "Hatchback", "Pick Up Truck", "Van", "Convertible", "Wagon"];
 const SPECS = ["GCC", "American", "European", "Japanese", "Canadian", "Korean", "Chinese", "Other"];
@@ -23,16 +25,27 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputCls =
   "w-full rounded-xl border bg-surface-2/60 px-3.5 py-2.5 text-sm outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/25 placeholder:text-muted/60";
 
-export function VehicleForm({ onSubmit, loading }: { onSubmit: (v: VehicleInput) => void; loading: boolean }) {
+export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: VehicleInput) => void; loading: boolean; preset?: VehicleInput | null }) {
   const [v, setV] = useState<VehicleInput>({
     make: "", model: "", year: 2019, kilometers: 90000,
     bodyType: "Sedan", transmissionType: "Automatic", fuelType: "Petrol",
     regionalSpecs: "GCC", noOfCylinders: 4, city: "Dubai", sellerType: "Owner", photos: [],
   });
   const [photos, setPhotos] = useState<string[]>([]);
+  const [clientCondition, setClientCondition] = useState<ClientCondition | null>(null);
   const [drag, setDrag] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const set = (k: keyof VehicleInput, val: any) => setV((p) => ({ ...p, [k]: val }));
+
+  // Fill the form when a demo-garage preset is chosen (photos stay empty — samples
+  // carry a synthetic client_condition instead, applied by the page's run()).
+  useEffect(() => {
+    if (!preset) return;
+    const { photos: _p, client_condition: _c, ...rest } = preset;
+    setV((p) => ({ ...p, ...rest }));
+    setPhotos([]);
+    setClientCondition(preset.client_condition ?? null);
+  }, [preset]);
 
   function addFiles(files: FileList | null) {
     if (!files) return;
@@ -47,7 +60,7 @@ export function VehicleForm({ onSubmit, loading }: { onSubmit: (v: VehicleInput)
 
   return (
     <form
-      onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit({ ...v, photos }); }}
+      onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit({ ...v, photos, client_condition: clientCondition }); }}
       className="space-y-5"
     >
       {/* photo dropzone */}
@@ -72,7 +85,7 @@ export function VehicleForm({ onSubmit, loading }: { onSubmit: (v: VehicleInput)
         </div>
         <div>
           <p className="text-sm font-medium">Drop car photos or tap to upload</p>
-          <p className="text-xs text-muted">Up to 8 images · scanned for damage when the CV service is live</p>
+          <p className="text-xs text-muted">Up to 8 images · scanned for damage on-device, in your browser</p>
         </div>
       </div>
 
@@ -94,6 +107,9 @@ export function VehicleForm({ onSubmit, loading }: { onSubmit: (v: VehicleInput)
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* on-device damage scan (browser WASM) */}
+      <BrowserCV photos={photos} onCondition={setClientCondition} />
 
       {/* details grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

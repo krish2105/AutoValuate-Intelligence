@@ -5,17 +5,7 @@ import type { Valuation } from "@/lib/types";
 import { aed } from "@/lib/utils";
 import { SectionCard, Pill } from "./ui";
 import { ShapWaterfall } from "./shap-waterfall";
-
-function CountUp({ value }: { value: number }) {
-  return (
-    <motion.span
-      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-      className="tnum text-3xl font-semibold tracking-tight sm:text-4xl"
-    >
-      {aed(value)}
-    </motion.span>
-  );
-}
+import { CountUp } from "./fx";
 
 export function ValuationDashboard({ v }: { v: Valuation }) {
   const span = v.price_high_aed - v.price_low_aed;
@@ -28,14 +18,22 @@ export function ValuationDashboard({ v }: { v: Valuation }) {
       icon={<TrendingUp className="h-4.5 w-4.5" />}
       right={<Pill tone="info">± {(v.interval_pct_width / 2).toFixed(0)}%</Pill>}
     >
+      {/* spec-sheet headline row — odometer sweep on the price */}
       <div className="mb-1 flex items-end justify-between gap-4">
         <div>
-          <p className="mb-1 text-xs text-muted">Estimated value</p>
-          <CountUp value={v.price_mid_aed} />
+          <p className="mb-1 font-display text-[10px] font-medium uppercase tracking-[0.22em] text-muted">Estimated value</p>
+          <p className="display-title text-3xl font-bold sm:text-5xl">
+            <span className="mr-1.5 align-top text-sm font-semibold text-muted sm:text-base">AED</span>
+            <CountUp value={v.price_mid_aed} className="tracking-tight text-accent" />
+          </p>
         </div>
-        <div className="text-right text-xs text-muted">
-          <p>median error <span className="tnum text-fg">{v.model_meta.cv_median_ape_pct}%</span></p>
-          <p className="mt-0.5">on <span className="tnum text-fg">{v.model_meta.training_rows}</span> real listings</p>
+        <div className="text-right">
+          <div className="border-l pl-4 hairline">
+            <p className="font-display text-[10px] uppercase tracking-[0.18em] text-muted">median error</p>
+            <p className="tnum text-sm font-semibold">{v.model_meta.cv_median_ape_pct}%</p>
+            <p className="mt-1 font-display text-[10px] uppercase tracking-[0.18em] text-muted">training rows</p>
+            <p className="tnum text-sm font-semibold">{v.model_meta.training_rows}</p>
+          </div>
         </div>
       </div>
 

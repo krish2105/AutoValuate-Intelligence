@@ -8,6 +8,34 @@
 
 ---
 
+## ✅ MVP progress (Sprint 1 "wow" — shipped 2026‑07‑14, in working tree, **not yet pushed**)
+
+The Sprint‑1 code is built and verified locally. **Nothing is pushed yet** (per instruction) —
+commit + deploy when ready.
+
+| Item | Status | Notes |
+|---|---|---|
+| **Phase A — In‑browser YOLOv8 (WASM)** | ✅ Done | Runs the trained detector fully on‑device with `onnxruntime-web`; overlays damage boxes, computes a condition score, and condition‑adjusts the price. Verified end‑to‑end in a real browser (session load 660 ms, inference 877 ms, output `[1,12,8400]`; decode/NMS parity with `cv_local.py`). |
+| **Phase B — What‑if sliders + `/estimate`** | ✅ Done | New `POST /estimate` (model‑only, no RAG/LLM) + debounced sliders (mileage/year/condition) with a local optimistic fallback when the backend is cold. Verified: mileage 90k→210k km moved the estimate 33,184→28,709 AED. |
+| **Phase L charts (no new data)** | ✅ Done | Confidence gauge (`confidence-panel.tsx`), market‑position radial gauge (`market-analytics.tsx`), and damage‑severity radar (`damage-report.tsx`). All theme‑aware; verified rendering (gauges + 3‑axis radar polygons). |
+| **"Grand Marque" UI pass** (Phase L, partial) | ✅ Done | Luxury‑automotive frontend treatment: cinematic hero with a self‑drawing GT line‑art SVG + pointer spotlight + telemetry ticker (`components/hero.tsx`, `hero-car.tsx`), Archivo expanded‑caps display font, film‑grain overlay, magnetic CTA with shine sweep, odometer count‑ups on all AED values, spec‑sheet section titles (`components/fx.tsx`, `ui.tsx`, `valuation-dashboard.tsx`). All reduced‑motion safe, both themes. |
+| OPS‑1…4 | ⏳ You | External dashboard actions (Render/Supabase) — **cannot be automated from code**; do these to light up the live backend paths. |
+
+**What changed (files):** `frontend/lib/cv-browser.ts` (new), `frontend/components/browser-cv.tsx`
+(new), `frontend/components/what-if.tsx` (new), `frontend/components/gauges.tsx` (new),
+`frontend/scripts/copy-ort.mjs` (new), edits to `vehicle-form.tsx`, `damage-report.tsx`,
+`confidence-panel.tsx`, `market-analytics.tsx`, `app/page.tsx`, `lib/api.ts`, `lib/types.ts`,
+`next.config.mjs`, `package.json`; backend `main.py` (`/estimate` + `ClientCondition`) and
+`graph/orchestrator.py` (`estimate()` + browser‑condition passthrough). `frontend/public/models/best.onnx`
+is committed; `frontend/public/ort/` is build‑generated (gitignored).
+
+> **ORT bundling note:** we load ORT's self‑contained wasm bundle from `/public/ort` via a
+> native `webpackIgnore` dynamic import — Next/Terser can't minify ORT's `import.meta.url`
+> wasm glue, so we keep the bundler out of it entirely. `scripts/copy-ort.mjs` (predev/prebuild)
+> stages the `.mjs` + `.wasm` from `node_modules`.
+
+---
+
 ## 0. Where the project stands (already done — do NOT rebuild)
 
 **Live:** frontend `https://auto-valuate-intelligence.vercel.app` (Vercel) → backend
@@ -53,7 +81,7 @@ Legend — **Effort:** S ≤1d · M 2–4d · L 1–2wk. All **free**.
 
 ---
 
-### Phase A — In‑browser damage detection (WASM)  · Effort M · P0‑1
+### Phase A — In‑browser damage detection (WASM)  · Effort M · P0‑1 · ✅ SHIPPED (not pushed)
 
 **Goal:** run the trained YOLOv8 in the browser with `onnxruntime-web`, overlay damage boxes on the uploaded photo, produce a condition score. Photos never leave the device (privacy win) and it's free (no server RAM).
 
@@ -86,7 +114,7 @@ Legend — **Effort:** S ≤1d · M 2–4d · L 1–2wk. All **free**.
 
 ---
 
-### Phase B — What‑if sliders + fast `/estimate` endpoint · Effort S–M · P0‑4
+### Phase B — What‑if sliders + fast `/estimate` endpoint · Effort S–M · P0‑4 · ✅ SHIPPED (not pushed)
 
 **Goal:** drag mileage / year / condition → live re‑valuation without re‑running RAG + LLM.
 
@@ -228,13 +256,13 @@ Legend — **Effort:** S ≤1d · M 2–4d · L 1–2wk. All **free**.
 **Mobile & a11y:** bottom‑sheet results on mobile; 44 px touch targets; keyboard‑navigable chips + chat; extend the existing aria‑live announcements to chat and charts.
 
 **Remaining charts to add** (Recharts, theme‑aware; scatter + estimate‑bar already done):
-| Chart | Type | Data |
-|---|---|---|
-| Depreciation curve | line + user point | price vs age for the model (needs Phase E corpus) |
-| Market‑position gauge | radial | user mid vs comparable distribution |
-| Confidence gauge | radial | interval width / level (in `confidence-panel.tsx`) |
-| Damage severity radar | radar | per‑class CV findings (needs Phase A) |
-| SHAP waterfall | keep bespoke SVG | polish only (`shap-waterfall.tsx`) |
+| Chart | Type | Data | Status |
+|---|---|---|---|
+| Depreciation curve | line + user point | price vs age for the model (needs Phase E corpus) | ⏳ needs Phase E |
+| Market‑position gauge | radial | user mid vs comparable distribution | ✅ shipped (`gauges.tsx` → `market-analytics.tsx`) |
+| Confidence gauge | radial | interval width / level (in `confidence-panel.tsx`) | ✅ shipped (`gauges.tsx` → `confidence-panel.tsx`) |
+| Damage severity radar | radar | per‑class CV findings (needs Phase A) | ✅ shipped (`damage-report.tsx`, Phase A findings) |
+| SHAP waterfall | keep bespoke SVG | polish only (`shap-waterfall.tsx`) | ⏳ polish |
 
 **Acceptance:** a designer‑grade pass in both themes; Lighthouse a11y ≥ 95; all charts responsive and readable on mobile.
 

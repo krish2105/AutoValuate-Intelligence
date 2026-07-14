@@ -3,22 +3,27 @@ import { motion } from "framer-motion";
 import { ShieldCheck, ShieldAlert, ShieldX, Stethoscope } from "lucide-react";
 import type { Confidence } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { RadialGauge } from "./gauges";
 
 const MAP = {
-  high: { icon: ShieldCheck, tone: "text-good", ring: "ring-good/30 bg-good/8", label: "High confidence" },
-  medium: { icon: ShieldAlert, tone: "text-warn", ring: "ring-warn/30 bg-warn/8", label: "Moderate confidence" },
-  low: { icon: ShieldX, tone: "text-bad", ring: "ring-bad/30 bg-bad/8", label: "Limited confidence" },
+  high: { icon: ShieldCheck, tone: "text-good", ring: "ring-good/30 bg-good/8", label: "High confidence", gauge: "good", score: 88 },
+  medium: { icon: ShieldAlert, tone: "text-warn", ring: "ring-warn/30 bg-warn/8", label: "Moderate confidence", gauge: "warn", score: 66 },
+  low: { icon: ShieldX, tone: "text-bad", ring: "ring-bad/30 bg-bad/8", label: "Limited confidence", gauge: "bad", score: 42 },
 } as const;
 
 export function ConfidencePanel({ c }: { c: Confidence }) {
   const m = MAP[c.level];
   const Icon = m.icon;
+  // Trust score: anchored by level, nudged down for a wider interval. Purely a visual
+  // summary of the honest signals already in `c` — no new claims.
+  const width = c.valuation_interval_pct || 0;
+  const trust = Math.max(20, Math.min(97, Math.round(m.score - Math.max(0, width - 60) * 0.15)));
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className={cn("rounded-2xl border p-5 ring-1", m.ring)}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-4">
         <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface", m.tone)}>
           <Icon className="h-5 w-5" />
         </div>
@@ -39,6 +44,11 @@ export function ConfidencePanel({ c }: { c: Confidence }) {
               ))}
             </ul>
           )}
+        </div>
+        {/* confidence gauge (Phase L) */}
+        <div className="hidden shrink-0 flex-col items-center sm:flex">
+          <RadialGauge value={trust} tone={m.gauge} size={112}
+            label="trust" sublabel={`±${Math.round(width / 2)}% band`} />
         </div>
       </div>
     </motion.div>

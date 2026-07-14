@@ -1,19 +1,24 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Activity, Clock, Radio, FlaskConical, ArrowDown } from "lucide-react";
+import { Activity, Clock, Radio, ArrowDown, ShieldCheck } from "lucide-react";
 import type { TraceStep, ValuationResult, VehicleInput } from "@/lib/types";
 import { streamValuation, apiInfo } from "@/lib/api";
 import { loadHistory, saveToHistory, clearHistory, type HistoryItem } from "@/lib/history";
 import { Logo, Reveal, SectionCard } from "@/components/ui";
+import { Hero } from "@/components/hero";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { VehicleForm } from "@/components/vehicle-form";
+import { DemoGarage } from "@/components/demo-garage";
+import type { DemoCar } from "@/lib/demo-garage";
 import { ReasoningTrace } from "@/components/reasoning-trace";
 import { ValuationDashboard } from "@/components/valuation-dashboard";
+import { WhatIf } from "@/components/what-if";
 import { DamageReport } from "@/components/damage-report";
 import { Comparables } from "@/components/comparables";
 import { MarketAnalytics } from "@/components/market-analytics";
 import { SellerReport } from "@/components/seller-report";
+import { Negotiation } from "@/components/negotiation";
 import { ConfidencePanel } from "@/components/confidence-panel";
 import { HistoryDrawer } from "@/components/history-drawer";
 import { useAuth, AuthModal, UserButton } from "@/components/auth";
@@ -28,9 +33,11 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [drawer, setDrawer] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preset, setPreset] = useState<VehicleInput | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const { session } = useAuth();
   const resultsRef = useRef<HTMLDivElement>(null);
+  const appraiseRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // History: cloud (per-user) when signed in, else local.
@@ -69,6 +76,13 @@ export default function Home() {
     setSteps([]);
   }
 
+  function pickDemo(car: DemoCar) {
+    if (loading) return;
+    setPreset(car.input);            // fills the form for context
+    appraiseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    run(car.input);                  // runs the full pipeline immediately
+  }
+
   const lastStep = steps[steps.length - 1];
 
   return (
@@ -92,29 +106,19 @@ export default function Home() {
         </div>
       </header>
 
-      {/* hero */}
-      <Reveal>
-        <div className="mb-8 text-center">
-          <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border bg-surface/60 px-3 py-1 text-[11px] font-medium text-muted">
-            <FlaskConical className="h-3.5 w-3.5 text-accent" /> CV · explainable ML · agentic RAG
-          </span>
-          <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-5xl">
-            Know what your car is <span className="text-accent">really</span> worth.
-          </h1>
-          <p className="mx-auto mt-3 max-w-xl text-pretty text-sm text-muted sm:text-base">
-            An instant, explainable, damage-aware fair-market valuation for the UAE — backed by a trained damage
-            detector, an explainable pricing model, and live comparable listings. Every number is traceable.
-          </p>
-        </div>
-      </Reveal>
+      {/* cinematic hero */}
+      <Hero onBegin={() => appraiseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} />
 
       {/* main grid */}
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+      <div ref={appraiseRef} id="appraise" className="grid scroll-mt-24 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         {/* left: form + trace */}
         <div className="space-y-5 lg:sticky lg:top-24 lg:self-start">
           <Reveal delay={0.05}>
             <SectionCard title="Your vehicle" subtitle="Photos optional · details required" icon={<Activity className="h-4.5 w-4.5" />}>
-              <VehicleForm onSubmit={run} loading={loading} />
+              <div className="mb-5">
+                <DemoGarage onPick={pickDemo} disabled={loading} />
+              </div>
+              <VehicleForm onSubmit={run} loading={loading} preset={preset} />
             </SectionCard>
           </Reveal>
 
@@ -189,10 +193,12 @@ export default function Home() {
                 )}
                 <ConfidencePanel c={result.confidence} />
                 <ValuationDashboard v={result.valuation} />
-                <DamageReport c={result.condition} />
+                <WhatIf result={result} online={online} />
+                <DamageReport c={result.condition} valuation={result.valuation} />
                 <MarketAnalytics result={result} />
                 <Comparables items={result.comparables} />
                 <SellerReport result={result} />
+                <Negotiation result={result} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -200,7 +206,10 @@ export default function Home() {
       </div>
 
       <footer className="mt-16 border-t pt-6 text-center text-xs text-muted">
-        AutoValuate Intelligence · trained damage detector + explainable pricing + agentic RAG · not a certified appraisal.
+        <p>AutoValuate Intelligence · trained damage detector + explainable pricing + agentic RAG · not a certified appraisal.</p>
+        <a href="/model" className="mt-2 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-medium text-muted transition hover:text-accent hover:border-accent/40">
+          <ShieldCheck className="h-3.5 w-3.5" /> See the model report card — every metric, failures included
+        </a>
       </footer>
 
       <HistoryDrawer

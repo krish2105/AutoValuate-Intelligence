@@ -42,7 +42,7 @@ MAX_PHOTOS = 8
 MAX_PHOTO_CHARS = 8_000_000          # ~6 MB decoded per photo (base64 is ~1.33x)
 RATE_LIMIT_MAX = int(os.environ.get("RATE_LIMIT_MAX", "20"))     # requests
 RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))  # seconds
-_RATE_PATHS = ("/valuate",)          # rate-limited prefixes (never /health or /)
+_RATE_PATHS = ("/valuate", "/estimate")   # rate-limited prefixes (never /health or /)
 # CORS: comma-separated origins (never wildcard). Defaults cover local dev + the
 # production Vercel app; the regex also allows this project's Vercel preview URLs.
 _origins = os.environ.get(
@@ -81,6 +81,36 @@ async def _rate_limit(request: Request, call_next):
     return await call_next(request)
 
 
+DAMAGE_CLASSES = {
+    "dent", "scratch", "crack", "glass_shatter",
+    "lamp_broken", "tire_flat", "punctured", "missing_part",
+}
+
+
+class ClientFinding(BaseModel):
+    """One per-class finding from an on-device (browser CV) scan."""
+    damage_type: str = Field(max_length=40)
+    instances: int = Field(ge=0, le=1000)
+    max_confidence: float = Field(ge=0.0, le=1.0)
+    photos_with_damage: list[int] = Field(default_factory=list, max_length=MAX_PHOTOS)
+    value_impact_pct: float = Field(ge=0.0, le=100.0)
+
+
+class ClientCondition(BaseModel):
+    """
+    Condition computed in the browser (Phase A, WASM CV) and sent so the valuation
+    is condition-adjusted without any server-side CV RAM. Validated + bounded here;
+    the orchestrator trusts these numbers only within safe limits.
+    """
+    cv_available: bool = True
+    condition_score: int = Field(ge=0, le=100)
+    price_adjustment_factor: float = Field(ge=0.5, le=1.0)  # never boosts price; capped like the server
+    findings: list[ClientFinding] = Field(default_factory=list, max_length=len(DAMAGE_CLASSES))
+    photos_assessed: int = Field(ge=0, le=MAX_PHOTOS)
+    total_value_impact_pct: float = Field(ge=0.0, le=100.0)
+    source: str = Field(default="browser", max_length=20)
+
+
 class ValuationRequest(BaseModel):
     make: str = Field(min_length=1, max_length=60)
     model: str = Field(min_length=1, max_length=60)
@@ -94,6 +124,7 @@ class ValuationRequest(BaseModel):
     city: str = Field(default="Dubai", max_length=40)
     sellerType: str = Field(default="Owner", max_length=40)
     photos: list[str] = Field(default_factory=list, max_length=MAX_PHOTOS)
+    client_condition: ClientCondition | None = None
 
     @field_validator("photos")
     @classmethod
@@ -119,7 +150,7 @@ def root() -> dict:
         "status": "ok",
         "llm_provider_configured": orchestrator._LLM.has_live_provider,
         "cv_service_configured": bool(os.environ.get("CV_SERVICE_URL", "").strip()),
-        "endpoints": ["/health", "/valuate", "/valuate/stream"],
+        "endpoints": ["/health", "/valuate", "/valuate/stream", "/estimate"],
     }
 
 
@@ -132,6 +163,18 @@ def health() -> dict:
 async def valuate(req: ValuationRequest) -> dict:
     # run the blocking pipeline off the event loop
     return await run_in_threadpool(orchestrator.run, req.model_dump())
+
+
+@app.post("/estimate")
+async def estimate(req: ValuationRequest) -> dict:
+    """
+    Fast, model-only re-valuation for the what-if sliders (Phase B): runs ONLY the
+    XGBoost quantile + conformal model — no comparables, no RAG, no LLM report — so a
+    dragged slider updates the price in well under a second on a warm dyno. Applies the
+    same optional client-condition adjustment as the full pipeline so numbers stay
+    consistent. Rate-limited + threadpooled like /valuate.
+    """
+    return await run_in_threadpool(orchestrator.estimate, req.model_dump())
 
 
 @app.post("/valuate/stream")

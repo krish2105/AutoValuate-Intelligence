@@ -11,6 +11,8 @@ export interface VehicleInput {
   city?: string;
   sellerType?: string;
   photos?: string[];
+  /** Optional on-device (browser CV) condition — see lib/cv-browser.ClientCondition. */
+  client_condition?: import("./cv-browser").ClientCondition | null;
 }
 
 export interface TraceStep {
@@ -55,6 +57,8 @@ export interface Condition {
   findings: DamageFinding[];
   photos_assessed: number;
   total_value_impact_pct?: number;
+  /** "browser" when the scan ran on-device (Phase A WASM CV). */
+  source?: string;
 }
 
 export interface Comparable {

@@ -54,12 +54,45 @@ def n_intake(state: State) -> State:
 
 
 def n_aggregate(state: State) -> State:
+    # Prefer an on-device (browser CV) condition when the client sent one — it's the
+    # free production path (no server CV RAM). Same condition shape as the server
+    # aggregator, so downstream valuation/report/confidence are unchanged.
+    client = (state.get("payload") or {}).get("client_condition")
+    if client and client.get("cv_available"):
+        cond = _condition_from_client(client)
+        detail = (f'condition {cond["condition_score"]}/100, {len(cond["findings"])} '
+                  f'damage type(s) · on-device scan')
+        return {"condition": cond, "trace": _trace(state, "aggregation", "ok", detail)}
+
     cond = aggregation_agent.aggregate(state["vehicle"])
     if cond["cv_available"]:
         detail = f'condition {cond["condition_score"]}/100, {len(cond["findings"])} damage type(s)'
     else:
         detail = f'CV skipped ({cond["reason"]})'
     return {"condition": cond, "trace": _trace(state, "aggregation", "ok", detail)}
+
+
+def _condition_from_client(client: dict) -> dict:
+    """Normalize a validated browser-CV condition to the server condition shape."""
+    findings = [
+        {
+            "damage_type": f.get("damage_type"),
+            "instances": int(f.get("instances", 0)),
+            "max_confidence": round(float(f.get("max_confidence", 0.0)), 3),
+            "photos_with_damage": list(f.get("photos_with_damage", [])),
+            "value_impact_pct": round(float(f.get("value_impact_pct", 0.0)), 1),
+        }
+        for f in client.get("findings", [])
+    ]
+    return {
+        "cv_available": True,
+        "condition_score": int(client.get("condition_score", 100)),
+        "price_adjustment_factor": round(float(client.get("price_adjustment_factor", 1.0)), 4),
+        "findings": findings,
+        "photos_assessed": int(client.get("photos_assessed", 0)),
+        "total_value_impact_pct": round(float(client.get("total_value_impact_pct", 0.0)), 1),
+        "source": "browser",
+    }
 
 
 def n_valuation(state: State) -> State:
@@ -186,6 +219,33 @@ _GRAPH = _build()
 def run(payload: dict) -> dict:
     final = _GRAPH.invoke({"payload": payload, "trace": []})
     return _shape(final)
+
+
+def estimate(payload: dict) -> dict:
+    """
+    Fast, model-only valuation for the what-if sliders (Phase B): intake + the
+    XGBoost quantile/conformal model only — no comparables, RAG, LLM, or verifier.
+    Applies the same optional client-condition price adjustment as the full graph so
+    a slider drag and a full run agree on the number. Returns just {ok, valuation}.
+    """
+    try:
+        vehicle = intake_agent.validate(payload)
+    except intake_agent.IntakeError as e:
+        return {"ok": False, "error": str(e)}
+
+    val = valuation_model.predict(vehicle)
+    client = payload.get("client_condition")
+    factor = 1.0
+    if client and client.get("cv_available"):
+        factor = float(client.get("price_adjustment_factor", 1.0))
+    # clamp defensively (mirrors the backend ClientCondition bounds)
+    factor = max(0.5, min(1.0, factor))
+    if factor != 1.0:
+        for k in ("price_low_aed", "price_mid_aed", "price_high_aed"):
+            val[k] = round(val[k] * factor)
+        val["condition_adjusted"] = True
+        val["condition_factor"] = round(factor, 4)
+    return {"ok": True, "valuation": val}
 
 
 def stream_steps(payload: dict) -> Iterator[dict]:

@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-ort.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-ort.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync-eval": "node scripts/sync-eval.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",
@@ -16,6 +19,8 @@
     "lucide-react": "^0.454.0",
     "next": "14.2.15",
     "next-themes": "^0.4.3",
+    "onnxruntime-web": "^1.27.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.13.0",
@@ -23,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.8.1",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "autoprefixer": "^10.4.20",

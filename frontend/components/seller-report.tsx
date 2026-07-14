@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileText, Quote, Download } from "lucide-react";
+import { FileText, Quote, Download, Award } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
 import { downloadReportPdf } from "@/lib/pdf";
+import { downloadCertificatePdf } from "@/lib/certificate";
 import { chunkReport, displayForCitation, reportView } from "@/lib/report";
 import { SectionCard, Pill } from "./ui";
 
@@ -33,6 +34,13 @@ export function SellerReport({ result }: { result: ValuationResult }) {
       icon={<FileText className="h-4.5 w-4.5" />}
       right={
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => downloadCertificatePdf(result)}
+            aria-label="Download appraisal certificate"
+            className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs text-muted transition hover:border-accent/40 hover:text-accent"
+          >
+            <Award className="h-3.5 w-3.5" /> Certificate
+          </button>
           <button
             onClick={() => downloadReportPdf(result)}
             aria-label="Download PDF report"
