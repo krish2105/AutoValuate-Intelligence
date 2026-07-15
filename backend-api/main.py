@@ -140,9 +140,9 @@ class ClientCondition(BaseModel):
     """
     cv_available: bool = True
     condition_score: int = Field(ge=0, le=100)
-    # Never boosts price; floored at 0.45 — a photo-only scan can't justify wiping out
-    # >55% of value (mirrors aggregation_agent.MAX_TOTAL_DEDUCTION). Was 0.5.
-    price_adjustment_factor: float = Field(ge=0.45, le=1.0)
+    # Never boosts price; floored at 0.38 — a photo-only scan can't justify wiping out
+    # >62% of value (mirrors aggregation_agent.MAX_TOTAL_DEDUCTION).
+    price_adjustment_factor: float = Field(ge=0.38, le=1.0)
     findings: list[ClientFinding] = Field(default_factory=list, max_length=len(DAMAGE_CLASSES))
     photos_assessed: int = Field(ge=0, le=MAX_PHOTOS)
     total_value_impact_pct: float = Field(ge=0.0, le=100.0)

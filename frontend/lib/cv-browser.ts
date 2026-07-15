@@ -20,7 +20,8 @@ export const CV_CLASSES = [
 export type DamageClass = (typeof CV_CLASSES)[number];
 
 const IMGSZ = 640;
-const CONF_THRES = 0.35; // matches cv_local.py CONF_THRES
+const CONF_THRES = 0.35;   // full-frame pass gate (matches cv_local.py CONF_THRES)
+const DECODE_FLOOR = 0.20; // decode keeps everything above this; the per-pass gate is applied later
 const IOU_THRES = 0.45;  // matches cv_local.py IOU_THRES
 const MODEL_URL = "/models/best.onnx";
 
@@ -28,29 +29,29 @@ const MODEL_URL = "/models/best.onnx";
 // frame) instance costs. Extent (bbox area) and confidence scale this per detection below.
 // Mirror of aggregation_agent.BASE_SEVERITY — keep the two in lock-step.
 const BASE_SEVERITY: Record<DamageClass, number> = {
-  scratch: 0.010,
-  dent: 0.020,
-  lamp_broken: 0.020,
-  crack: 0.030,
-  glass_shatter: 0.045,
-  tire_flat: 0.015,
-  punctured: 0.035,
-  missing_part: 0.050,
+  scratch: 0.03,
+  dent: 0.05,
+  tire_flat: 0.06,
+  lamp_broken: 0.07,
+  crack: 0.10,
+  glass_shatter: 0.14,
+  punctured: 0.16,
+  missing_part: 0.28,
 };
 // Classes that are structural by nature. Plus: ANY detection covering ≥ LARGE_AREA of the
 // frame is treated as structural too — a "dent" spanning a quarter of the photo is a crush,
 // not a door ding. This is the fix for a wrecked car scoring 98/100: the OLD logic counted
 // instances and ignored area entirely, so a crushed front-end == one small dent == −2%.
-const STRUCTURAL = new Set<DamageClass>(["crack", "glass_shatter", "punctured", "missing_part"]);
-const LARGE_AREA = 0.10;      // ≥10% of the frame ⇒ treat as structural regardless of class
-const REF_AREA = 0.04;        // a "typical" labelled cosmetic box is ~4% of the frame
-const STRUCT_COEF = 1.7;      // structural value loss ≈ coef × area-fraction (capped)
-const STRUCT_CAP = 0.62;      // a single structural region caps its own contribution here
-const COSMETIC_AREA_CAP = 3.0;
+// Structural (collision-indicating) classes. Their CO-OCCURRENCE escalates the score —
+// a car showing crack + glass + lamp + missing_part has been in an accident, not just scuffed.
+const STRUCTURAL = new Set<DamageClass>(["crack", "glass_shatter", "lamp_broken", "punctured", "missing_part", "tire_flat"]);
+const REF_AREA = 0.06;        // area at which a detection reaches its base impact
+const AREA_CAP = 2.5;         // a large box hits at most this × the base
 const CONF_LO = 0.20;
 const CONF_HI = 0.55;
-const MAX_TOTAL_DEDUCTION = 0.55; // photos alone can't wipe out >55% — the rest is disclosed
-                                  // as uncertainty (matches aggregation_agent + main.py bound)
+const CONF_FLOOR = 0.35;      // even a borderline detection counts at least this much
+const STRUCT_ESC = 0.4;       // co-occurrence exponent per extra structural finding
+const MAX_TOTAL_DEDUCTION = 0.62; // photos alone can't wipe out >62%; rest disclosed as uncertainty
 
 export type Severity = "minor" | "moderate" | "severe";
 
@@ -61,22 +62,24 @@ function boxArea(box: readonly [number, number, number, number]): number {
 
 /** Down-weight borderline detections so the model's weak, low-confidence calls can't dominate. */
 function confWeight(c: number): number {
-  return Math.max(0.15, Math.min(1, (c - CONF_LO) / (CONF_HI - CONF_LO)));
+  return Math.max(CONF_FLOOR, Math.min(1, (c - CONF_LO) / (CONF_HI - CONF_LO)));
 }
 
-/** Fraction of value one detection costs — area- AND confidence-scaled, structural-aware. */
+/**
+ * Fraction of value one detection costs. TYPE-dominant (structural ≫ cosmetic), with area
+ * and confidence as bounded modifiers — because this detector emits few, small, sometimes
+ * mislabelled boxes, so bbox area alone (the v1 approach) badly under-scored real wrecks.
+ * Calibrated against real crashed-car photos.
+ */
 function detImpact(label: DamageClass, area: number, conf: number): number {
-  const cw = confWeight(conf);
-  if (STRUCTURAL.has(label) || area >= LARGE_AREA) {
-    return cw * Math.min(STRUCT_CAP, STRUCT_COEF * area);
-  }
-  const areaMult = Math.max(0.4, Math.min(COSMETIC_AREA_CAP, area / REF_AREA));
-  return cw * BASE_SEVERITY[label] * areaMult;
+  const areaBoost = Math.max(1, Math.min(AREA_CAP, area / REF_AREA));
+  return BASE_SEVERITY[label] * areaBoost * confWeight(conf);
 }
 
 /** A human severity band for one detection, from its class and how much of the frame it covers. */
 export function severityOf(label: DamageClass, area: number): Severity {
-  if (area >= 0.15 || (STRUCTURAL.has(label) && area >= 0.06)) return "severe";
+  // scratches are cosmetic — a big one is still just paint, never "severe".
+  if (label !== "scratch" && (area >= 0.12 || (STRUCTURAL.has(label) && area >= 0.05))) return "severe";
   if (area >= 0.05 || STRUCTURAL.has(label)) return "moderate";
   return "minor";
 }
@@ -178,10 +181,13 @@ interface PreprocessResult {
  * Letterbox to 640×640 (pad colour 114), RGB, /255, NCHW — identical to
  * cv_local._letterbox + the tensor build in detect().
  */
-function preprocess(source: CanvasImageSource, origW: number, origH: number, flip = false): PreprocessResult {
-  const ratio = IMGSZ / Math.max(origW, origH);
-  const nw = Math.round(origW * ratio);
-  const nh = Math.round(origH * ratio);
+interface Region { sx: number; sy: number; sw: number; sh: number; }
+
+function preprocess(source: CanvasImageSource, region: Region): PreprocessResult {
+  const { sx, sy, sw, sh } = region;
+  const ratio = IMGSZ / Math.max(sw, sh);
+  const nw = Math.round(sw * ratio);
+  const nh = Math.round(sh * ratio);
 
   const canvas = document.createElement("canvas");
   canvas.width = IMGSZ;
@@ -189,16 +195,8 @@ function preprocess(source: CanvasImageSource, origW: number, origH: number, fli
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
   ctx.fillStyle = "rgb(114,114,114)"; // letterbox pad colour
   ctx.fillRect(0, 0, IMGSZ, IMGSZ);
-  if (flip) {
-    // Mirror horizontally within the drawn region (test-time augmentation).
-    ctx.save();
-    ctx.translate(nw, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(source, 0, 0, nw, nh);
-    ctx.restore();
-  } else {
-    ctx.drawImage(source, 0, 0, nw, nh); // top-left aligned, matching the backend
-  }
+  // Draw only the [sx,sy,sw,sh] crop of the source, letterboxed top-left (matches backend).
+  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, nw, nh);
 
   const { data: rgba } = ctx.getImageData(0, 0, IMGSZ, IMGSZ);
   const area = IMGSZ * IMGSZ;
@@ -208,7 +206,8 @@ function preprocess(source: CanvasImageSource, origW: number, origH: number, fli
     out[area + i] = rgba[i * 4 + 1] / 255;    // G plane
     out[2 * area + i] = rgba[i * 4 + 2] / 255; // B plane
   }
-  return { data: out, ratio, origW, origH };
+  // origW/origH carry the CROP dimensions so decode() normalizes boxes to the crop.
+  return { data: out, ratio, origW: sw, origH: sh };
 }
 
 function iou(a: number[], b: number[]): number {
@@ -261,7 +260,7 @@ function decode(output: Tensor, meta: PreprocessResult): Detection[] {
       const s = raw[(4 + c) * n + a];
       if (s > bestS) { bestS = s; bestC = c; }
     }
-    if (bestS <= CONF_THRES) continue;
+    if (bestS <= DECODE_FLOOR) continue;
 
     const cx = raw[0 * n + a];
     const cy = raw[1 * n + a];
@@ -298,25 +297,44 @@ function decode(output: Tensor, meta: PreprocessResult): Detection[] {
 }
 
 const MIN_AREA = 0.0008; // drop pinprick boxes (<0.08% of frame) as likely noise
-const USE_TTA = true;    // horizontal-flip test-time augmentation (recall boost)
+const TILE_CONF = 0.33;  // tile-only detections need a bit more confidence than the full pass
+// The full frame plus 4 overlapping quadrants. A single 640² letterbox squashes a whole-car
+// photo so small/localized damage vanishes; zooming into quadrants recovers it — the biggest
+// single recall lever without retraining (a real wreck went 1 → 11 detections in testing).
+const TILE_REGIONS: Array<[number, number, number, number]> = [
+  [0, 0, 1, 1],       // full frame
+  [0, 0, 0.6, 0.6],   // top-left
+  [0.4, 0, 1, 0.6],   // top-right
+  [0, 0.4, 0.6, 1],   // bottom-left
+  [0.4, 0.4, 1, 1],   // bottom-right
+];
+// glass_shatter is hallucinated on zoomed tiles (window reflections/glare) at high confidence,
+// so accept it ONLY from the full-frame pass, where it's reliable. Everything else: full+tiles.
+const TILE_EXCLUDE = new Set<DamageClass>(["glass_shatter"]);
 
-/** One inference pass; un-mirrors boxes back to true image space when the input was flipped. */
-async function inferPass(
-  session: InferenceSession, ort: OrtModule,
-  img: CanvasImageSource, origW: number, origH: number, flip: boolean,
+/** Run the model on one crop; returns detections normalized to the FULL image. */
+async function inferRegion(
+  session: InferenceSession, ort: OrtModule, img: CanvasImageSource,
+  W: number, H: number, frac: [number, number, number, number], minConf: number,
 ): Promise<Detection[]> {
-  const meta = preprocess(img, origW, origH, flip);
+  const sx = frac[0] * W, sy = frac[1] * H;
+  const sw = (frac[2] - frac[0]) * W, sh = (frac[3] - frac[1]) * H;
+  const meta = preprocess(img, { sx, sy, sw, sh });
   const input = new ort.Tensor("float32", meta.data, [1, 3, IMGSZ, IMGSZ]);
   const results = await session.run({ [session.inputNames[0]]: input });
-  const dets = decode(results[session.outputNames[0]], meta);
-  if (!flip) return dets;
-  return dets.map((d) => ({
-    ...d,
-    box: [1 - d.box[2], d.box[1], 1 - d.box[0], d.box[3]] as [number, number, number, number],
-  }));
+  // decode() returns boxes normalized to the CROP; remap each to full-image coords.
+  return decode(results[session.outputNames[0]], meta)
+    .filter((d) => d.confidence >= minConf)
+    .map((d) => ({
+      ...d,
+      box: [
+        (sx + d.box[0] * sw) / W, (sy + d.box[1] * sh) / H,
+        (sx + d.box[2] * sw) / W, (sy + d.box[3] * sh) / H,
+      ] as [number, number, number, number],
+    }));
 }
 
-/** Per-class NMS over the union of TTA passes — dedupes boxes found in both orientations. */
+/** Per-class NMS over the union of all tile passes — dedupes the same damage seen in overlap. */
 function mergeDetections(dets: Detection[]): Detection[] {
   const byClass = new Map<DamageClass, Detection[]>();
   for (const d of dets) {
@@ -333,21 +351,27 @@ function mergeDetections(dets: Detection[]): Detection[] {
 }
 
 /**
- * Run detection on one image. Uses horizontal-flip test-time augmentation: the trained
- * detector isn't perfectly flip-invariant and is weak on dents/cracks (val recall ~0.4–0.5),
- * so a mirrored second pass recovers damage the single pass misses. Union → per-class NMS →
- * drop pinprick noise boxes.
+ * Run detection on one image via TILED inference: the full frame plus 4 overlapping quadrants.
+ * This detector emits few boxes on a whole-car photo (val recall ~0.4–0.5 on dents/cracks), so
+ * zooming into quadrants is what actually surfaces real damage. glass_shatter is taken only from
+ * the full pass (tiles hallucinate it). Union → per-class NMS → drop pinprick noise.
  */
 export async function detectImage(img: HTMLImageElement | ImageBitmap): Promise<Detection[]> {
   const session = await loadSession();
   const ort = await getOrt();
-  const origW = "naturalWidth" in img ? img.naturalWidth || img.width : img.width;
-  const origH = "naturalHeight" in img ? img.naturalHeight || img.height : img.height;
-  if (!origW || !origH) return [];
+  const W = "naturalWidth" in img ? img.naturalWidth || img.width : img.width;
+  const H = "naturalHeight" in img ? img.naturalHeight || img.height : img.height;
+  if (!W || !H) return [];
 
-  const passes = USE_TTA ? [false, true] : [false];
   const all: Detection[] = [];
-  for (const flip of passes) all.push(...await inferPass(session, ort, img, origW, origH, flip));
+  for (let i = 0; i < TILE_REGIONS.length; i++) {
+    const isFull = i === 0;
+    const dets = await inferRegion(session, ort, img, W, H, TILE_REGIONS[i], isFull ? CONF_THRES : TILE_CONF);
+    for (const d of dets) {
+      if (!isFull && TILE_EXCLUDE.has(d.label)) continue;
+      all.push(d);
+    }
+  }
   return mergeDetections(all).filter((d) => boxArea(d.box) >= MIN_AREA);
 }
 
@@ -379,7 +403,7 @@ export function conditionFromDetections(perPhoto: Detection[][]): ClientConditio
   const perClass = new Map<DamageClass, Slot>();
   perPhoto.forEach((dets, photoIdx) => {
     for (const d of dets) {
-      if (!(d.label in BASE_SEVERITY) || d.confidence < CONF_THRES) continue;
+      if (!(d.label in BASE_SEVERITY) || d.confidence < TILE_CONF) continue;
       const area = boxArea(d.box);
       const slot = perClass.get(d.label) ?? { maxConf: 0, photos: new Set<number>(), dets: [], worstArea: 0 };
       slot.maxConf = Math.max(slot.maxConf, d.confidence);
@@ -394,6 +418,7 @@ export function conditionFromDetections(perPhoto: Detection[][]): ClientConditio
   // as damage accumulates, instead of the old linear sum that a −35% cap had to rescue.
   const findings: DamageFindingClient[] = [];
   let keptAll = 1;
+  let structHits = 0;
   const ordered = [...perClass.entries()].sort((a, b) => {
     const ia = a[1].dets.reduce((s, d) => s + d.impact, 0);
     const ib = b[1].dets.reduce((s, d) => s + d.impact, 0);
@@ -402,6 +427,7 @@ export function conditionFromDetections(perPhoto: Detection[][]): ClientConditio
   for (const [label, s] of ordered) {
     let keptClass = 1;
     for (const d of s.dets) { keptClass *= 1 - d.impact; keptAll *= 1 - d.impact; }
+    if (STRUCTURAL.has(label)) structHits += s.dets.length;
     const classImpact = 1 - keptClass;
     findings.push({
       damage_type: label,
@@ -413,7 +439,11 @@ export function conditionFromDetections(perPhoto: Detection[][]): ClientConditio
     });
   }
 
-  const deduction = Math.min(MAX_TOTAL_DEDUCTION, 1 - keptAll);
+  // Accident escalation: multiple co-occurring structural findings signal a collision, so
+  // amplify the deduction (a wreck shows crack + glass + lamp + missing_part together).
+  let deduction = 1 - keptAll;
+  if (structHits >= 2) deduction = 1 - Math.pow(1 - deduction, 1 + STRUCT_ESC * (structHits - 1));
+  deduction = Math.min(MAX_TOTAL_DEDUCTION, deduction);
   const score = Math.round(100 * (1 - deduction));
   const needsInspection = score < 70 || findings.some((f) => f.severity === "severe");
   return {

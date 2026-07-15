@@ -18,9 +18,15 @@ import numpy as np
 
 MODEL_PATH = Path(__file__).resolve().parents[2] / "cv-service" / "model" / "best.onnx"
 IMGSZ = 640
-CONF_THRES = 0.35
+CONF_THRES = 0.35        # full-frame pass gate
+TILE_CONF = 0.33         # tile-only pass gate
 IOU_THRES = 0.45
 CLASSES = ["dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat", "punctured", "missing_part"]
+# Full frame + 4 overlapping quadrants (fractions). Zooming into quadrants recovers small/
+# localized damage a single 640² letterbox squashes away — the main recall lever, no retrain.
+TILE_REGIONS = [(0, 0, 1, 1), (0, 0, 0.6, 0.6), (0.4, 0, 1, 0.6), (0, 0.4, 0.6, 1), (0.4, 0.4, 1, 1)]
+# glass_shatter is hallucinated on zoomed tiles (reflections); take it only from the full pass.
+TILE_EXCLUDE = {"glass_shatter"}
 
 
 def available() -> bool:
@@ -72,17 +78,22 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou: float) -> list[int]:
     return keep
 
 
-def _infer_pass(img: np.ndarray, flip: bool) -> list[dict]:
-    """One inference pass. Un-mirrors boxes back to true image space when flipped."""
+def _infer_region(img: np.ndarray, frac, min_conf: float) -> list[dict]:
+    """Run the model on one crop of the image; return detections normalized to the FULL image."""
     sess = _session()
     H, W = img.shape[:2]
-    src = img[:, ::-1, :] if flip else img
-    lb, r = _letterbox(src)
+    sx, sy = int(frac[0] * W), int(frac[1] * H)
+    ex, ey = int(frac[2] * W), int(frac[3] * H)
+    crop = img[sy:ey, sx:ex]
+    if crop.size == 0:
+        return []
+    cw, ch = ex - sx, ey - sy
+    lb, r = _letterbox(crop)
     x = lb.astype(np.float32).transpose(2, 0, 1)[None] / 255.0
     out = np.squeeze(sess.run(None, {sess.get_inputs()[0].name: x})[0], 0).T  # (N, 4+nc)
     boxes, scores = out[:, :4], out[:, 4:]
     cls = scores.argmax(1); conf = scores.max(1)
-    m = conf > CONF_THRES
+    m = conf > min_conf
     boxes, cls, conf = boxes[m], cls[m], conf[m]
     if len(boxes) == 0:
         return []
@@ -93,14 +104,13 @@ def _infer_pass(img: np.ndarray, flip: bool) -> list[dict]:
         idx = np.where(cls == c)[0]
         for k in _nms(xyxy[idx], conf[idx], IOU_THRES):
             j = idx[k]
-            bx = xyxy[j] / r
-            x1, y1, x2, y2 = bx[0] / W, bx[1] / H, bx[2] / W, bx[3] / H
-            if flip:
-                x1, x2 = 1 - x2, 1 - x1  # un-mirror
+            bx = xyxy[j] / r  # back to crop pixels
+            X1 = (sx + bx[0]) / W; Y1 = (sy + bx[1]) / H
+            X2 = (sx + bx[2]) / W; Y2 = (sy + bx[3]) / H
             dets.append({
                 "label": CLASSES[int(c)],
                 "confidence": round(float(conf[j]), 4),
-                "box": [round(float(np.clip(v, 0, 1)), 4) for v in (x1, y1, x2, y2)],
+                "box": [round(float(np.clip(v, 0, 1)), 4) for v in (X1, Y1, X2, Y2)],
             })
     return dets
 
@@ -123,11 +133,19 @@ def detect(image_spec: str) -> list[dict]:
     """
     Return [{label, confidence, box:[x1,y1,x2,y2] normalized}] for one image spec.
 
-    Uses horizontal-flip test-time augmentation (recall boost) — the detector is weak on
-    dents/cracks and not flip-invariant, so a mirrored second pass recovers damage the
-    single pass misses. Mirror of frontend cv-browser.detectImage.
+    Uses TILED inference: the full frame plus 4 overlapping quadrants. This detector emits
+    few boxes on a whole-car photo (val recall ~0.4–0.5 on dents/cracks), so zooming into
+    quadrants is what surfaces real damage. glass_shatter is taken only from the full pass
+    (tiles hallucinate it). Mirror of frontend cv-browser.detectImage.
     """
     img = _load_image(image_spec)
-    dets = _merge(_infer_pass(img, False) + _infer_pass(img, True))
+    all_dets: list[dict] = []
+    for i, frac in enumerate(TILE_REGIONS):
+        is_full = i == 0
+        for d in _infer_region(img, frac, CONF_THRES if is_full else TILE_CONF):
+            if not is_full and d["label"] in TILE_EXCLUDE:
+                continue
+            all_dets.append(d)
+    dets = _merge(all_dets)
     dets.sort(key=lambda d: -d["confidence"])
     return dets

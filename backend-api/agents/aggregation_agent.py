@@ -19,25 +19,28 @@ import httpx
 # Base cosmetic severity per class — value fraction a *reference-sized* (~4% of frame)
 # instance costs. Extent (bbox area) + confidence scale this per detection below. Keep in
 # lock-step with frontend/lib/cv-browser.ts BASE_SEVERITY.
+# TYPE-dominant severity (structural ≫ cosmetic). Area/confidence are bounded modifiers,
+# because this detector emits few, small, sometimes-mislabelled boxes — so bbox area alone
+# badly under-scored real wrecks. Calibrated on real crashed-car photos. Keep in lock-step
+# with frontend/lib/cv-browser.ts BASE_SEVERITY.
 BASE_SEVERITY = {
-    "scratch": 0.010,
-    "dent": 0.020,
-    "lamp_broken": 0.020,
-    "crack": 0.030,
-    "glass_shatter": 0.045,
-    "tire_flat": 0.015,
-    "punctured": 0.035,
-    "missing_part": 0.050,
+    "scratch": 0.03,
+    "dent": 0.05,
+    "tire_flat": 0.06,
+    "lamp_broken": 0.07,
+    "crack": 0.10,
+    "glass_shatter": 0.14,
+    "punctured": 0.16,
+    "missing_part": 0.28,
 }
-STRUCTURAL = {"crack", "glass_shatter", "punctured", "missing_part"}
-CONF_THRESHOLD = 0.35
-LARGE_AREA = 0.10        # ≥10% of frame ⇒ structural regardless of class (a crush, not a ding)
-REF_AREA = 0.04
-STRUCT_COEF = 1.7
-STRUCT_CAP = 0.62
-COSMETIC_AREA_CAP = 3.0
+STRUCTURAL = {"crack", "glass_shatter", "lamp_broken", "punctured", "missing_part", "tire_flat"}
+CONF_THRESHOLD = 0.33    # matches TILE_CONF — the lowest pass gate; detect() already gated
+REF_AREA = 0.06
+AREA_CAP = 2.5
 CONF_LO, CONF_HI = 0.20, 0.55
-MAX_TOTAL_DEDUCTION = 0.55  # photos alone can't wipe out >55%; rest disclosed as uncertainty
+CONF_FLOOR = 0.35
+STRUCT_ESC = 0.4         # co-occurrence exponent per extra structural finding
+MAX_TOTAL_DEDUCTION = 0.62  # photos alone can't wipe out >62%; rest disclosed as uncertainty
 
 
 def _box_area(box) -> float:
@@ -47,19 +50,17 @@ def _box_area(box) -> float:
 
 
 def _conf_weight(c: float) -> float:
-    return max(0.15, min(1.0, (c - CONF_LO) / (CONF_HI - CONF_LO)))
+    return max(CONF_FLOOR, min(1.0, (c - CONF_LO) / (CONF_HI - CONF_LO)))
 
 
 def _det_impact(label: str, area: float, conf: float) -> float:
-    cw = _conf_weight(conf)
-    if label in STRUCTURAL or area >= LARGE_AREA:
-        return cw * min(STRUCT_CAP, STRUCT_COEF * area)
-    area_mult = max(0.4, min(COSMETIC_AREA_CAP, area / REF_AREA))
-    return cw * BASE_SEVERITY[label] * area_mult
+    area_boost = max(1.0, min(AREA_CAP, area / REF_AREA))
+    return BASE_SEVERITY[label] * area_boost * _conf_weight(conf)
 
 
 def _severity_of(label: str, area: float) -> str:
-    if area >= 0.15 or (label in STRUCTURAL and area >= 0.06):
+    # scratches are cosmetic — a big one is still just paint, never "severe".
+    if label != "scratch" and (area >= 0.12 or (label in STRUCTURAL and area >= 0.05)):
         return "severe"
     if area >= 0.05 or label in STRUCTURAL:
         return "moderate"
@@ -137,12 +138,14 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     # Probabilistic union across every detection — area- and confidence-weighted — so the
     # score reflects how much of the car is damaged, not merely how many boxes fired. (The
     # old count-based sum scored a crushed front-end the same as one door ding: −2%.)
-    findings, kept_all = [], 1.0
+    findings, kept_all, struct_hits = [], 1.0, 0
     for label, s in sorted(per_class.items(), key=lambda kv: -sum(kv[1]["impacts"])):
         kept_class = 1.0
         for imp in s["impacts"]:
             kept_class *= (1 - imp)
             kept_all *= (1 - imp)
+        if label in STRUCTURAL:
+            struct_hits += len(s["impacts"])
         findings.append({
             "damage_type": label,
             "instances": len(s["impacts"]),
@@ -152,7 +155,11 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             "severity": _severity_of(label, s["worst_area"]),
         })
 
-    deduction = min(MAX_TOTAL_DEDUCTION, 1 - kept_all)
+    # Accident escalation: co-occurring structural findings signal a collision, so amplify.
+    deduction = 1 - kept_all
+    if struct_hits >= 2:
+        deduction = 1 - (1 - deduction) ** (1 + STRUCT_ESC * (struct_hits - 1))
+    deduction = min(MAX_TOTAL_DEDUCTION, deduction)
     # round-half-up (not Python's banker's rounding) so it matches the browser's Math.round
     condition_score = int(100 * (1 - deduction) + 0.5)
     needs_inspection = condition_score < 70 or any(f["severity"] == "severe" for f in findings)
