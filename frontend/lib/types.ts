@@ -32,8 +32,11 @@ export interface Valuation {
   price_low_aed: number;
   price_mid_aed: number;
   price_high_aed: number;
+  /** Coverage measured for THIS car's segment (Mondrian conformal), not the overall average. */
   interval_coverage: number;
   interval_pct_width: number;
+  /** Brand tier the interval was calibrated on: "luxury" | "mass" (or "global" pre-Mondrian). */
+  interval_segment?: string;
   currency: string;
   explanation: { baseline_log: number; top_factors: ShapFactor[] };
   model_meta: { cv_median_ape_pct: number; cv_mae_aed: number; training_rows: number; dataset: string };

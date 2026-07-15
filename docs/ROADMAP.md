@@ -20,7 +20,7 @@ Two honest lenses — the same product scores very differently depending on the 
 | Dimension | Score | Notes |
 |---|---:|---|
 | ML / DL technical depth | 9.0 / 10 | YOLOv8 (mAP 0.732), XGBoost quantile + split‑conformal, SHAP, hybrid RAG, LangGraph, Verifier gate. |
-| Trust & evaluation | 9.0 / 10 | Faithfulness 1.000, honest conformal 0.776, Verifier grounds every number. Rare and valuable. |
+| Trust & evaluation | 9.0 / 10 | Faithfulness 1.000, honest conformal 0.805 (per-segment: luxury 0.782 / mass 0.814), Verifier grounds every number. Rare and valuable. |
 | Data authenticity | 8.5 / 10 | Real Dubizzle scrape; synthetic set correctly rejected. **But only ~672 rows** — thin moat. |
 | Core valuation UX | 8.5 / 10 | Clean flow, streaming trace, explainability, PDF, history, guest access. |
 | UI / UX polish | 8.0 / 10 | Premium feel, dark/light, animated. Room for a design‑system pass + pro charts. |

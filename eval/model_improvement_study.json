@@ -4,74 +4,83 @@
   "n_calibration": 134,
   "n_test": 135,
   "split": "60/20/20 train/calibration/test, seed 42 \u2014 same discipline as uncertainty_study.py",
-  "note": "MAPE here is study-internal (corpus features only); it is NOT comparable to the shipped model's published 19.6% MAPE, which was trained on the full cleaned dataset.",
+  "note": "B4's MAPE is single-split and study-internal \u2014 use it to RANK the configs, not as the shipped number (see eval/valuation_metrics.json, which averages 5 seeds x 5 folds). B5 averages 20 seeds because single-split coverage is noise here.",
   "B4_monotonic_constraints": {
     "unconstrained": {
-      "test_mape": 0.34238398781218465,
+      "test_mape": 0.34826084302888477,
       "km_sweep": {
         "violation_rate": 1.0,
-        "max_single_step_price_rise_pct": 22.863760133651
+        "max_single_step_price_rise_pct": 30.502349761493637
       },
       "age_sweep": {
-        "violation_rate": 0.9777777777777777,
-        "max_single_step_price_rise_pct": 29.588937450355075
+        "violation_rate": 0.9851851851851852,
+        "max_single_step_price_rise_pct": 45.350190810864824
       }
     },
     "monotone-quantile": {
-      "test_mape": 0.3423765495366328,
+      "test_mape": 0.35521894682792965,
       "km_sweep": {
-        "violation_rate": 0.674074074074074,
-        "max_single_step_price_rise_pct": 6.192307056535701
+        "violation_rate": 0.8296296296296296,
+        "max_single_step_price_rise_pct": 5.5348616775471955
       },
       "age_sweep": {
-        "violation_rate": 0.8148148148148148,
-        "max_single_step_price_rise_pct": 13.53551342508693
+        "violation_rate": 0.8296296296296296,
+        "max_single_step_price_rise_pct": 15.717401055316621
       }
     },
     "monotone-squarederror-mid": {
-      "test_mape": 0.30511757804563255,
+      "test_mape": 0.31655407526116575,
       "km_sweep": {
         "violation_rate": 0.0,
         "max_single_step_price_rise_pct": 0.0
       },
       "age_sweep": {
-        "violation_rate": 0.6222222222222222,
-        "max_single_step_price_rise_pct": 26.55405991769776
+        "violation_rate": 0.6592592592592592,
+        "max_single_step_price_rise_pct": 30.43652875099682
       }
     },
     "finding": "xgboost 3.2.0 reg:quantileerror violates monotone_constraints even on single coordinates (demonstrated: +2.9% price for +20k km on a constrained model); reg:squarederror honors them fully."
   },
   "B5_mondrian_conformal": {
-    "global_delta_log": 0.3930921697065255,
+    "seeds": 20,
+    "mid_model": "reg:squarederror + monotone_constraints (the B4 winner, as shipped)",
+    "global_delta_log": 0.3931532786277322,
     "mondrian_delta_log": {
-      "luxury": 0.4709390421258455,
-      "mass": 0.37948410620667694
+      "luxury": 0.4622535397981058,
+      "mass": 0.38287555772582743
+    },
+    "overall_coverage": {
+      "global": 0.7944,
+      "mondrian": 0.8033
     },
     "groups": {
       "luxury": {
-        "n_test": 39,
-        "n_calibration": 47,
+        "n_test_per_split": 42,
         "global": {
-          "coverage": 0.4358974358974359,
-          "mean_width_aed": 122062.9765625
+          "coverage": 0.7469,
+          "coverage_std": 0.0965,
+          "mean_width_aed": 151371.43
         },
         "mondrian": {
-          "coverage": 0.5897435897435898,
-          "mean_width_aed": 147864.015625
+          "coverage": 0.7932,
+          "coverage_std": 0.1004,
+          "mean_width_aed": 179612.55
         }
       },
       "mass": {
-        "n_test": 96,
-        "n_calibration": 87,
+        "n_test_per_split": 93,
         "global": {
-          "coverage": 0.7916666666666666,
-          "mean_width_aed": 63969.5625
+          "coverage": 0.8153,
+          "coverage_std": 0.0523,
+          "mean_width_aed": 74242.09
         },
         "mondrian": {
-          "coverage": 0.7708333333333334,
-          "mean_width_aed": 61648.02734375
+          "coverage": 0.8065,
+          "coverage_std": 0.0688,
+          "mean_width_aed": 72201.7
         }
       }
-    }
+    },
+    "finding": "Averaged over 20 seeds, per-tier calibration lifts luxury coverage toward the 80% target at the cost of a wider luxury band. The original single-split reading (luxury 43.6%) does not replicate and was split noise; per-split coverage std is ~5-10pp here."
   }
 }

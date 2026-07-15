@@ -1,33 +1,27 @@
 {
   "global_importance": {
-    "noOfCylinders": 0.3650999963283539,
-    "age": 0.29589998722076416,
-    "kilometers": 0.23970000445842743,
-    "make": 0.19840000569820404,
-    "bodyType": 0.08009999990463257,
-    "model": 0.07720000296831131,
-    "mileage_per_year": 0.03020000085234642,
-    "regionalSpecs": 0.01549999974668026,
-    "sellerType": 0.013000000268220901,
-    "fuelType": 0.010999999940395355,
-    "city": 0.003000000026077032,
-    "transmissionType": 0.0010999999940395355
+    "age": 0.348,
+    "noOfCylinders": 0.3453,
+    "kilometers": 0.2554,
+    "make": 0.2189,
+    "model": 0.1098,
+    "bodyType": 0.0773,
+    "regionalSpecs": 0.0287,
+    "fuelType": 0.0116,
+    "sellerType": 0.0087,
+    "city": 0.0066,
+    "transmissionType": 0.0061
   },
   "directional_checks": {
     "kilometers": {
-      "shap_corr": -0.858,
+      "shap_corr": -0.861,
       "expected": "negative",
       "pass": true
     },
     "age": {
-      "shap_corr": -0.924,
+      "shap_corr": -0.944,
       "expected": "negative",
       "pass": true
-    },
-    "mileage_per_year": {
-      "shap_corr": 0.09,
-      "expected": "negative",
-      "pass": false
     }
   }
 }

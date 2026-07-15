@@ -5,134 +5,134 @@
   "checks_failed": 0,
   "level_distribution": {
     "high": 0,
-    "medium": 0,
-    "low": 18
+    "medium": 16,
+    "low": 2
   },
   "all_recommend_inspection_when_uncertain": true,
   "per_case": [
     {
       "id": "bench-01",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-02",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-03",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-04",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-05",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 87.0,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-06",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 87.0,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-07",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 87.0,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-08",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-09",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-10",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-11",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-12",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-13",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-14",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 87.0,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-15",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-16",
-      "level": "low",
-      "interval_pct": 91.4,
+      "level": "medium",
+      "interval_pct": 76.4,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-17",
       "level": "low",
-      "interval_pct": 91.4,
+      "interval_pct": 87.0,
       "cv_assessed": false,
       "recommends_inspection": true
     },
     {
       "id": "bench-18",
       "level": "low",
-      "interval_pct": 91.4,
+      "interval_pct": 87.0,
       "cv_assessed": false,
       "recommends_inspection": true
     }

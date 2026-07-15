@@ -257,8 +257,43 @@ models: unconstrained quantile (matches the shipped objective), the same with
 
 **Recommendation.** Move the mid estimate to a constrained `reg:squarederror` model (keep
 the conformal band exactly as-is — D3 showed the band, not the quantile heads, carries the
-coverage promise); revisit `mileage_per_year` before promising age monotonicity. Not
-applied to the shipped artifact yet — retraining it belongs with the full pipeline rerun.
+coverage promise); revisit `mileage_per_year` before promising age monotonicity.
+
+> ### ✅ Shipped (2026-07-15) — and the age tension is resolved
+>
+> Both recommendations are now live in `backend-api/models/train_valuation.py`. Finding 2
+> replicates on **xgboost 2.1.3**, the version `requirements.txt` actually pins for
+> production (the original was measured on 3.2.0): with `monotone_constraints` set,
+> `reg:quantileerror` still raises price **+1.02%** for +20k km on a single coordinate;
+> `reg:squarederror` moves **0.00%**.
+>
+> **Finding 4 ("age is not fixable by constraints") turned out to be fixable — by deleting a
+> feature.** B3's ablation asked whether `mileage_per_year` earns its place. It does not:
+>
+> | Mid config (25 folds: 5 seeds × 5) | MAPE | median APE | km viol. | age viol. |
+> |---|---:|---:|---:|---:|
+> | quantile, unconstrained *(was shipped)* | 26.70 ± 2.43 | 19.37 ± 2.01 | **100%** | **94.8%** |
+> | squarederror + monotone | 24.85 ± 2.83 | 16.20 ± 2.02 | 0% | 57.0% |
+> | **squarederror + monotone, no `mileage_per_year`** | **24.23 ± 2.65** | **15.85 ± 2.02** | **0%** | **0%** |
+>
+> Dropping it does not cost accuracy — it *improves* it — and takes age violations to zero,
+> because the feature was the whole tension: sweeping age lowered km/age, a *positive* signal,
+> which shoved price back up through a side door the constraint could not close.
+>
+> The evidence was already sitting in `eval/shap_report.json` and nobody had joined the dots:
+> `mileage_per_year` had the **lowest importance of any numeric feature** (0.030) *and* was the
+> **only failing directional check** (SHAP corr **+0.09**, expected negative). One deletion fixed
+> the failing check, the age guarantee, and the error rate at once. The `/model` page's "one SHAP
+> check doesn't pass cleanly" limitation is gone — not hidden, *fixed*.
+>
+> **Shipped result** (`eval/valuation_metrics.json`): median APE **19.6% → 15.9%**, MAE
+> 39,238 → 33,793 AED, **zero** monotonicity violations on both sliders, SHAP directional checks
+> both pass. The training script asserts all of it and refuses to write an artifact otherwise.
+>
+> A caveat worth keeping: the constrained model fits *worse* in-sample (6.4% vs 4.6% median APE)
+> and better out-of-sample. The monotone prior is doing real regularization on thin data — which
+> also means individual cars can move a lot (a 2019 Corolla went 33.0k → 45.3k AED, against a
+> corpus median of 46.5k for that model). The old number was not more trustworthy for being older.
 
 ---
 
@@ -271,28 +306,51 @@ average can hide a lot: does a luxury Mercedes get the same honest interval as a
 tier (Mondrian / group-conditional conformal, luxury vs mass), score per-tier coverage on
 the same untouched test rows.
 
-**Results** (`eval/model_improvement_study.json`):
+> ### ⚠️ Correction (2026-07-15, superseding this chapter's first version)
+>
+> The original version of this chapter reported **luxury coverage 43.6%** and concluded "the
+> 80% promise is false for luxury cars." **That finding was wrong and has been retracted.**
+> Two defects, both now fixed in `eval/model_improvement_study.py`:
+>
+> 1. **It measured the model B4 had just rejected.** The code called
+>    `fit_quantiles(monotone=True)` under a comment claiming these were "the B4 winner's
+>    heads" — but B4's winner was the *squared-error* mid. The monotone-**quantile** model is
+>    precisely the one B4 proved defective (it silently ignores its own constraints). B5 was
+>    calibrating the reject.
+> 2. **It read coverage off a single split.** With ~39 luxury rows in a 20% test split,
+>    coverage carries a **~5–10pp standard deviation**. One split is not a measurement.
+>
+> Re-run over **20 seeds** on the model we actually ship, luxury coverage is **74.7% ± 9.7**,
+> not 43.6% — the original number lies outside the entire observed range across 20 seeds. The
+> lesson is not "we got a number wrong"; it is that **a single split cannot measure coverage on
+> a 671-row corpus**, and this repo published a headline claim built on exactly that.
 
-| Group | n_test | n_cal | global coverage | global width | Mondrian coverage | Mondrian width |
-|---|---:|---:|---:|---:|---:|---:|
-| luxury | 39 | 47 | **43.6%** | 122,063 AED | 59.0% | 147,864 AED |
-| mass | 96 | 87 | 79.2% | 63,970 AED | 77.1% | 61,648 AED |
+**Results** (`eval/model_improvement_study.json`, mean ± std over 20 seeds, xgboost 2.1.3):
+
+| Group | n_test/split | global coverage | global width | Mondrian coverage | Mondrian width |
+|---|---:|---:|---:|---:|---:|
+| luxury | 42 | 74.7% ± 9.7 | 151,371 AED | **79.3% ± 10.0** | 179,613 AED |
+| mass | 93 | 81.5% ± 5.2 | 74,242 AED | 80.7% ± 6.9 | 72,202 AED |
+| *overall* | 135 | *79.4%* | — | *80.3%* | — |
 
 **Findings.**
 
-1. **The 80% promise is false for luxury cars.** The shipped global interval covers only
-   **43.6%** of luxury test cars — the overall number is propped up by the mass-market
-   majority. This is the same failure D3 caught in raw quantiles, one level up: a metric
-   that is true on average and wrong for an identifiable group of users.
-2. **Mondrian helps but cannot finish the job here.** Per-tier calibration lifts luxury to
-   59% (wider band, as expected) — still short of 80%, because 47 calibration rows produce
-   a noisy quantile and luxury prices are simply harder. The honest bound on what
-   calibration can do is, once again, **data**: this is the corpus-size ceiling from D5
-   wearing a different hat.
-3. **What to do meanwhile.** Ship the per-tier *diagnostic*, not the per-tier interval:
-   surface lower confidence for luxury valuations in the confidence panel, add per-tier
-   coverage to the eval gate so it is tracked as the Phase-E cron grows the corpus, and
-   re-run this study at ~2–3k rows where per-group calibration sets become respectable.
+1. **The 80% promise is broadly kept — but it is weakest exactly where it matters.** Under a
+   single global delta, luxury sits at **74.7%** against an 80% target while mass over-covers
+   at 81.5%. The direction of the original finding survives; its magnitude did not. Luxury is
+   genuinely harder to price, and the average quietly borrows from the mass-market majority.
+2. **Mondrian earns its place, modestly.** Per-tier calibration lifts luxury to **79.3%** and
+   brings overall to 80.3%, costing ~19% wider luxury bands (151k → 180k AED). Both segments
+   now land inside the ±2pp acceptance band. The gain is ~1 standard error — small, but it is
+   the *principled* target (group-conditional rather than marginal coverage), and its cost is
+   paid in honesty (a wider band on a harder car), not accuracy.
+3. **Shipped.** `backend-api/models/train_valuation.py` calibrates one delta per tier and the
+   bundle carries them; `valuation_model.predict()` selects by the car's make and reports the
+   coverage measured *for that segment*, not the flattering overall average. A make in no known
+   tier falls back to the global delta.
+4. **The real ceiling is still data.** ±10pp of seed noise on luxury coverage is what ~40
+   calibration rows buys. Re-run at ~2–3k rows before drawing any finer conclusion; until then
+   the per-tier numbers are directional, and the honest response is the wider band.
 
 ---
 

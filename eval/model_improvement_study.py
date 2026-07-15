@@ -153,8 +153,9 @@ def main() -> int:
     report: dict = {
         "n_total": n, "n_train": len(tr), "n_calibration": len(cal), "n_test": len(te),
         "split": "60/20/20 train/calibration/test, seed 42 — same discipline as uncertainty_study.py",
-        "note": "MAPE here is study-internal (corpus features only); it is NOT comparable to the "
-                "shipped model's published 19.6% MAPE, which was trained on the full cleaned dataset.",
+        "note": "B4's MAPE is single-split and study-internal — use it to RANK the configs, not "
+                "as the shipped number (see eval/valuation_metrics.json, which averages 5 seeds "
+                "x 5 folds). B5 averages 20 seeds because single-split coverage is noise here.",
     }
 
     # ── B4: monotonic constraints ────────────────────────────────────────────────
@@ -191,36 +192,78 @@ def main() -> int:
     report["B4_monotonic_constraints"] = b4
 
     # ── B5: Mondrian conformal by brand tier ────────────────────────────────────
-    models = fit_quantiles(Xtr, ytr, monotone=True)  # evaluate on the B4 winner's heads
-    p_cal = models["q50"].predict(Xcal)
-    p_te = models["q50"].predict(Xte)
-    resid_cal = np.abs(ycal - p_cal)
+    # Two corrections to the first version of this study (2026-07-15), both material:
+    #
+    #   1. It calibrated on `fit_quantiles(monotone=True)` — labelled "the B4 winner's heads",
+    #      but B4's winner was the *squared-error* mid. The monotone-quantile model is the one
+    #      B4 had just proven defective (it ignores its own constraints), so B5 was measuring
+    #      the reject. It now uses the model we actually ship.
+    #   2. It read coverage off ONE split. With ~39 luxury rows in a 20% test split, coverage
+    #      carries a ~5-10pp std — the original "luxury covers only 43.6%" does not replicate
+    #      (20-seed mean: 75-79%) and was noise, not a segment failure. Coverage is now the
+    #      mean over SEEDS splits, and the spread is reported alongside it.
+    #
+    # The honest residual finding survives both fixes: luxury is genuinely the weaker segment
+    # (~75% under a global delta), and per-tier calibration lifts it toward the 80% promise.
+    SEEDS = 20
+    acc: dict = {m: {"overall": [], "by_tier": {}} for m in ("global", "mondrian")}
+    widths: dict = {m: {} for m in ("global", "mondrian")}
+    deltas_seen: dict = {"global": [], "mondrian": {}}
+    n_te_tier: dict = {}
 
-    tier_cal = df.iloc[cal]["brand_tier"].to_numpy()
-    tier_te = df.iloc[te]["brand_tier"].to_numpy()
+    for seed in range(SEEDS):
+        rng_s = np.random.default_rng(seed)
+        idx_s = rng_s.permutation(len(df))
+        tr_s, cal_s, te_s = idx_s[:n_tr], idx_s[n_tr:n_tr + n_cal], idx_s[n_tr + n_cal:]
+        mid = xgb.XGBRegressor(
+            objective="reg:squarederror", n_estimators=400, max_depth=5, learning_rate=0.05,
+            subsample=0.9, colsample_bytree=0.9, random_state=SEED, monotone_constraints=cons,
+        ).fit(Xall.iloc[tr_s], y[tr_s])
 
-    delta_global = conformal_delta(resid_cal, ALPHA)
-    deltas_mondrian = {t: conformal_delta(resid_cal[tier_cal == t], ALPHA)
-                       for t in np.unique(tier_cal)}
+        resid_s = np.abs(y[cal_s] - mid.predict(Xall.iloc[cal_s]))
+        t_cal, t_te = df.iloc[cal_s]["brand_tier"].to_numpy(), df.iloc[te_s]["brand_tier"].to_numpy()
+        p_s, y_s = mid.predict(Xall.iloc[te_s]), y[te_s]
 
-    b5: dict = {"global_delta_log": delta_global,
-                "mondrian_delta_log": deltas_mondrian, "groups": {}}
-    for t in np.unique(tier_te):
-        m = tier_te == t
-        yt, pt = yte[m], p_te[m]
+        d_glob = conformal_delta(resid_s, ALPHA)
+        d_mond = {t: conformal_delta(resid_s[t_cal == t], ALPHA) for t in np.unique(t_cal)}
+        deltas_seen["global"].append(d_glob)
+        for t, d in d_mond.items():
+            deltas_seen["mondrian"].setdefault(t, []).append(d)
 
-        def cov_width(delta: float) -> tuple[float, float]:
-            covered = float(((yt >= pt - delta) & (yt <= pt + delta)).mean())
-            width = float((np.expm1(pt + delta) - np.expm1(pt - delta)).mean())
-            return covered, width
+        for method, d_te in (("global", np.full(len(te_s), d_glob)),
+                             ("mondrian", np.array([d_mond[t] for t in t_te]))):
+            hit = np.abs(y_s - p_s) <= d_te
+            acc[method]["overall"].append(float(hit.mean()))
+            width = np.expm1(p_s + d_te) - np.expm1(p_s - d_te)
+            for t in np.unique(t_te):
+                m_t = t_te == t
+                acc[method]["by_tier"].setdefault(t, []).append(float(hit[m_t].mean()))
+                widths[method].setdefault(t, []).append(float(width[m_t].mean()))
+                n_te_tier.setdefault(t, []).append(int(m_t.sum()))
 
-        cg, wg = cov_width(delta_global)
-        cm, wm = cov_width(deltas_mondrian[t])
+    b5: dict = {
+        "seeds": SEEDS,
+        "mid_model": "reg:squarederror + monotone_constraints (the B4 winner, as shipped)",
+        "global_delta_log": float(np.mean(deltas_seen["global"])),
+        "mondrian_delta_log": {t: float(np.mean(v)) for t, v in deltas_seen["mondrian"].items()},
+        "overall_coverage": {m: round(float(np.mean(acc[m]["overall"])), 4) for m in acc},
+        "groups": {},
+    }
+    for t in acc["global"]["by_tier"]:
         b5["groups"][t] = {
-            "n_test": int(m.sum()), "n_calibration": int((tier_cal == t).sum()),
-            "global": {"coverage": cg, "mean_width_aed": wg},
-            "mondrian": {"coverage": cm, "mean_width_aed": wm},
+            "n_test_per_split": int(round(float(np.mean(n_te_tier[t])))),
+            "global": {"coverage": round(float(np.mean(acc["global"]["by_tier"][t])), 4),
+                       "coverage_std": round(float(np.std(acc["global"]["by_tier"][t])), 4),
+                       "mean_width_aed": round(float(np.mean(widths["global"][t])), 2)},
+            "mondrian": {"coverage": round(float(np.mean(acc["mondrian"]["by_tier"][t])), 4),
+                         "coverage_std": round(float(np.std(acc["mondrian"]["by_tier"][t])), 4),
+                         "mean_width_aed": round(float(np.mean(widths["mondrian"][t])), 2)},
         }
+    b5["finding"] = (
+        f"Averaged over {SEEDS} seeds, per-tier calibration lifts luxury coverage toward the 80% "
+        "target at the cost of a wider luxury band. The original single-split reading (luxury "
+        "43.6%) does not replicate and was split noise; per-split coverage std is ~5-10pp here."
+    )
     report["B5_mondrian_conformal"] = b5
 
     OUT.write_text(json.dumps(report, indent=2))
@@ -235,12 +278,17 @@ def main() -> int:
               f"{r['age_sweep']['violation_rate']:>10.1%}"
               f"{r['age_sweep']['max_single_step_price_rise_pct']:>13.2f}%")
 
-    print(f"\nB5 — Mondrian conformal by brand tier (target {TARGET_COVERAGE:.0%})")
-    print(f"{'group':<9}{'n_te':>5}{'n_cal':>6} | {'global cov':>10}{'width':>10} | {'mondrian cov':>12}{'width':>10}")
+    print(f"\nB5 — Mondrian conformal by brand tier (target {TARGET_COVERAGE:.0%}, "
+          f"mean of {b5['seeds']} seeds)")
+    print(f"{'group':<9}{'n_te':>5} | {'global cov':>12}{'width':>11} | {'mondrian cov':>14}{'width':>11}")
     for t, g in b5["groups"].items():
-        print(f"{t:<9}{g['n_test']:>5}{g['n_calibration']:>6} | {g['global']['coverage']:>9.1%}"
-              f"{g['global']['mean_width_aed']:>10,.0f} | {g['mondrian']['coverage']:>11.1%}"
-              f"{g['mondrian']['mean_width_aed']:>10,.0f}")
+        print(f"{t:<9}{g['n_test_per_split']:>5} | "
+              f"{g['global']['coverage']:>8.1%}±{g['global']['coverage_std']:<3.1%}"
+              f"{g['global']['mean_width_aed']:>11,.0f} | "
+              f"{g['mondrian']['coverage']:>10.1%}±{g['mondrian']['coverage_std']:<3.1%}"
+              f"{g['mondrian']['mean_width_aed']:>11,.0f}")
+    print(f"overall: global {b5['overall_coverage']['global']:.1%} | "
+          f"mondrian {b5['overall_coverage']['mondrian']:.1%}")
     print(f"\n-> {OUT.relative_to(ROOT)}")
     return 0
 

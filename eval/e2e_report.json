@@ -3,257 +3,257 @@
   "passed": 18,
   "failed": 0,
   "pass_rate": 1.0,
-  "elapsed_sec": 2.6,
-  "avg_sec_per_case": 0.14,
+  "elapsed_sec": 36.8,
+  "avg_sec_per_case": 2.04,
   "cases": [
     {
       "id": "bench-01",
       "passed": true,
       "fails": [],
-      "mid_aed": 134637.0,
+      "mid_aed": 105467.0,
       "range_aed": [
-        86501.0,
-        209559.0
+        72597.0,
+        153218.0
       ],
       "top_comp": "2020 nissan patrol",
       "top_sim": 0.9595,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-02",
       "passed": true,
       "fails": [],
-      "mid_aed": 163133.0,
+      "mid_aed": 70650.0,
       "range_aed": [
-        104809.0,
-        253913.0
+        48631.0,
+        102638.0
       ],
       "top_comp": "2017 toyota land cruiser",
       "top_sim": 0.941,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-03",
       "passed": true,
       "fails": [],
-      "mid_aed": 31936.0,
+      "mid_aed": 45330.0,
       "range_aed": [
-        20518.0,
-        49708.0
+        31203.0,
+        65855.0
       ],
       "top_comp": "2019 toyota corolla",
       "top_sim": 0.9544,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-04",
       "passed": true,
       "fails": [],
-      "mid_aed": 66162.0,
+      "mid_aed": 104114.0,
       "range_aed": [
-        42507.0,
-        102979.0
+        71666.0,
+        151252.0
       ],
       "top_comp": "2019 honda civic",
       "top_sim": 0.9309,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-05",
       "passed": true,
       "fails": [],
-      "mid_aed": 240046.0,
+      "mid_aed": 139857.0,
       "range_aed": [
-        154224.0,
-        373625.0
+        91686.0,
+        213336.0
       ],
       "top_comp": "2019 lexus lx-series",
       "top_sim": 0.9729,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-06",
       "passed": true,
       "fails": [],
-      "mid_aed": 77892.0,
+      "mid_aed": 75531.0,
       "range_aed": [
-        50044.0,
-        121237.0
+        49515.0,
+        115214.0
       ],
       "top_comp": "2020 bmw x5",
       "top_sim": 0.9627,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-07",
       "passed": true,
       "fails": [],
-      "mid_aed": 52820.0,
+      "mid_aed": 59445.0,
       "range_aed": [
-        33936.0,
-        82214.0
+        38970.0,
+        90677.0
       ],
       "top_comp": "2020 mercedes-benz c-class",
       "top_sim": 0.9289,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-08",
       "passed": true,
       "fails": [],
-      "mid_aed": 66376.0,
+      "mid_aed": 110546.0,
       "range_aed": [
-        42645.0,
-        103312.0
+        76093.0,
+        160596.0
       ],
       "top_comp": "2024 hyundai creta",
       "top_sim": 0.9733,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-09",
       "passed": true,
       "fails": [],
-      "mid_aed": 93190.0,
+      "mid_aed": 107757.0,
       "range_aed": [
-        59872.0,
-        145048.0
+        74174.0,
+        156545.0
       ],
       "top_comp": "2023 toyota rav 4",
       "top_sim": 0.9734,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-10",
       "passed": true,
       "fails": [],
-      "mid_aed": 63076.0,
+      "mid_aed": 75159.0,
       "range_aed": [
-        40524.0,
-        98176.0
+        51735.0,
+        109188.0
       ],
       "top_comp": "2017 ford mustang",
       "top_sim": 0.9725,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-11",
       "passed": true,
       "fails": [],
-      "mid_aed": 29905.0,
+      "mid_aed": 30356.0,
       "range_aed": [
-        19213.0,
-        46547.0
+        20895.0,
+        44101.0
       ],
       "top_comp": "2019 nissan sunny",
       "top_sim": 0.9418,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-12",
       "passed": true,
       "fails": [],
-      "mid_aed": 61045.0,
+      "mid_aed": 42990.0,
       "range_aed": [
-        39220.0,
-        95015.0
+        29592.0,
+        62454.0
       ],
       "top_comp": "2016 toyota prado",
       "top_sim": 0.9744,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-13",
       "passed": true,
       "fails": [],
-      "mid_aed": 18625.0,
+      "mid_aed": 34205.0,
       "range_aed": [
-        11966.0,
-        28991.0
+        23545.0,
+        49692.0
       ],
       "top_comp": "2015 honda accord",
       "top_sim": 0.9639,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-14",
       "passed": true,
       "fails": [],
-      "mid_aed": 138465.0,
+      "mid_aed": 176773.0,
       "range_aed": [
-        88960.0,
-        215516.0
+        115887.0,
+        269649.0
       ],
       "top_comp": "2020 lexus es-series",
       "top_sim": 0.9459,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-15",
       "passed": true,
       "fails": [],
-      "mid_aed": 40730.0,
+      "mid_aed": 22644.0,
       "range_aed": [
-        26168.0,
-        63396.0
+        15587.0,
+        32896.0
       ],
       "top_comp": "2019 mitsubishi pajero",
       "top_sim": 0.9114,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-16",
       "passed": true,
       "fails": [],
-      "mid_aed": 18076.0,
+      "mid_aed": 14215.0,
       "range_aed": [
-        11613.0,
-        28136.0
+        9785.0,
+        20652.0
       ],
       "top_comp": "2010 toyota yaris",
       "top_sim": 0.9368,
       "verified": true,
-      "confidence": "low",
+      "confidence": "medium",
       "report_provider": "template"
     },
     {
       "id": "bench-17",
       "passed": true,
       "fails": [],
-      "mid_aed": 83211.0,
+      "mid_aed": 143895.0,
       "range_aed": [
-        53461.0,
-        129516.0
+        94333.0,
+        219497.0
       ],
       "top_comp": "2025 honda s2000",
       "top_sim": 0.5894,
@@ -265,10 +265,10 @@
       "id": "bench-18",
       "passed": true,
       "fails": [],
-      "mid_aed": 104157.0,
+      "mid_aed": 121432.0,
       "range_aed": [
-        66918.0,
-        162118.0
+        79607.0,
+        185231.0
       ],
       "top_comp": "2019 mitsubishi pajero",
       "top_sim": 0.6349,

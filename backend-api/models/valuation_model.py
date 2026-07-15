@@ -55,13 +55,32 @@ def _encode(vehicle: dict[str, Any], bundle: dict) -> pd.DataFrame:
 
 
 def _derive(vehicle: dict[str, Any], reference_year: int) -> dict[str, Any]:
-    """Fill engineered fields (age, mileage_per_year) if the caller passed raw inputs."""
+    """Fill engineered fields (age) if the caller passed raw inputs.
+
+    `mileage_per_year` used to be derived here and fed to the model. It was dropped in the
+    B3 ablation: being km/age-derived, sweeping age lowered it — a *positive* signal — which
+    pushed price back up and defeated the age monotonicity constraint. Removing it improved
+    accuracy. Nothing reads it now; do not reintroduce it without re-running the sweep gate.
+    """
     v = dict(vehicle)
     if "age" not in v and v.get("year"):
         v["age"] = max(0, reference_year - int(v["year"]))
-    if "mileage_per_year" not in v and v.get("kilometers") and v.get("age"):
-        v["mileage_per_year"] = round(float(v["kilometers"]) / max(1, float(v["age"])), 0)
     return v
+
+
+def _tier_delta(vehicle: dict[str, Any], bundle: dict) -> tuple[str, float]:
+    """Mondrian conformal: the interval half-width calibrated for this car's brand tier.
+
+    A single global delta is 80% *on average* while covering luxury cars only ~75% — an
+    average that is wrong for an identifiable group of users. Luxury gets a wider, honest
+    band. Unknown makes fall back to the global delta.
+    """
+    by_tier = bundle.get("conformal_delta_log_by_tier")
+    if not by_tier:  # pre-Mondrian artifact
+        return "global", float(bundle["conformal_delta_log"])
+    luxury = set(bundle.get("brand_tier_luxury", ()))
+    tier = "luxury" if str(vehicle.get("make", "")).strip().lower() in luxury else "mass"
+    return tier, float(by_tier.get(tier, bundle["conformal_delta_log"]))
 
 
 def predict(vehicle: dict[str, Any], top_k: int = 6) -> dict[str, Any]:
@@ -79,8 +98,9 @@ def predict(vehicle: dict[str, Any], top_k: int = 6) -> dict[str, Any]:
     X = _encode(v, bundle)
 
     log_q50 = float(bundle["models"]["q50"].predict(X)[0])
-    delta = float(bundle["conformal_delta_log"])  # calibrated 80% half-width in log space
+    tier, delta = _tier_delta(v, bundle)  # calibrated 80% half-width in log space
 
+    # log1p/expm1 are exact inverses — the training target is log1p(price).
     mid = math.expm1(log_q50)
     low = math.expm1(log_q50 - delta)
     high = math.expm1(log_q50 + delta)
@@ -104,12 +124,15 @@ def predict(vehicle: dict[str, Any], top_k: int = 6) -> dict[str, Any]:
         })
     contribs.sort(key=lambda c: abs(c["shap_log"]), reverse=True)
 
+    # Report the coverage measured for THIS car's tier, not the flattering overall average.
+    tier_cov = (bundle.get("conformal_coverage_by_tier") or {}).get(tier, {})
     return {
         "price_low_aed": round(low, 0),
         "price_mid_aed": round(mid, 0),
         "price_high_aed": round(high, 0),
-        "interval_coverage": bundle.get("conformal_coverage", 0.8),
+        "interval_coverage": tier_cov.get("coverage", bundle.get("conformal_coverage", 0.8)),
         "interval_pct_width": round((high - low) / mid * 100, 1),
+        "interval_segment": tier,
         "currency": "AED",
         "explanation": {
             "baseline_log": round(base, 4),

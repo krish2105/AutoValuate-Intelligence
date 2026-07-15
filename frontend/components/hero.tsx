@@ -11,8 +11,9 @@ import { HeroCar } from "./hero-car";
 import { Magnetic, Ticker, WordReveal } from "./fx";
 
 const TELEMETRY = [
-  "YOLOv8 · mAP@0.5 0.732", "8 damage classes", "672 real UAE listings",
-  "conformal 77.6% coverage", "SHAP-traced pricing", "on-device CV — photos never leave your browser",
+  "YOLOv8 · mAP@0.5 0.732", "8 damage classes", "671 real UAE listings",
+  "conformal 80.5% coverage", "price never rises with mileage — guaranteed",
+  "SHAP-traced pricing", "on-device CV — photos never leave your browser",
   "verifier-grounded citations", "Dubai → Fujairah",
 ];
 

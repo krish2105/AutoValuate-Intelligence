@@ -71,17 +71,35 @@ export default function ModelCard() {
       <div className="space-y-5">
         {/* pricing model */}
         <Reveal>
-          <SectionCard title="Pricing model" subtitle="XGBoost quantile regression + split-conformal · 5-fold held-out" icon={<Target className="h-4.5 w-4.5" />}
+          <SectionCard title="Pricing model" subtitle={`${valuation.model} · ${valuation.cv}`} icon={<Target className="h-4.5 w-4.5" />}
             right={<Pill tone="good">{valuation.improvement_over_baseline_pct}% better than baseline</Pill>}>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Median error" value={`${valuation.metrics.median_APE_pct.mean}%`} sub={`± ${valuation.metrics.median_APE_pct.std}`} />
               <Stat label="MAPE" value={`${valuation.metrics.MAPE_pct.mean}%`} sub={`± ${valuation.metrics.MAPE_pct.std}`} />
               <Stat label="MAE" value={`AED ${Math.round(valuation.metrics.MAE_AED.mean / 1000)}k`} sub="mean abs. error" tone="info" />
-              <Stat label="Interval coverage" value={`${Math.round(valuation.conformal.honest_test_coverage * 100)}%`} sub={`target ${Math.round(valuation.conformal.target * 100)}% · honest`} tone="warn" />
+              <Stat label="Interval coverage" value={`${Math.round(valuation.conformal.honest_test_coverage * 100)}%`} sub={`target ${Math.round(valuation.conformal.target * 100)}% · ${valuation.conformal.seeds} seeds`} tone={valuation.conformal.honest_test_coverage >= valuation.conformal.target ? "good" : "warn"} />
             </div>
+
+            {/* Coverage per segment: an 80% average can hide a badly-covered group. */}
+            <p className="mt-4 mb-2 text-xs font-medium text-muted">Interval coverage by segment — calibrated separately (Mondrian conformal)</p>
+            <div className="grid grid-cols-2 gap-3">
+              {Object.entries(valuation.conformal.coverage_by_tier).map(([tier, c]) => (
+                <Stat key={tier} label={`${tier} cars`} value={`${Math.round(c.coverage * 100)}%`}
+                  sub={`± ${Math.round(c.std * 100)}pp over ${c.n_splits} splits`}
+                  tone={c.coverage >= valuation.conformal.target - 0.02 ? "good" : "warn"} />
+              ))}
+            </div>
+
+            {/* The guarantee: a car can never get more expensive by ageing or adding km. */}
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Stat label="Mileage monotonicity" value={`${Math.round((1 - valuation.monotonicity.kilometers.violation_rate) * 100)}%`} sub="cars where price never rises with km" tone="good" />
+              <Stat label="Age monotonicity" value={`${Math.round((1 - valuation.monotonicity.age.violation_rate) * 100)}%`} sub="cars where price never rises with age" tone="good" />
+            </div>
+
             <p className="mt-3 text-xs text-muted">
-              Trained on <span className="tnum text-fg">{valuation.training_rows}</span> real UAE listings. The conformal interval is reported at its
-              <span className="text-fg"> honest held-out coverage ({Math.round(valuation.conformal.honest_test_coverage * 100)}%)</span>, not the nominal target — we show the real number.
+              Trained on <span className="tnum text-fg">{valuation.training_rows}</span> real UAE listings. Coverage is a mean over
+              <span className="text-fg"> {valuation.conformal.seeds} splits</span> — at this corpus size a single split swings coverage by ~5pp, so one number would be noise, not a measurement.
+              Luxury cars get a deliberately wider band: they are harder to price, and pretending otherwise is how an 80% average hides a badly-covered group.
             </p>
           </SectionCard>
         </Reveal>
@@ -163,9 +181,9 @@ export default function ModelCard() {
             right={<Pill tone="warn">read this</Pill>}>
             <ul className="space-y-2 text-sm text-fg/85">
               <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span>Corpus is <span className="text-fg">{valuation.training_rows} listings</span> — thin for rarer makes; comparables can be sparse. Growing the corpus is the biggest lever.</span></li>
-              <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span>Conformal coverage is <span className="text-fg">{Math.round(valuation.conformal.honest_test_coverage * 100)}%</span> vs an {Math.round(valuation.conformal.target * 100)}% target on the honest held-out split — intervals are slightly optimistic.</span></li>
+              <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span>Median error is <span className="text-fg">{valuation.metrics.median_APE_pct.mean}%</span>. The published floor for used-car pricing is ~8% MAPE on corpora ~15x this size — the gap is <span className="text-fg">data, not tuning</span>. Anyone promising 99% on price is selling something.</span></li>
+              <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span><span className="text-fg">Luxury</span> is the weakest segment: {Math.round(valuation.conformal.coverage_by_tier.luxury.coverage * 100)}% coverage ± {Math.round(valuation.conformal.coverage_by_tier.luxury.std * 100)}pp, calibrated on only ~40 luxury rows per split. We widen the band rather than pretend.</span></li>
               <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span><span className="text-fg">Crack</span> detection recall is the weakest class ({(cvEval.per_class as any).crack.recall.toFixed(2)}); fine cracks are easily missed.</span></li>
-              <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span>One SHAP directional check (<span className="text-fg">mileage/year</span>) doesn't pass cleanly — flagged rather than hidden.</span></li>
             </ul>
           </SectionCard>
         </Reveal>
