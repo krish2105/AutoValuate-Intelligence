@@ -9,42 +9,42 @@
       "same_model_count@5": 5,
       "median_comp_price_aed": 47500,
       "top": [
-        "2019 toyota corolla 211457km AED31000",
-        "2018 toyota corolla 171000km AED29999",
-        "2022 toyota corolla 59000km AED47500"
+        "2019 toyota corolla 211457.0km AED31000.0",
+        "2018 toyota corolla 171000.0km AED29999.0",
+        "2022 toyota corolla 59000.0km AED47500.0"
       ]
     },
     {
       "query": "2020 nissan patrol",
       "same_make_precision@5": 1.0,
       "same_model_count@5": 5,
-      "median_comp_price_aed": 116000,
+      "median_comp_price_aed": 98000,
       "top": [
-        "2020 nissan patrol 143000km AED143000",
-        "2019 nissan patrol 135000km AED75000",
-        "2021 nissan patrol 144000km AED162000"
+        "2020 nissan patrol 82000.0km AED95000.0",
+        "2020 nissan patrol 89000.0km AED98000.0",
+        "2020 nissan patrol 89000.0km AED97000.0"
       ]
     },
     {
       "query": "2018 mercedes-benz c-class",
       "same_make_precision@5": 1.0,
       "same_model_count@5": 4,
-      "median_comp_price_aed": 124950,
+      "median_comp_price_aed": 89500,
       "top": [
-        "2021 mercedes-benz c-class 81000km AED119999",
-        "2020 mercedes-benz c-class 136000km AED89500",
-        "2021 mercedes-benz c-class 42156km AED124950"
+        "2018 mercedes-benz s-class 88000.0km AED138000.0",
+        "2021 mercedes-benz c-class 81000.0km AED119999.0",
+        "2020 mercedes-benz c-class 136000.0km AED89500.0"
       ]
     },
     {
       "query": "2017 ford mustang",
       "same_make_precision@5": 1.0,
-      "same_model_count@5": 4,
+      "same_model_count@5": 5,
       "median_comp_price_aed": 69000,
       "top": [
-        "2017 ford mustang 110000km AED69000",
-        "2017 ford mustang 98306km AED109950",
-        "2020 ford mustang 115000km AED67000"
+        "2017 ford mustang 110000.0km AED69000.0",
+        "2020 ford mustang 115000.0km AED67000.0",
+        "2017 ford mustang 98306.0km AED109950.0"
       ]
     },
     {
@@ -53,20 +53,20 @@
       "same_model_count@5": 0,
       "median_comp_price_aed": 135000,
       "top": [
-        "2019 lexus lx-series 134000km AED240000",
-        "2019 lexus gx-series 127000km AED135000",
-        "2019 lexus ux-series 28539km AED85000"
+        "2019 lexus lx-series 134000.0km AED240000.0",
+        "2019 lexus gx-series 127000.0km AED135000.0",
+        "2019 lexus ux-series 28539.0km AED85000.0"
       ]
     },
     {
       "query": "2020 honda civic",
       "same_make_precision@5": 1.0,
       "same_model_count@5": 5,
-      "median_comp_price_aed": 37500,
+      "median_comp_price_aed": 44500,
       "top": [
-        "2020 honda civic 75000km AED32500",
-        "2020 honda civic 109000km AED47500",
-        "2020 honda civic 120000km AED47000"
+        "2020 honda civic 71000.0km AED44500.0",
+        "2020 honda civic 75000.0km AED32500.0",
+        "2020 honda civic 120000.0km AED47000.0"
       ]
     }
   ]
