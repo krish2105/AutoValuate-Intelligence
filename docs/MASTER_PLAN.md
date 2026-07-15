@@ -6,7 +6,8 @@
 > free hosting. Every workstream ends in a *measured* acceptance metric — nothing ships on
 > vibes.
 >
-> **Status:** planning only. Nothing here executes until you say go.
+> **Status:** execution began 2026-07-15 — see the ledger in §0.5 below for what is
+> done, what is retired by evidence, and what is blocked on which decision or account.
 > Companion docs: [`ROADMAP.md`](ROADMAP.md) · [`RESEARCH.md`](RESEARCH.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md)
 
 ---
@@ -18,6 +19,54 @@
 3. **Data > cleverness.** Two experiments already proved the biggest levers are *data*, not architecture — so the data pipeline is workstream zero, not an afterthought.
 4. **Reproducible.** Config-driven runs, pinned seeds, tracked experiments, versioned data + models.
 5. **Measured gates.** A change ships only if the eval it targets improves and nothing else regresses.
+
+---
+
+## 0.5 Status ledger (updated 2026-07-15)
+
+Everything free-tier and locally executable was executed; each remaining item names its
+exact blocker. Commits are on `feat/hero-scan-loop`.
+
+**✅ Executed (measured, committed):**
+
+| Item | What shipped | Evidence |
+|---|---|---|
+| 0.3 (partial) | Corpus is now **versioned in git** — found & fixed: `data/processed/` was gitignored, so the Phase-E cron could never persist growth; corpus reconstructed losslessly from the committed index | retrieval eval byte-identical to committed report |
+| 0.5 | `scripts/validate_corpus.py` gate wired into the scrape workflow | a bad scrape can no longer merge |
+| 0.7 (partial) | Scraper retains `photo_urls` per listing — unblocks A1/B2/D1 as rows accrue | keyless no-op verified |
+| B4 | Monotonic-constraints study: unconstrained model raises price on 100% of km sweeps (max +22.9%); **xgboost `reg:quantileerror` ignores `monotone_constraints`** (proven single-coordinate); constrained squared-error mid = MAPE 34.2%→30.5% with 0 km violations | `RESEARCH.md` B4, `eval/model_improvement_study.py` |
+| B5 | Mondrian conformal study: shipped 80% interval covers only **43.6% of luxury cars**; per-tier calibration → 59% (corpus-bound) | `RESEARCH.md` B5 |
+| D1 (code) | `scripts/generate_chat_dataset.py` — real pipeline → teacher LLM → Verifier filter; smoke-tested keyless | needs LLM keys to run at scale |
+| D3 (code) | `notebooks/07_chatbot_lora_finetune.ipynb` — ready-to-run LoRA scaffold with grounding/refusal gates asserted | needs Kaggle GPU + §13.1 decision |
+| E2 | `/estimate/batch` (fleet in one request) + dealer page wired with per-row fallback | live uvicorn + Playwright route-mock tests |
+| E7 | gitleaks secret scan + Dependabot (npm/pip/actions) | `.github/` |
+| E8 | `/ready` readiness probe + per-provider LLM circuit breaker (3 fails → 120s cooldown) | live uvicorn verification |
+| F2 | Playwright E2E + axe in CI (hero animation, reduced-motion, dealer batch, a11y) — immediately caught & fixed a missing `<main>` landmark | `frontend-ci.yml`, 6/6 green |
+| G (partial) | `evals.yml` — corpus/retrieval/model-study regression gate on data & ML PRs | `.github/workflows/evals.yml` |
+| — | Hero: ambient appraisal-loop animation (scan → findings → price) + micro-life, reduced-motion safe | Playwright-verified |
+
+**🪦 Retired by evidence (formal):**
+
+- **Workstream C (RAG tuning) is retired**, not deferred: `RESEARCH.md` (D5 follow-up) proves the
+  retriever already sits at the mathematical ceiling the corpus permits (same-make P@5 = 0.780,
+  the exact data-bound maximum; 23/37 makes have <5 listings). C2–C4/C6 cannot move that number.
+  What survives of C lives elsewhere: **C1/C5 = corpus growth + freshness**, which is the
+  (now-repaired) Phase-E cron plus `scraped_at` accrual; **C7 (harder benchmark)** reopens only
+  after the corpus grows. Re-evaluate the retirement at ~2–3k rows.
+
+**⛔ Blocked — each on a named external dependency:**
+
+| Item | Blocker |
+|---|---|
+| 0.1 W&B / 0.2 HF Hub / 0.4 Label Studio, DVC remote | accounts only you can create |
+| A1–A8 CV training | Kaggle GPU + (A3/A4) labeling budget decision (§13.2) |
+| B2 photo-aware pricing | retained photos (now accruing via 0.7) + Kaggle |
+| B6 drift monitoring | meaningful only once the corpus actually grows |
+| D1 at scale / D3 execution | GROQ/GEMINI keys · Kaggle GPU · §13.1 base-model decision |
+| E1 cache / E4 observability / F7 analytics | Upstash · Sentry · PostHog accounts (+ §13.4 consent) |
+| E3 registry, E6 /v1 API | API-contract decisions (owner call) |
+| F1 tokens+Storybook · F4 Arabic/RTL · F5 alerts · F6 widget | multi-day product features + (F5) Supabase schema OPS |
+| J live payments | §13.3 Stripe decision |
 
 ---
 
