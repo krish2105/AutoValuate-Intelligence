@@ -22,9 +22,11 @@ CONF_THRES = 0.35        # full-frame pass gate
 TILE_CONF = 0.33         # tile-only pass gate
 IOU_THRES = 0.45
 CLASSES = ["dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat", "punctured", "missing_part"]
-# Full frame + 4 overlapping quadrants (fractions). Zooming into quadrants recovers small/
-# localized damage a single 640² letterbox squashes away — the main recall lever, no retrain.
-TILE_REGIONS = [(0, 0, 1, 1), (0, 0, 0.6, 0.6), (0.4, 0, 1, 0.6), (0, 0.4, 0.6, 1), (0.4, 0.4, 1, 1)]
+# Full frame + top half + the two bottom quadrants (4 passes). Zooming into regions recovers
+# small/localized damage a single 640² letterbox squashes away — the main recall lever, no
+# retrain. Matched full+4-quadrants (5 passes) on real photos while ~20% faster; no blind region.
+# (See frontend cv-browser TILE_REGIONS.)
+TILE_REGIONS = [(0, 0, 1, 1), (0, 0, 1, 0.6), (0, 0.4, 0.6, 1), (0.4, 0.4, 1, 1)]
 # glass_shatter is hallucinated on zoomed tiles (reflections); take it only from the full pass.
 TILE_EXCLUDE = {"glass_shatter"}
 
