@@ -29,6 +29,9 @@ CLASSES = ["dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_fla
 TILE_REGIONS = [(0, 0, 1, 1), (0, 0, 1, 0.6), (0, 0.4, 0.6, 1), (0.4, 0.4, 1, 1)]
 # glass_shatter is hallucinated on zoomed tiles (reflections); take it only from the full pass.
 TILE_EXCLUDE = {"glass_shatter"}
+# ...and even on the full pass it FPs on windshield reflections. Real shattered glass is reliably
+# detected ≥0.75, so demand higher confidence for it to drop weaker reflection false positives.
+GLASS_CONF = 0.55
 
 
 def available() -> bool:
@@ -215,6 +218,8 @@ def detect(image_spec: str) -> list[dict]:
                 continue
             all_dets.append(d)
     dets = _wbf(all_dets)
+    # Drop low-confidence glass_shatter (reflection false positives).
+    dets = [d for d in dets if not (d["label"] == "glass_shatter" and d["confidence"] < GLASS_CONF)]
     for d in dets:
         d["sev"] = round(min(1.0, _pixel_severity(img, d["box"]) + severity_prior(d["label"])), 4)
     dets.sort(key=lambda d: -d["confidence"])

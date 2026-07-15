@@ -34,7 +34,11 @@ const BASE_SEVERITY: Record<DamageClass, number> = {
   tire_flat: 0.06,
   lamp_broken: 0.07,
   crack: 0.10,
-  glass_shatter: 0.14,
+  // glass_shatter is deliberately LOW: a windshield is cheap to replace (~2-5% of value) and it's
+  // the model's most FP-prone class (sky/scene reflections read as shattering; no pixel heuristic —
+  // texture, edge-density, saturation — reliably separates them). It must never dominate; the
+  // GLASS_CONF gate in detectImage further filters weaker reflection false positives.
+  glass_shatter: 0.06,
   punctured: 0.16,
   missing_part: 0.28,
 };
@@ -136,8 +140,9 @@ function cropSeverity(source: CanvasImageSource, W: number, H: number, box: read
 
 /** A human severity band for one detection, from its pixel-graded severity (0..1). */
 export function severityOf(label: DamageClass, sev: number): Severity {
-  // scratches are cosmetic — a big one is still just paint, never "severe".
-  if (label === "scratch") return sev >= 0.5 ? "moderate" : "minor";
+  // scratches are cosmetic and a shattered windshield, though dramatic, is a cheap repair — so
+  // in a *valuation* context neither is "severe" no matter how it grades on pixels.
+  if (label === "scratch" || label === "glass_shatter") return sev >= 0.5 ? "moderate" : "minor";
   if (sev >= 0.62) return "severe";
   if (sev >= 0.34) return "moderate";
   return "minor";
@@ -374,6 +379,9 @@ const TILE_REGIONS: Array<[number, number, number, number]> = [
 // glass_shatter is hallucinated on zoomed tiles (window reflections/glare) at high confidence,
 // so accept it ONLY from the full-frame pass, where it's reliable. Everything else: full+tiles.
 const TILE_EXCLUDE = new Set<DamageClass>(["glass_shatter"]);
+// ...and even on the full pass it FPs on windshield reflections. Real shattered glass is reliably
+// detected ≥0.75, so demand higher confidence for it to drop weaker reflection false positives.
+const GLASS_CONF = 0.55;
 
 /** Run the model on one crop; returns detections normalized to the FULL image. */
 async function inferRegion(
@@ -464,7 +472,10 @@ export async function detectImage(img: HTMLImageElement | ImageBitmap): Promise<
       all.push(d);
     }
   }
-  const fused = mergeDetections(all).filter((d) => boxArea(d.box) >= MIN_AREA);
+  const fused = mergeDetections(all).filter((d) =>
+    boxArea(d.box) >= MIN_AREA
+    && !(d.label === "glass_shatter" && d.confidence < GLASS_CONF), // drop reflection FPs
+  );
   for (const d of fused) d.sev = cropSeverity(img, W, H, d.box, d.label);
   return fused;
 }

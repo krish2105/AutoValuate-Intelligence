@@ -29,7 +29,11 @@ BASE_SEVERITY = {
     "tire_flat": 0.06,
     "lamp_broken": 0.07,
     "crack": 0.10,
-    "glass_shatter": 0.14,
+    # glass_shatter is deliberately LOW: a windshield is cheap to replace (~2-5% of value) and
+    # it's the model's most false-positive-prone class (sky/scene reflections read as shattering,
+    # and no pixel heuristic — texture, edge-density, saturation — reliably separates them). So it
+    # must never dominate a valuation; the confidence gate in cv_local.detect further filters it.
+    "glass_shatter": 0.06,
     "punctured": 0.16,
     "missing_part": 0.28,
 }
@@ -75,8 +79,9 @@ def _det_impact(label: str, sev: float, conf: float) -> float:
 
 
 def _severity_of(label: str, sev: float) -> str:
-    # graded from the crop pixels (0..1), not box size. scratches are cosmetic — never "severe".
-    if label == "scratch":
+    # graded from the crop pixels (0..1), not box size. scratches are cosmetic and a shattered
+    # windshield, though dramatic, is a cheap repair — so in a valuation context neither is "severe".
+    if label in ("scratch", "glass_shatter"):
         return "moderate" if sev >= 0.5 else "minor"
     if sev >= 0.62:
         return "severe"
