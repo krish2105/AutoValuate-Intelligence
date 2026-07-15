@@ -59,6 +59,8 @@ SEED = 42
 REFERENCE_YEAR = 2026
 N_CV_SEEDS = 5    # x5 folds = 25 fits; fold composition alone moves MAPE ~1pp on 672 rows
 N_CONF_SEEDS = 20  # coverage has ~5pp per-split std here — 5 seeds is not enough to see 3pp
+# E1 reliability diagram: nominal coverage levels to promise, then measure honestly.
+CALIBRATION_LEVELS = (0.50, 0.60, 0.70, 0.80, 0.90, 0.95)
 
 CATS = ["make", "model", "bodyType", "transmissionType", "fuelType", "regionalSpecs",
         "sellerType", "city"]
@@ -181,6 +183,9 @@ def main() -> int:
     TIERS = ("luxury", "mass")
     d_global, d_tier = [], {t: [] for t in TIERS}
     cov_overall, cov_tier = [], {t: [] for t in TIERS}
+    # E1 reliability diagram: promise N% coverage, measure what N% actually delivers. Free
+    # here — same fits, just extra deltas — and it is the honesty claim made falsifiable.
+    calib = {lvl: [] for lvl in CALIBRATION_LEVELS}
     for seed in range(N_CONF_SEEDS):
         tr_i, tmp_i = train_test_split(idx, test_size=0.40, random_state=seed)
         cal_i, te_i = train_test_split(tmp_i, test_size=0.50, random_state=seed)
@@ -199,10 +204,21 @@ def main() -> int:
             sel = t_te == t
             if sel.sum():
                 cov_tier[t].append(float(np.mean(hit[sel])))
+        abs_err = np.abs(y[te_i] - pred)
+        for lvl in CALIBRATION_LEVELS:
+            dt = {t: conformal_delta(resid[t_cal == t], alpha=1 - lvl) for t in TIERS}
+            calib[lvl].append(float(np.mean(abs_err <= np.array([dt[t] for t in t_te]))))
 
     delta = float(np.mean(d_global))  # fallback for a make we have no tier for
     deltas_by_tier = {t: float(np.mean(v)) for t, v in d_tier.items()}
     coverage = float(np.mean(cov_overall))
+    calibration_curve = [{"nominal": lvl,
+                          "actual": round(float(np.mean(v)), 4),
+                          "std": round(float(np.std(v)), 4)}
+                         for lvl, v in calib.items()]
+    # Mean |promised - delivered| across the curve: one number for "is the honesty real?".
+    calibration_error = round(float(np.mean([abs(p["actual"] - p["nominal"])
+                                             for p in calibration_curve])), 4)
     per_tier = {t: {"coverage": round(float(np.mean(v)), 3),
                     "std": round(float(np.std(v)), 3),
                     "n_splits": len(v)}
@@ -230,6 +246,9 @@ def main() -> int:
     print(f"mondrian deltas {({k: round(v, 4) for k, v in deltas_by_tier.items()})} "
           f"(global fallback {delta:.4f}) -> coverage {coverage:.3f} | per-tier {per_tier}")
     print(f"sweeps {sweeps}")
+    print("calibration nominal->actual: "
+          + "  ".join(f"{p['nominal']:.0%}->{p['actual']:.0%}" for p in calibration_curve)
+          + f"  (mean |promised-delivered| {calibration_error:.3f})")
 
     shap = shap_report(final, X)
     print(f"shap directional checks: { {k: v['pass'] for k, v in shap['directional_checks'].items()} }")
@@ -290,6 +309,8 @@ def main() -> int:
                       "honest_test_coverage": round(coverage, 3),
                       "coverage_by_tier": per_tier, "target": 0.80,
                       "seeds": N_CONF_SEEDS},
+        "calibration_curve": calibration_curve,
+        "calibration_error": calibration_error,
         "monotonicity": sweeps,
         "honest_note": (
             f"Median APE ~{cv_metrics['median_APE_pct']['mean']:.0f}% is the best this "

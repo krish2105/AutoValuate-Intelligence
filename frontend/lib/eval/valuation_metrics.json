@@ -59,6 +59,39 @@
     "target": 0.8,
     "seeds": 20
   },
+  "calibration_curve": [
+    {
+      "nominal": 0.5,
+      "actual": 0.5174,
+      "std": 0.0456
+    },
+    {
+      "nominal": 0.6,
+      "actual": 0.6126,
+      "std": 0.0367
+    },
+    {
+      "nominal": 0.7,
+      "actual": 0.7059,
+      "std": 0.0402
+    },
+    {
+      "nominal": 0.8,
+      "actual": 0.8048,
+      "std": 0.0425
+    },
+    {
+      "nominal": 0.9,
+      "actual": 0.9007,
+      "std": 0.0302
+    },
+    {
+      "nominal": 0.95,
+      "actual": 0.9526,
+      "std": 0.0289
+    }
+  ],
+  "calibration_error": 0.0073,
   "monotonicity": {
     "kilometers": {
       "violation_rate": 0.0,

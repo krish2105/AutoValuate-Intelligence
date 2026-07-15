@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Target, ScanSearch, ShieldCheck, Search, Sparkles, AlertTriangle } from "lucide-react";
 import { Logo, SectionCard, Pill, Reveal } from "@/components/ui";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CalibrationPlot } from "@/components/calibration-plot";
 import { cn } from "@/lib/utils";
 import valuation from "@/lib/eval/valuation_metrics.json";
 import cvEval from "@/lib/eval/cv_eval_report.json";
@@ -56,6 +57,9 @@ export default function ModelCard() {
         </div>
       </header>
 
+      {/* <main> is required: axe's landmark-one-main/region rules fail without it, and every
+          page below the landing page was missing one because only the landing page ran axe. */}
+      <main>
       {/* hero */}
       <Reveal>
         <div className="mb-10 text-center">
@@ -91,10 +95,17 @@ export default function ModelCard() {
             </div>
 
             {/* The guarantee: a car can never get more expensive by ageing or adding km. */}
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Stat label="Mileage monotonicity" value={`${Math.round((1 - valuation.monotonicity.kilometers.violation_rate) * 100)}%`} sub="cars where price never rises with km" tone="good" />
               <Stat label="Age monotonicity" value={`${Math.round((1 - valuation.monotonicity.age.violation_rate) * 100)}%`} sub="cars where price never rises with age" tone="good" />
+              <Stat label="Calibration error" value={`${(valuation.calibration_error * 100).toFixed(1)}pp`} sub="mean |promised − delivered|" tone="good" />
             </div>
+
+            {/* E1 — the honesty claim, made falsifiable. */}
+            <p className="mt-4 mb-2 text-xs font-medium text-muted">
+              Calibration — promised vs delivered coverage ({valuation.conformal.seeds} splits, held-out)
+            </p>
+            <CalibrationPlot curve={valuation.calibration_curve} meanError={valuation.calibration_error} />
 
             <p className="mt-3 text-xs text-muted">
               Trained on <span className="tnum text-fg">{valuation.training_rows}</span> real UAE listings. Coverage is a mean over
@@ -192,6 +203,7 @@ export default function ModelCard() {
           Metrics snapshot from the <span className="text-fg">/eval</span> harness. Automated estimate — not a certified appraisal.
         </p>
       </div>
+      </main>
     </div>
   );
 }
