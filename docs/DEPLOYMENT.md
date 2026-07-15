@@ -8,7 +8,7 @@ each **skips gracefully** until its secrets exist, so nothing breaks before you 
 
 | Component | Host | Tier | Deploys via |
 |---|---|---|---|
-| Frontend (Next.js) | Vercel | Hobby | `deploy-frontend.yml` or Vercel Git integration |
+| Frontend (Next.js) | Vercel | Hobby | Vercel Git integration (auto-deploys `main`) |
 | Orchestration API | Render | Free web service | `deploy-backend.yml` (deploy hook) + `backend-api/render.yaml` |
 | CV detector | Hugging Face Space | CPU Basic (Docker) | `deploy-cv-space.yml` (git push to Space) |
 | DB + pgvector + Auth | Supabase | Free | schema + loader in `backend-api/agents/`, kept alive by `supabase-keepalive.yml` |

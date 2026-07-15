@@ -3,8 +3,21 @@
 # the numbers the product's honesty rests on blocks the merge instead of shipping.
 name: Eval gate
 
+# Runs on push to main as well as PRs: work lands on main directly here, and a gate that
+# only guards the PR path is not guarding the path the numbers actually ship through.
+# (GitHub Actions does not support YAML anchors, so the path list is duplicated verbatim.)
 on:
   pull_request:
+    paths:
+      - "data/**"
+      - "backend-api/agents/**"
+      - "backend-api/models/**"
+      - "eval/**"
+      - "scripts/scrape_comparables.py"
+      - "scripts/validate_corpus.py"
+      - ".github/workflows/evals.yml"
+  push:
+    branches: [main]
     paths:
       - "data/**"
       - "backend-api/agents/**"
