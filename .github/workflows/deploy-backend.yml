@@ -19,6 +19,10 @@ jobs:
       - name: Trigger Render deploy
         run: |
           if [ -z "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            # ::warning:: surfaces in the run summary and the commit's checks. Without it this
+            # job is a green no-op that says "deployed" while doing nothing — which is how the
+            # live API sat ~6h and 4 backend commits behind main on 2026-07-15 with CI all green.
+            echo "::warning title=Backend NOT deployed::RENDER_DEPLOY_HOOK is not set, so this job did nothing. The live API keeps serving the previously-deployed commit. Fix: add RENDER_DEPLOY_HOOK (Render dashboard -> service -> Settings -> Deploy Hook) as a repo secret, or turn on Render auto-deploy for main."
             echo "RENDER_DEPLOY_HOOK not set — skipping (add it in repo Settings → Secrets)."
             exit 0
           fi
