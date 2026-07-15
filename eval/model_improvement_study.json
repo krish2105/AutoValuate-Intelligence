@@ -1,0 +1,77 @@
+{
+  "n_total": 671,
+  "n_train": 402,
+  "n_calibration": 134,
+  "n_test": 135,
+  "split": "60/20/20 train/calibration/test, seed 42 \u2014 same discipline as uncertainty_study.py",
+  "note": "MAPE here is study-internal (corpus features only); it is NOT comparable to the shipped model's published 19.6% MAPE, which was trained on the full cleaned dataset.",
+  "B4_monotonic_constraints": {
+    "unconstrained": {
+      "test_mape": 0.34238398781218465,
+      "km_sweep": {
+        "violation_rate": 1.0,
+        "max_single_step_price_rise_pct": 22.863760133651
+      },
+      "age_sweep": {
+        "violation_rate": 0.9777777777777777,
+        "max_single_step_price_rise_pct": 29.588937450355075
+      }
+    },
+    "monotone-quantile": {
+      "test_mape": 0.3423765495366328,
+      "km_sweep": {
+        "violation_rate": 0.674074074074074,
+        "max_single_step_price_rise_pct": 6.192307056535701
+      },
+      "age_sweep": {
+        "violation_rate": 0.8148148148148148,
+        "max_single_step_price_rise_pct": 13.53551342508693
+      }
+    },
+    "monotone-squarederror-mid": {
+      "test_mape": 0.30511757804563255,
+      "km_sweep": {
+        "violation_rate": 0.0,
+        "max_single_step_price_rise_pct": 0.0
+      },
+      "age_sweep": {
+        "violation_rate": 0.6222222222222222,
+        "max_single_step_price_rise_pct": 26.55405991769776
+      }
+    },
+    "finding": "xgboost 3.2.0 reg:quantileerror violates monotone_constraints even on single coordinates (demonstrated: +2.9% price for +20k km on a constrained model); reg:squarederror honors them fully."
+  },
+  "B5_mondrian_conformal": {
+    "global_delta_log": 0.3930921697065255,
+    "mondrian_delta_log": {
+      "luxury": 0.4709390421258455,
+      "mass": 0.37948410620667694
+    },
+    "groups": {
+      "luxury": {
+        "n_test": 39,
+        "n_calibration": 47,
+        "global": {
+          "coverage": 0.4358974358974359,
+          "mean_width_aed": 122062.9765625
+        },
+        "mondrian": {
+          "coverage": 0.5897435897435898,
+          "mean_width_aed": 147864.015625
+        }
+      },
+      "mass": {
+        "n_test": 96,
+        "n_calibration": 87,
+        "global": {
+          "coverage": 0.7916666666666666,
+          "mean_width_aed": 63969.5625
+        },
+        "mondrian": {
+          "coverage": 0.7708333333333334,
+          "mean_width_aed": 61648.02734375
+        }
+      }
+    }
+  }
+}

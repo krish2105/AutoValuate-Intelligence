@@ -1,4 +1,4 @@
-# AutoValuate — Research Chapters (D1–D5)
+# AutoValuate — Research Chapters (D1–D5, B4–B5)
 
 Experiments that interrogate the system's own design decisions. Every number here was
 produced by a script in `eval/` that anyone can re-run; where an experiment could **not**
@@ -8,6 +8,7 @@ Reproduce:
 ```bash
 python eval/uncertainty_study.py        # D3
 USE_TF=0 python eval/retrieval_ablation.py   # D5
+python eval/model_improvement_study.py  # B4 + B5
 ```
 
 ---
@@ -211,6 +212,87 @@ CarDD validation set lives on Kaggle, not locally. The correct experiment is to 
 re-tuned confidence threshold (int8 would need roughly 0.22 rather than 0.35 to compensate).
 Until that is run, **we ship fp32** — a 4× smaller model is not worth an unquantified hit to
 the one number the CV story rests on.
+
+---
+
+## B4 — Monotonic constraints: can the model promise a car never gains value by aging?
+
+**Question.** A what-if slider that shows the price *rising* as you add kilometers destroys
+trust instantly. Does our tree ensemble actually violate that, and do XGBoost's
+`monotone_constraints` fix it for free?
+
+**Method.** Same 60/20/20 split discipline as D3 (seed 42, corpus features). Three mid
+models: unconstrained quantile (matches the shipped objective), the same with
+`monotone_constraints` (age −1, kilometers −1, mileage_per_year −1), and a constrained
+`reg:squarederror` model. For every test car we sweep kilometers 20k→300k and age 1→15
+(recomputing the km-derived `mileage_per_year`) and count cars whose predicted price ever
+**rises** (threshold 1e-4 log ≈ 0.01% — float32 jitter sits well below it).
+
+**Results** (`eval/model_improvement_study.json`):
+
+| Mid model | test MAPE | km-sweep viol. | max km rise | age-sweep viol. | max age rise |
+|---|---:|---:|---:|---:|---:|
+| unconstrained *(shipped objective)* | 34.2% | **100%** | **+22.9%** | 97.8% | +29.6% |
+| monotone, `reg:quantileerror` | 34.2% | 67.4% | +6.2% | 81.5% | +13.5% |
+| **monotone, `reg:squarederror`** | **30.5%** | **0%** | **0%** | 62.2% | +26.6% |
+
+**Findings — two surprises.**
+
+1. **The violation problem is real and severe.** The unconstrained model raises the price of
+   *every single test car* somewhere along the mileage sweep, by up to +22.9% for +20k km.
+   Anyone dragging the what-if slider can surface this today.
+2. **XGBoost's quantile objective does not honor its own constraints.** With
+   `monotone_constraints` set, `reg:quantileerror` (xgboost 3.2.0) still violates on a
+   *single coordinate* — we demonstrated +2.9% price for +20k km with everything else held
+   fixed. The exact-quantile leaf refresh bypasses the structural bounds that make
+   constraints work for other objectives. `reg:squarederror` enforces them perfectly.
+3. **The guarantee is better than free.** The constrained squared-error mid model is *more
+   accurate* (MAPE 30.5% vs 34.2%) with **zero** km-sweep violations. On 400 rows of thin
+   data, the monotone prior does real regularization work.
+4. **Age is not fixable by constraints.** Raising age lowers `mileage_per_year` (a
+   *positive* quality signal), so even the fully-constrained model raises price along 62%
+   of age sweeps. This is a feature-design tension, not a bug: `mileage_per_year` must be
+   dropped, or age handled by the same derived-feature-aware sweep at inference, before the
+   age slider can carry a guarantee.
+
+**Recommendation.** Move the mid estimate to a constrained `reg:squarederror` model (keep
+the conformal band exactly as-is — D3 showed the band, not the quantile heads, carries the
+coverage promise); revisit `mileage_per_year` before promising age monotonicity. Not
+applied to the shipped artifact yet — retraining it belongs with the full pipeline rerun.
+
+---
+
+## B5 — Mondrian conformal: is 80% coverage true for everyone, or only on average?
+
+**Question.** D3 verified the shipped split-conformal interval covers 80% *overall*. An
+average can hide a lot: does a luxury Mercedes get the same honest interval as a Corolla?
+
+**Method.** Same split. Calibrate one global delta (shipped method) vs one delta per brand
+tier (Mondrian / group-conditional conformal, luxury vs mass), score per-tier coverage on
+the same untouched test rows.
+
+**Results** (`eval/model_improvement_study.json`):
+
+| Group | n_test | n_cal | global coverage | global width | Mondrian coverage | Mondrian width |
+|---|---:|---:|---:|---:|---:|---:|
+| luxury | 39 | 47 | **43.6%** | 122,063 AED | 59.0% | 147,864 AED |
+| mass | 96 | 87 | 79.2% | 63,970 AED | 77.1% | 61,648 AED |
+
+**Findings.**
+
+1. **The 80% promise is false for luxury cars.** The shipped global interval covers only
+   **43.6%** of luxury test cars — the overall number is propped up by the mass-market
+   majority. This is the same failure D3 caught in raw quantiles, one level up: a metric
+   that is true on average and wrong for an identifiable group of users.
+2. **Mondrian helps but cannot finish the job here.** Per-tier calibration lifts luxury to
+   59% (wider band, as expected) — still short of 80%, because 47 calibration rows produce
+   a noisy quantile and luxury prices are simply harder. The honest bound on what
+   calibration can do is, once again, **data**: this is the corpus-size ceiling from D5
+   wearing a different hat.
+3. **What to do meanwhile.** Ship the per-tier *diagnostic*, not the per-tier interval:
+   surface lower confidence for luxury valuations in the confidence panel, add per-tier
+   coverage to the eval gate so it is tracked as the Phase-E cron grows the corpus, and
+   re-run this study at ~2–3k rows where per-group calibration sets become respectable.
 
 ---
 
