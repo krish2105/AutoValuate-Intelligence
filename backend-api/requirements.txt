@@ -17,7 +17,7 @@ langchain-core==0.3.28
 xgboost==2.1.3
 scikit-learn==1.6.0
 joblib==1.4.2
-pandas==2.2.3
+pandas==3.0.3
 numpy==2.2.1
 
 # Comparables retrieval — torch-free (fastembed = onnxruntime + tokenizers, ~50 MB)
