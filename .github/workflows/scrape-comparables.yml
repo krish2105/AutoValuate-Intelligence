@@ -33,6 +33,9 @@ jobs:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
         run: python scripts/scrape_comparables.py --per-make "${{ github.event.inputs.per_make || 40 }}"
 
+      - name: Validate the corpus (a bad scrape must never merge)
+        run: python scripts/validate_corpus.py --min-rows 672
+
       - name: Rebuild the retrieval index
         run: python backend-api/agents/build_comparables_index.py
 

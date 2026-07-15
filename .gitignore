@@ -34,7 +34,10 @@ frontend/public/ort/
 
 # ---- Data (large, downloaded, not versioned) ----
 data/raw/
-data/processed/
+# The comparables corpus IS versioned: the Phase-E cron appends to it and commits, so it
+# must exist in a fresh checkout (a bare `data/processed/` dir-ignore silently broke that).
+data/processed/*
+!data/processed/comparables.csv
 *.parquet
 *.csv.gz
 

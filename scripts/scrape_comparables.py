@@ -70,6 +70,18 @@ def normalise(raw: dict, make_hint: str) -> dict | None:
     except (TypeError, ValueError):
         return None
 
+    # Retain listing photo URLs (master plan WS 0.7): they cost nothing to keep and are
+    # the prerequisite for the UAE-domain CV test set (A1) and photo-aware pricing (B2/D1).
+    photos = raw.get("images") or raw.get("photos") or raw.get("imageUrls") or raw.get("image_urls") or []
+    if isinstance(photos, str):
+        photos = [photos]
+    cover = raw.get("coverPhoto") or raw.get("image") or raw.get("photo")
+    if isinstance(cover, str) and cover:
+        photos = [cover, *photos]
+    photo_urls = "|".join(dict.fromkeys(
+        str(u) for u in photos if isinstance(u, str) and u.startswith("http")
+    ))[:2000]
+
     now = datetime.now(timezone.utc)
     age = max(0, now.year - year)
     return {
@@ -94,6 +106,7 @@ def normalise(raw: dict, make_hint: str) -> dict | None:
         "sellerType": raw.get("sellerType", ""),
         "city": raw.get("city", "Dubai"),
         "price": price,
+        "photo_urls": photo_urls,
         # log_price (the model's target) is filled in one vectorised pass by the caller
     }
 
@@ -142,8 +155,9 @@ def main() -> int:
     df["log_price"] = np.log(df["price"])
     df["scraped_at"] = datetime.now(timezone.utc).isoformat()
 
-    if "scraped_at" not in existing.columns:
-        existing["scraped_at"] = ""
+    for backfill in ("scraped_at", "photo_urls"):
+        if backfill not in existing.columns:
+            existing[backfill] = ""
 
     out = pd.concat([existing, df], ignore_index=True)
     out = out.drop_duplicates(subset=["listing_id"], keep="first")
