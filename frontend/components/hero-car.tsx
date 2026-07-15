@@ -198,6 +198,7 @@ export function HeroCar({ className }: { className?: string }) {
         {/* scanner sweep */}
         {!reduced && (
           <motion.g
+            data-testid="hero-scanner"
             initial={{ x: 90, opacity: 0 }}
             animate={{ x: [90, 90, 860, 860], opacity: [0, 0, 0.9, 0.9, 0, 0] }}
             transition={{
@@ -214,7 +215,7 @@ export function HeroCar({ className }: { className?: string }) {
         {FINDINGS.map(({ label, tone, box, chip }) => {
           const t = hitAt(box.x + box.w / 2);
           return (
-            <motion.g key={label} {...appear(t, 0.95)}>
+            <motion.g key={label} data-testid="hero-finding" {...appear(t, 0.95)}>
               <rect x={box.x} y={box.y} width={box.w} height={box.h} rx="3"
                 stroke={`hsl(var(${tone}))`} strokeWidth="1.5" strokeOpacity="0.9"
                 fill={`hsl(var(${tone}))`} fillOpacity="0.07" />
@@ -231,7 +232,7 @@ export function HeroCar({ className }: { className?: string }) {
         })}
 
         {/* price readout — lands inside the scan frame once the sweep completes */}
-        <motion.g {...appear(0.36, 1)}>
+        <motion.g data-testid="hero-price" {...appear(0.36, 1)}>
           <rect x="340" y="61" width="220" height="22" rx="11"
             fill="hsl(var(--surface))" fillOpacity="0.92"
             stroke="hsl(var(--accent))" strokeOpacity="0.5" />

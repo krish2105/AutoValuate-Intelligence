@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "sync-eval": "node scripts/sync-eval.mjs"
+    "sync-eval": "node scripts/sync-eval.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",
@@ -28,6 +29,8 @@
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.8.1",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.12",

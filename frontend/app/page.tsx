@@ -127,6 +127,8 @@ export default function Home() {
         </div>
       </header>
 
+      {/* main landmark: everything between the sticky header and the footer */}
+      <main>
       {/* cinematic hero */}
       <Hero onBegin={() => appraiseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} />
 
@@ -228,6 +230,7 @@ export default function Home() {
           </AnimatePresence>
         </div>
       </div>
+      </main>
 
       <footer className="mt-16 border-t pt-6 text-center text-xs text-muted">
         <p>AutoValuate Intelligence · trained damage detector + explainable pricing + agentic RAG · not a certified appraisal.</p>
