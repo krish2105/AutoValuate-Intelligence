@@ -1,0 +1,42 @@
+# Eval regression gate (master plan WS G): corpus, retrieval, and model-quality checks
+# run on every PR that touches the data, the agents, or the evals — so a regression in
+# the numbers the product's honesty rests on blocks the merge instead of shipping.
+name: Eval gate
+
+on:
+  pull_request:
+    paths:
+      - "data/**"
+      - "backend-api/agents/**"
+      - "backend-api/models/**"
+      - "eval/**"
+      - "scripts/scrape_comparables.py"
+      - "scripts/validate_corpus.py"
+      - ".github/workflows/evals.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install deps
+        run: pip install --quiet pandas numpy requests joblib scikit-learn xgboost fastembed rank-bm25
+
+      - name: Corpus validation gate (WS 0.5)
+        run: python scripts/validate_corpus.py --min-rows 672
+
+      - name: Retrieval eval (comparables quality must not regress)
+        run: python eval/comparables_eval.py
+
+      - name: Model improvement studies (B4 monotonicity + B5 per-tier coverage)
+        run: python eval/model_improvement_study.py
