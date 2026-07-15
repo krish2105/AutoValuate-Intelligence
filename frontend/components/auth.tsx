@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogIn, LogOut, User, X, Loader2, Mail, Sparkles } from "lucide-react";
-import { supabase, signIn, signUp, signOut, type Session } from "@/lib/supabase";
+import { LogIn, LogOut, User, X, Loader2, Mail, Sparkles, Check } from "lucide-react";
+import { supabase, signIn, signUp, signOut, resendConfirmation, type Session } from "@/lib/supabase";
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
@@ -24,6 +24,8 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null); // email awaiting confirmation
+  const [resent, setResent] = useState<"idle" | "sending" | "sent" | "fail">("idle");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,10 +33,25 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
     const fn = mode === "in" ? signIn : signUp;
     const { error, data } = await fn(email.trim(), pw);
     setBusy(false);
-    if (error) return setMsg(error.message);
-    if (mode === "up" && !data.session) return setMsg("Check your email to confirm your account, then sign in.");
+    if (error) {
+      // "Email not confirmed" on sign-in means the account exists but the (undelivered)
+      // confirmation email is blocking it — route to the same pending screen.
+      if (/not confirmed/i.test(error.message)) { setPending(email.trim()); return; }
+      return setMsg(error.message);
+    }
+    // Confirmation OFF → a session is returned immediately → we're in. ON → no session.
+    if (mode === "up" && !data.session) { setPending(email.trim()); return; }
     onClose();
   }
+
+  async function resend() {
+    if (!pending || resent === "sending") return;
+    setResent("sending");
+    const { error } = await resendConfirmation(pending);
+    setResent(error ? "fail" : "sent");
+  }
+
+  function reset() { setPending(null); setResent("idle"); setMsg(null); }
 
   return (
     <AnimatePresence>
@@ -51,6 +68,37 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
             className="relative w-full max-w-[380px] rounded-2xl border bg-surface p-6 shadow-lift"
           >
             <button onClick={onClose} aria-label="Close" className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg hover:bg-surface-2"><X className="h-4 w-4" /></button>
+
+            {pending ? (
+              /* Confirmation is required but the email may not arrive — be honest and give a way out. */
+              <>
+                <div className="mb-1 grid h-11 w-11 place-items-center rounded-xl bg-accent/12 text-accent"><Mail className="h-5 w-5" /></div>
+                <h2 className="mt-2 text-lg font-semibold">Confirm your email</h2>
+                <p className="mb-3 text-xs text-muted">
+                  We sent a confirmation link to <span className="font-medium text-fg">{pending}</span>. Click it, then sign in.
+                </p>
+                <div className="mb-3 rounded-xl border border-warn/25 bg-warn/8 px-3 py-2.5 text-[11px] leading-relaxed text-muted">
+                  Not arriving? The free email service is heavily rate-limited and can take a few minutes or skip
+                  external inboxes entirely. You don't have to wait — <span className="text-fg">continue without an account</span> and
+                  value cars right now.
+                </div>
+                <button onClick={resend} disabled={resent === "sending"}
+                  className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-medium transition hover:border-accent/40 hover:text-accent disabled:opacity-60">
+                  {resent === "sending" ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : resent === "sent" ? <Check className="h-4 w-4 text-good" />
+                    : <Mail className="h-4 w-4" />}
+                  {resent === "sent" ? "Email re-sent" : resent === "fail" ? "Rate-limited — try later" : "Resend confirmation email"}
+                </button>
+                <button onClick={onClose}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-accent-fg transition hover:brightness-105">
+                  <Sparkles className="h-4 w-4" /> Continue without an account
+                </button>
+                <button onClick={() => { reset(); setMode("in"); }} className="mt-3 w-full text-center text-xs text-muted hover:text-accent">
+                  Back to sign in
+                </button>
+              </>
+            ) : (
+              <>
             <div className="mb-1 grid h-11 w-11 place-items-center rounded-xl bg-accent/12 text-accent"><Mail className="h-5 w-5" /></div>
             <h2 className="mt-2 text-lg font-semibold">{mode === "in" ? "Welcome back" : "Create your account"}</h2>
             <p className="mb-4 text-xs text-muted">{mode === "in" ? "Sign in to sync your valuation history." : "Save your valuations across devices."}</p>
@@ -73,6 +121,8 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
               <Sparkles className="h-4 w-4" /> Continue without an account
             </button>
             <p className="mt-2 text-center text-[11px] text-muted">You can value cars right away — an account just syncs your history across devices.</p>
+              </>
+            )}
           </motion.div>
           </div>
         </>

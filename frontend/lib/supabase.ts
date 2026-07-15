@@ -20,6 +20,9 @@ export const signUp = (email: string, password: string) =>
 export const signIn = (email: string, password: string) =>
   supabase.auth.signInWithPassword({ email, password });
 export const signOut = () => supabase.auth.signOut();
+/** Re-send the confirmation email (Supabase's built-in sender is heavily rate-limited). */
+export const resendConfirmation = (email: string) =>
+  supabase.auth.resend({ type: "signup", email });
 
 // ---- server-side valuation history (RLS: each row scoped to auth.uid()) ----
 export interface CloudValuation {
