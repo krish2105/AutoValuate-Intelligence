@@ -193,7 +193,21 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
         <Field label="Fuel"><select className={inputCls} value={v.fuelType} onChange={(e) => set("fuelType", e.target.value)}>{FUEL.map((f) => <option key={f}>{f}</option>)}</select></Field>
         <Field label="City"><select className={inputCls} value={v.city} onChange={(e) => set("city", e.target.value)}>{CITY.map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Seller"><select className={inputCls} value={v.sellerType} onChange={(e) => set("sellerType", e.target.value)}><option>Owner</option><option>Dealer</option></select></Field>
+        {/* Optional and never sent to the model (lib/api.ts:toApiVehicle) — it only scores the
+            deal locally. An anchored "independent" valuation would be worth nothing. */}
+        <Field label="Asking price (optional)">
+          <input type="number" min={0} max={5_000_000} inputMode="numeric" placeholder="e.g. 48,000"
+            aria-describedby="asking-price-help"
+            className={cn(inputCls, "tnum")}
+            value={v.asking_price_aed ?? ""}
+            onChange={(e) => set("asking_price_aed", e.target.value ? +e.target.value : null)} />
+        </Field>
       </div>
+
+      <p id="asking-price-help" className="-mt-1 text-xs text-muted">
+        Asking price is optional and stays in your browser — it scores the deal, and is never
+        given to the model, which would only teach it to agree with the seller.
+      </p>
 
       <motion.button
         type="submit" disabled={!valid || loading}

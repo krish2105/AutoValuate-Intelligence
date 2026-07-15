@@ -14,6 +14,7 @@ import type { DemoCar } from "@/lib/demo-garage";
 import { ReasoningTrace } from "@/components/reasoning-trace";
 import { ValuationDashboard } from "@/components/valuation-dashboard";
 import { WhatIf } from "@/components/what-if";
+import { DealScore } from "@/components/deal-score";
 import { DamageReport } from "@/components/damage-report";
 import { Comparables } from "@/components/comparables";
 import { MarketAnalytics } from "@/components/market-analytics";
@@ -39,6 +40,7 @@ export default function Home() {
   const [drawer, setDrawer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preset, setPreset] = useState<VehicleInput | null>(null);
+  const [asking, setAsking] = useState<number | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const { session } = useAuth();
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -70,6 +72,9 @@ export default function Home() {
 
   async function run(input: VehicleInput) {
     setLoading(true); setSteps([]); setResult(null); setDemo(false); setError(null);
+    // Held only here, never merged into `result` — result is what gets persisted to Supabase
+    // and to public share links, and the asking price is the user's own private number.
+    setAsking(input.asking_price_aed ?? null);
     abortRef.current = new AbortController();
     await streamValuation(input, {
       onStep: (s) => setSteps((p) => [...p, s]),
@@ -216,6 +221,7 @@ export default function Home() {
                 )}
                 <ConfidencePanel c={result.confidence} />
                 <ValuationDashboard v={result.valuation} />
+                <DealScore result={result} asking={asking} />
                 <WhatIf result={result} online={online} />
                 <DamageReport c={result.condition} valuation={result.valuation} />
                 <RepairEstimateCard result={result} />

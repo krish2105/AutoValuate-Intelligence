@@ -53,6 +53,20 @@ export interface StreamHandlers {
 }
 
 /**
+ * Strip client-only fields before anything goes over the wire.
+ *
+ * `asking_price_aed` exists purely to score the deal locally (E4). Sending it would let the
+ * valuation anchor to the seller's number — the exact bias the product exists to counter —
+ * and would persist a user's private figure into saved and shared reports for no benefit.
+ * The backend would silently ignore it (pydantic defaults to extra="ignore"), which is
+ * precisely why this is enforced here rather than trusted there.
+ */
+export function toApiVehicle(v: VehicleInput): Omit<VehicleInput, "asking_price_aed"> {
+  const { asking_price_aed: _omit, ...rest } = v;
+  return rest;
+}
+
+/**
  * Streams the valuation over the backend's SSE endpoint. EventSource can't POST,
  * so we POST via fetch and parse SSE frames from the ReadableStream.
  *
@@ -101,7 +115,7 @@ export async function streamValuation(
     const res = await fetch(`${API}/valuate/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify(toApiVehicle(input)),
       signal: ctrl.signal,
     });
     if (!res.ok || !res.body) throw new Error(`API ${res.status}`);
@@ -153,7 +167,7 @@ export async function estimateValuation(
     const res = await fetch(`${API}/estimate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify(toApiVehicle(input)),
       signal: signal ?? AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;
@@ -178,7 +192,7 @@ export async function estimateBatch(
     const res = await fetch(`${API}/estimate/batch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vehicles: inputs }),
+      body: JSON.stringify({ vehicles: inputs.map(toApiVehicle) }),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;

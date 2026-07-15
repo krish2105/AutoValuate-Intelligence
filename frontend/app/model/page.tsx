@@ -5,6 +5,7 @@ import { ArrowLeft, Target, ScanSearch, ShieldCheck, Search, Sparkles, AlertTria
 import { Logo, SectionCard, Pill, Reveal } from "@/components/ui";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CalibrationPlot } from "@/components/calibration-plot";
+import { ShapBeeswarm } from "@/components/shap-beeswarm";
 import { cn } from "@/lib/utils";
 import valuation from "@/lib/eval/valuation_metrics.json";
 import cvEval from "@/lib/eval/cv_eval_report.json";
@@ -183,6 +184,18 @@ export default function ModelCard() {
                 </span>
               ))}
             </div>
+
+            {/* E7 — the market-wide swarm. The bar chart above says how much each feature
+                matters; this says which way, and how much it varies car to car. */}
+            <p className="mb-2 mt-5 text-xs font-medium text-muted">
+              Feature impact across {shap.beeswarm.n} real cars — ranked by influence
+            </p>
+            <ShapBeeswarm order={shap.beeswarm.order} features={shap.beeswarm.features} n={shap.beeswarm.n} />
+            <p className="mt-2 text-xs text-muted">
+              A mean would say <span className="text-fg">age</span> is merely important. The spread says
+              it is the strongest lever in both directions — a young car is worth more for the same reason
+              an old one is worth less, and only the swarm shows that.
+            </p>
           </SectionCard>
         </Reveal>
 

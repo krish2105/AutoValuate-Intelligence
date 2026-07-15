@@ -105,5 +105,56 @@ from agents import cv_local
 _imgs = sorted(_glob.glob(str(Path(__file__).resolve().parents[1] / "backend-api" / "models" / "*.nonexist")))  # placeholder
 check("best.onnx present + model loads", cv_local.MODEL_PATH.exists() and cv_local.available())
 
+# ---- train/serve skew: does inference actually SEE the features it was trained on? ----
+# This caught a real, shipped bug: the trainer lowercased its categoricals while _encode did
+# not, so "Sedan"/"Dubai"/"GCC" missed the cat_map and 6 of 8 categorical features encoded as
+# -1 (unseen) on every real request — while CV metrics, computed with the training encoder,
+# stayed perfect. Nothing else in the suite could see it. Assert the contract directly.
+print("\nTrain/serve encoding contract:")
+from models import valuation_model as _vm  # noqa: E402
+
+_bundle = _vm._load()
+_typical = {
+    "make": "toyota", "model": "corolla", "year": 2019, "kilometers": 90000,
+    "bodyType": "Sedan", "transmissionType": "Automatic", "fuelType": "Petrol",
+    "regionalSpecs": "GCC", "sellerType": "Dealer", "city": "Dubai", "noOfCylinders": 4,
+}
+_enc = _vm._encode(_vm._derive(_typical, _bundle.get("reference_year", 2026)), _bundle)
+_unseen = [c for c in _bundle["categorical_features"] if int(_enc[c].iloc[0]) == -1]
+check("a typical request resolves EVERY categorical feature (no silent -1)",
+      not _unseen, f"unseen: {_unseen}")
+check("category matching is case-insensitive",
+      _vm.predict({**_typical, "bodyType": "SEDAN", "city": "DUBAI"})["price_mid_aed"]
+      == _vm.predict(_typical)["price_mid_aed"])
+check("a genuinely unknown category still degrades gracefully to -1, not a crash",
+      _vm.predict({**_typical, "bodyType": "Hovercraft"})["price_mid_aed"] > 0)
+
+
+# ---- E5 anomaly flag on comparables ----
+# The flag accuses a listing of being implausible, so both directions matter: it must fire on
+# a car at a fraction of its predicted value, and must stay silent on an ordinary one. A
+# false-positive here tells a real seller their honest listing looks like fraud.
+print("\nAnomaly flag (E5, too-good-to-be-true):")
+from agents import anomaly_agent  # noqa: E402
+
+_car = {
+    "make": "toyota", "model": "corolla", "year": 2019, "kilometers": 90000,
+    "bodyType": "Sedan", "transmissionType": "Automatic", "fuelType": "Petrol",
+    "regionalSpecs": "GCC", "sellerType": "Dealer", "city": "Dubai", "noOfCylinders": 4,
+}
+_fair = anomaly_agent.annotate([{**_car, "price_aed": 45_000}])[0]
+_cheap = anomaly_agent.annotate([{**_car, "price_aed": 9_000}])[0]
+check("a fairly-priced listing is NOT flagged", "price_anomaly" not in _fair)
+check("a listing at ~1/5 of fair value IS flagged", "price_anomaly" in _cheap)
+check("flag explains itself with the fair price and a gap",
+      bool(_cheap.get("price_anomaly", {}).get("fair_price_aed"))
+      and _cheap["price_anomaly"]["below_fair_pct"] > 50)
+check("wording says verify, never accuses of fraud",
+      "fraud" not in _cheap.get("price_anomaly", {}).get("reason", "").lower())
+check("an unpriceable listing is left alone, not flagged",
+      "price_anomaly" not in anomaly_agent.annotate([{**_car, "price_aed": None}])[0])
+check("annotate does not mutate its input",
+      "price_anomaly" not in {**_car, "price_aed": 9_000})
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

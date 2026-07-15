@@ -16,7 +16,8 @@ from typing import Any, Iterator, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agents import (
-    intake_agent, aggregation_agent, comparables_rag_agent, report_agent, repair_cost, verifier_agent,
+    intake_agent, aggregation_agent, anomaly_agent, comparables_rag_agent, report_agent,
+    repair_cost, verifier_agent,
 )
 from models import valuation_model
 from llm_client.client import LLMClient
@@ -112,8 +113,11 @@ def n_valuation(state: State) -> State:
 
 
 def n_comparables(state: State) -> State:
-    comps = _COMPARABLES.find(state["vehicle"], k=5)
+    comps = anomaly_agent.annotate(_COMPARABLES.find(state["vehicle"], k=5))
+    flagged = sum(1 for c in comps if c.get("price_anomaly"))
     detail = f'{len(comps)} comparable(s), top match {comps[0]["similarity"] if comps else 0:.2f}'
+    if flagged:
+        detail += f' · {flagged} priced implausibly low'
     return {"comparables": comps, "trace": _trace(state, "comparables", "ok", detail)}
 
 

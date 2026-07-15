@@ -354,6 +354,51 @@ the same untouched test rows.
 
 ---
 
+## Train/serve skew — the bug that every metric agreed was fine
+
+**Found and fixed 2026-07-15, hours after shipping it.** Worth a chapter because nothing in a
+green CI could see it, and the shape of the failure generalises.
+
+The B3/B4 retrain moved training into `train_valuation.py`, which normalises categoricals with
+`.str.strip().str.lower()`. So the bundle's `cat_maps` keys became `sedan`, `dubai`, `dealer`.
+But inference — `valuation_model._encode()` — looked up `str(vehicle[c]).strip()` with **no
+`.lower()`**, and every real request sends `Sedan`, `Dubai`, `Dealer`, `Automatic`, `Petrol`,
+`GCC`. Those all missed the map and encoded as `-1`/unseen.
+
+**Six of eight categorical features were silently discarded on every production request.** The
+model priced cars on `make`, `model`, `age`, `kilometers`, `noOfCylinders` alone. The old
+notebook had stored those categories capitalised, so the contract held by accident; moving the
+pipeline broke it without touching either side's "interface".
+
+**Why nothing caught it.**
+
+- CV metrics (medAPE 15.87%) are computed *inside the trainer*, with the training encoder.
+  They were correct — and completely blind to what serving does.
+- `e2e_test.py` (18/18) asserts a valid ordered range, not a *correct* one. A degraded model
+  still returns `low < mid < high`.
+- Faithfulness stayed 1.000: the Verifier checks that quoted numbers trace to computed
+  evidence, not that the computation used its inputs. A wrong number, faithfully cited.
+- Spot-checking looked *fine*: the demo Corolla priced at 45,330 against a corpus median of
+  46,500, and we wrote that down as corroboration. It was luck — `make`+`model` carry most of
+  the signal for a Corolla, which is exactly the car a human would spot-check.
+
+It surfaced only because the E5 anomaly flag fired on 4.8% of genuine listings against a
+calibrated 2.5%, and the flagged cars had a *pattern* (cheap, new, budget brands). Chasing why
+a **downstream feature disagreed with its own calibration** exposed it. The first draft of the
+E5 chapter here confidently explained that pattern as "the model's blind spot on thin models"
+and retired the feature. That explanation was wrong — it was this bug — and E5 ships.
+
+**Impact:** predictions moved materially once fixed (demo Corolla 45,330 → **35,207**; a 2025
+GAC Emzoom 141,300 → **81,213**). The published metrics did not move, because they were always
+measured with the correct encoder. Fixing serving made production match its own scorecard.
+
+**The fix is the test, not the `.lower()`.** `eval/unit_tests.py` now asserts that a typical
+request resolves *every* categorical feature — no silent `-1` — plus case-insensitivity and
+graceful handling of a genuinely unknown category. An encoder contract that is only checked by
+accuracy metrics computed on the training side of the boundary is not checked at all.
+
+---
+
 ## Summary
 
 The two experiments we could run honestly both produced results that **argue against the

@@ -6,6 +6,7 @@ import { estimateValuation } from "@/lib/api";
 import { aed, cn } from "@/lib/utils";
 import { SectionCard, Pill } from "./ui";
 import { CountUp } from "./fx";
+import { Sensitivity } from "./sensitivity";
 
 const REF_YEAR = 2026;
 // Local fallback elasticities (only used when the live model is unreachable). Anchored
@@ -206,6 +207,9 @@ export function WhatIf({ result, online }: { result: ValuationResult; online: bo
           </div>
         </div>
       </div>
+
+      {/* E6 — the sliders above drive this curve; it renders nothing when offline. */}
+      <Sensitivity vehicle={result.vehicle} year={year} condition={cond} currentKm={km} currentMid={mid} />
     </SectionCard>
   );
 }

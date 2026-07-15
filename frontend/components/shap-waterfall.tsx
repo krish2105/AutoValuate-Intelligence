@@ -2,13 +2,7 @@
 import { Bar, BarChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
 import type { ShapFactor } from "@/lib/types";
 import { aed } from "@/lib/utils";
-
-const PRETTY: Record<string, string> = {
-  noOfCylinders: "Engine size", year: "Model year", bodyType: "Body type",
-  make: "Make", model: "Model", kilometers: "Mileage", mileage_per_year: "Km / year",
-  transmissionType: "Transmission", fuelType: "Fuel", regionalSpecs: "Specs",
-  city: "City", sellerType: "Seller", age: "Age",
-};
+import { FEATURE_LABEL as PRETTY } from "@/lib/feature-labels";
 
 export function ShapWaterfall({ factors }: { factors: ShapFactor[] }) {
   const data = factors

@@ -10,6 +10,12 @@ export interface VehicleInput {
   noOfCylinders?: number | null;
   city?: string;
   sellerType?: string;
+  /**
+   * Optional asking/listed price, used ONLY for the deal score (E4). It is deliberately not
+   * a model feature and is never sent to /valuate — telling the model the asking price would
+   * let it anchor to it, and the whole point is an independent second opinion.
+   */
+  asking_price_aed?: number | null;
   photos?: string[];
   /** Optional on-device (browser CV) condition — see lib/cv-browser.ClientCondition. */
   client_condition?: import("./cv-browser").ClientCondition | null;
@@ -39,7 +45,14 @@ export interface Valuation {
   interval_segment?: string;
   currency: string;
   explanation: { baseline_log: number; top_factors: ShapFactor[] };
-  model_meta: { cv_median_ape_pct: number; cv_mae_aed: number; training_rows: number; dataset: string };
+  model_meta: {
+    /** Content hash of the artifact that priced this car (WS E3) — makes a valuation attributable. */
+    model_version?: string;
+    cv_median_ape_pct: number;
+    cv_mae_aed: number;
+    training_rows: number;
+    dataset: string;
+  };
   condition_adjusted?: boolean;
   condition_factor?: number;
 }
@@ -77,6 +90,15 @@ export interface Comparable {
   sellerType: string;
   similarity: number;
   structured_sim: number;
+  /**
+   * E5 — present only when this listing is priced below ~2.5% of genuine comparable cars,
+   * i.e. implausibly cheap for its own specs. Absent for ordinary listings.
+   */
+  price_anomaly?: {
+    fair_price_aed: number;
+    below_fair_pct: number;
+    reason: string;
+  };
 }
 
 export interface Confidence {

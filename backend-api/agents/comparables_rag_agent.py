@@ -189,6 +189,13 @@ class ComparablesAgent:
                 "kilometers": r.get("kilometers"), "price_aed": r.get("price"),
                 "bodyType": r.get("bodyType"), "city": r.get("city"),
                 "sellerType": r.get("sellerType"),
+                # Carried so the E5 anomaly check can price each listing on its own full
+                # specs rather than a partial row (which would misprice it and then blame
+                # the seller for the gap).
+                "transmissionType": r.get("transmissionType"),
+                "fuelType": r.get("fuelType"),
+                "regionalSpecs": r.get("regionalSpecs"),
+                "noOfCylinders": r.get("noOfCylinders"),
                 "similarity": round(scores.get(i, 0.0), 4),
                 "structured_sim": round(float(struct[i]), 4),
             })

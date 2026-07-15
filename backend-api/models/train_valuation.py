@@ -61,6 +61,15 @@ N_CV_SEEDS = 5    # x5 folds = 25 fits; fold composition alone moves MAPE ~1pp o
 N_CONF_SEEDS = 20  # coverage has ~5pp per-split std here — 5 seeds is not enough to see 3pp
 # E1 reliability diagram: nominal coverage levels to promise, then measure honestly.
 CALIBRATION_LEVELS = (0.50, 0.60, 0.70, 0.80, 0.90, 0.95)
+# E5 "too good to be true": flag a listing cheaper than this share of genuine comparable cars.
+# 2.5% is a deliberate trade — ~1 false flag per 8 valuations at 5 comparables each. The copy
+# says "worth verifying", never "fraud", because 1-in-40 honest sellers will trip it.
+ANOMALY_PCTILE = 0.025
+# E7 beeswarm: cars sampled for the per-point SHAP swarm. 120 keeps the JSON ~65 KB and the
+# chart legible; the full 671 would be a smear of overlapping dots for no extra insight.
+BEESWARM_SAMPLES = 120
+# Only the features that actually move price get a swarm row; below this the rows are flat.
+BEESWARM_FEATURES = 8
 
 CATS = ["make", "model", "bodyType", "transmissionType", "fuelType", "regionalSpecs",
         "sellerType", "city"]
@@ -144,8 +153,28 @@ def shap_report(model, X: pd.DataFrame) -> dict:
         j = FEATURES.index(feat)
         r = float(np.corrcoef(X[feat].to_numpy(), sv[:, j])[0, 1])
         checks[feat] = {"shap_corr": round(r, 3), "expected": "negative", "pass": bool(r < 0)}
+
+    # E7 beeswarm: per-car SHAP for a deterministic subsample. A bar chart of mean |SHAP|
+    # hides that a feature can push price hard in BOTH directions — the spread is the point.
+    # `v` is the feature's own value, min-max normalised, so the swarm can be coloured by it
+    # (high age = low price is the story a mean cannot tell).
+    rng = np.random.default_rng(SEED)
+    take = rng.choice(len(X), size=min(BEESWARM_SAMPLES, len(X)), replace=False)
+    ranked = sorted(imp, key=lambda f: -imp[f])[:BEESWARM_FEATURES]  # the rest are flat lines
+    beeswarm = {}
+    for f in ranked:
+        j = FEATURES.index(f)
+        col = X[f].to_numpy()[take].astype(float)
+        lo, hi = float(np.nanmin(col)), float(np.nanmax(col))
+        span = hi - lo
+        beeswarm[f] = [
+            {"s": round(float(sv[i, j]), 3),
+             "v": round(float((col[k] - lo) / span), 2) if span > 0 else 0.5}
+            for k, i in enumerate(take)
+        ]
     return {"global_importance": dict(sorted(imp.items(), key=lambda kv: -kv[1])),
-            "directional_checks": checks}
+            "directional_checks": checks,
+            "beeswarm": {"n": int(len(take)), "order": ranked, "features": beeswarm}}
 
 
 def main() -> int:
@@ -186,12 +215,20 @@ def main() -> int:
     # E1 reliability diagram: promise N% coverage, measure what N% actually delivers. Free
     # here — same fits, just extra deltas — and it is the honesty claim made falsifiable.
     calib = {lvl: [] for lvl in CALIBRATION_LEVELS}
+    # E5 anomaly flag: SIGNED held-out residuals per tier. Calling a listing "too good to be
+    # true" is an accusation, so its threshold is an empirical quantile of what honest cars
+    # actually do — not a normal approximation (these residuals have kurtosis ~5.2, so a
+    # normal would under-count the very tail the flag lives in).
+    signed_resid = {t: [] for t in TIERS}
     for seed in range(N_CONF_SEEDS):
         tr_i, tmp_i = train_test_split(idx, test_size=0.40, random_state=seed)
         cal_i, te_i = train_test_split(tmp_i, test_size=0.50, random_state=seed)
         m = xgb.XGBRegressor(**PARAMS).fit(X.iloc[tr_i], y[tr_i], verbose=False)
         resid = np.abs(y[cal_i] - m.predict(X.iloc[cal_i]))
         t_cal, t_te = tiers_all[cal_i], tiers_all[te_i]
+        r_te_signed = y[te_i] - m.predict(X.iloc[te_i])
+        for t in TIERS:
+            signed_resid[t].append(r_te_signed[t_te == t])
         d_global.append(conformal_delta(resid))
         per_seed = {t: conformal_delta(resid[t_cal == t]) for t in TIERS}
         for t in TIERS:
@@ -219,6 +256,11 @@ def main() -> int:
     # Mean |promised - delivered| across the curve: one number for "is the honesty real?".
     calibration_error = round(float(np.mean([abs(p["actual"] - p["nominal"])
                                              for p in calibration_curve])), 4)
+
+    # The flag fires below this signed log-residual: by construction ANOMALY_PCTILE of genuine
+    # listings trip it, so the false-positive rate is a measured property, not a guess.
+    anomaly_floor = {t: round(float(np.quantile(np.concatenate(v), ANOMALY_PCTILE)), 4)
+                     for t, v in signed_resid.items() if len(np.concatenate(v))}
     per_tier = {t: {"coverage": round(float(np.mean(v)), 3),
                     "std": round(float(np.std(v)), 3),
                     "n_splits": len(v)}
@@ -286,6 +328,8 @@ def main() -> int:
                              f"train/calibration/test, averaged over {N_CONF_SEEDS} seeds, "
                              f"coverage measured on held-out test"),
         "conformal_coverage_by_tier": per_tier,
+        "anomaly_resid_floor_by_tier": anomaly_floor,  # E5: signed log-residual, per tier
+        "anomaly_pctile": ANOMALY_PCTILE,
         "objective": "reg:squarederror with monotone_constraints(age=-1, kilometers=-1)",
         "monotone_verified": sweeps,
         "xgboost_version": xgb.__version__,  # must match backend-api/requirements.txt

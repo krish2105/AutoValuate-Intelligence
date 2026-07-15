@@ -40,8 +40,14 @@ def _load() -> dict:
 def _encode(vehicle: dict[str, Any], bundle: dict) -> pd.DataFrame:
     row = {}
     for c in bundle["categorical_features"]:
-        raw = str(vehicle.get(c, "")).strip()
-        # unseen category -> -1 (XGBoost sends it down the learned default branch)
+        # Normalise exactly as training does (train_valuation.load: strip + lower). Without
+        # the .lower() every ordinary request — "Sedan", "Dubai", "GCC", "Automatic" —
+        # missed the lowercase cat_map and silently encoded as -1/unseen, so 6 of 8
+        # categorical features were discarded at inference while CV metrics (computed with
+        # the training encoder) looked perfect. Textbook train/serve skew; see
+        # eval/unit_tests.py, which now fails if a normal request produces any unseen level.
+        raw = str(vehicle.get(c, "")).strip().lower()
+        # genuinely unseen category -> -1 (XGBoost sends it down the learned default branch)
         row[c] = bundle["cat_maps"][c].get(raw, -1)
     for n in bundle["numeric_features"]:
         v = vehicle.get(n, None)
