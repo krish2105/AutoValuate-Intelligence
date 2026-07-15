@@ -1,0 +1,20 @@
+# Dependency freshness gates (master plan WS E7). Limits are kept low so free-tier
+# CI minutes aren't burned on a wall of simultaneous PRs.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: pip
+    directory: /backend-api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

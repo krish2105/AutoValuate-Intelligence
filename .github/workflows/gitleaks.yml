@@ -1,0 +1,23 @@
+# Secret scan on every push/PR (master plan WS E7). A service_role key was pasted in
+# chat once during setup (see OPS-4) — this gate makes sure nothing like it ever lands
+# in the repo history unnoticed.
+name: Secret scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
