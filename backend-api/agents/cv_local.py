@@ -117,28 +117,94 @@ def _infer_region(img: np.ndarray, frac, min_conf: float) -> list[dict]:
     return dets
 
 
-def _merge(dets: list[dict]) -> list[dict]:
-    """Per-class NMS over the union of TTA passes — dedupes boxes found in both orientations."""
-    by_class: dict[int, list[dict]] = {}
+# ---- Weighted Box Fusion (better localization + agreement-boosted confidence) ----
+WBF_IOU = 0.55
+AGREE_BONUS = 0.05   # +conf per extra tile a box was seen in (independent-crop agreement)
+
+
+def _iou1(a, b) -> float:
+    x1, y1 = max(a[0], b[0]), max(a[1], b[1])
+    x2, y2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    ua = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / (ua + 1e-9)
+
+
+def _wbf(dets: list[dict]) -> list[dict]:
+    """
+    Weighted Box Fusion over the tile passes. Unlike NMS (which keeps one box and discards the
+    rest), WBF fuses a cluster of overlapping same-class boxes into a confidence-weighted average
+    box — tighter localization — and boosts the fused confidence when several independent crops
+    agree (genuine evidence the damage is real).
+    """
+    by_class: dict[str, list[dict]] = {}
     for d in dets:
-        by_class.setdefault(CLASSES.index(d["label"]), []).append(d)
+        by_class.setdefault(d["label"], []).append(d)
     out: list[dict] = []
-    for group in by_class.values():
-        boxes = np.array([d["box"] for d in group], dtype=np.float32)
-        scores = np.array([d["confidence"] for d in group], dtype=np.float32)
-        for k in _nms(boxes, scores, IOU_THRES):
-            out.append(group[k])
+    for label, group in by_class.items():
+        group = sorted(group, key=lambda d: -d["confidence"])
+        clusters: list[dict] = []
+        for d in group:
+            hit = next((c for c in clusters if _iou1(c["box"], d["box"]) >= WBF_IOU), None)
+            if hit is not None:
+                hit["boxes"].append(d["box"]); hit["confs"].append(d["confidence"])
+                wsum = sum(hit["confs"])
+                hit["box"] = [sum(b[i] * c for b, c in zip(hit["boxes"], hit["confs"])) / wsum for i in range(4)]
+            else:
+                clusters.append({"box": list(d["box"]), "boxes": [d["box"]], "confs": [d["confidence"]]})
+        for c in clusters:
+            fused_conf = min(0.98, max(c["confs"]) + AGREE_BONUS * (len(c["confs"]) - 1))
+            out.append({
+                "label": label,
+                "confidence": round(fused_conf, 4),
+                "box": [round(float(np.clip(v, 0, 1)), 4) for v in c["box"]],
+            })
     return out
+
+
+# ---- Pixel-based severity head (grades damage from crop texture/shadow/extent) ----
+SEV_W_AREA, SEV_W_GRAD, SEV_W_DARK = 0.42, 0.34, 0.24
+SEV_GRAD_NORM, SEV_DARK_NORM, SEV_AREA_NORM = 0.16, 0.45, 0.14
+SEV_CLASS_PRIOR = {"glass_shatter": 0.15, "missing_part": 0.20, "punctured": 0.15, "crack": 0.10, "lamp_broken": 0.08}
+
+
+def _pixel_severity(img: np.ndarray, box) -> float:
+    """
+    0..1 severity from the detected crop's pixels — not its box size. Crumpled metal, cracks and
+    scrapes raise gradient energy; deep dents, holes and voids raise the dark fraction; extent adds
+    on top. Structural classes get a small prior. Resampled to 48×48 gray for scale invariance.
+    """
+    H, W = img.shape[:2]
+    x1, y1, x2, y2 = int(box[0] * W), int(box[1] * H), int(box[2] * W), int(box[3] * H)
+    x2, y2 = max(x2, x1 + 1), max(y2, y1 + 1)
+    crop = img[y1:y2, x1:x2]
+    if crop.size == 0:
+        return 0.3
+    from PIL import Image as _I
+    g = (0.299 * crop[:, :, 0] + 0.587 * crop[:, :, 1] + 0.114 * crop[:, :, 2]).astype(np.uint8)
+    g = np.asarray(_I.fromarray(g).resize((48, 48))).astype(np.float32) / 255.0
+    gy, gx = np.gradient(g)
+    grad = float(np.mean(np.sqrt(gx * gx + gy * gy)))
+    dark = float(np.mean(g < 0.18))
+    area = max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
+    raw = (SEV_W_AREA * min(1.0, area / SEV_AREA_NORM)
+           + SEV_W_GRAD * min(1.0, grad / SEV_GRAD_NORM)
+           + SEV_W_DARK * min(1.0, dark / SEV_DARK_NORM))
+    return min(1.0, raw)
+
+
+def severity_prior(label: str) -> float:
+    return SEV_CLASS_PRIOR.get(label, 0.0)
 
 
 def detect(image_spec: str) -> list[dict]:
     """
     Return [{label, confidence, box:[x1,y1,x2,y2] normalized}] for one image spec.
 
-    Uses TILED inference: the full frame plus 4 overlapping quadrants. This detector emits
-    few boxes on a whole-car photo (val recall ~0.4–0.5 on dents/cracks), so zooming into
-    quadrants is what surfaces real damage. glass_shatter is taken only from the full pass
-    (tiles hallucinate it). Mirror of frontend cv-browser.detectImage.
+    Tiled inference (full + top-half + 2 bottom quadrants) → Weighted Box Fusion → a
+    pixel-based severity (0..1) per detection graded from the crop's texture/shadow/extent.
+    glass_shatter is taken only from the full pass (tiles hallucinate it). Each detection
+    carries {label, confidence, box, sev}. Mirror of frontend cv-browser.detectImage.
     """
     img = _load_image(image_spec)
     all_dets: list[dict] = []
@@ -148,6 +214,8 @@ def detect(image_spec: str) -> list[dict]:
             if not is_full and d["label"] in TILE_EXCLUDE:
                 continue
             all_dets.append(d)
-    dets = _merge(all_dets)
+    dets = _wbf(all_dets)
+    for d in dets:
+        d["sev"] = round(min(1.0, _pixel_severity(img, d["box"]) + severity_prior(d["label"])), 4)
     dets.sort(key=lambda d: -d["confidence"])
     return dets

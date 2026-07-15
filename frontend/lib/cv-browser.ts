@@ -38,20 +38,25 @@ const BASE_SEVERITY: Record<DamageClass, number> = {
   punctured: 0.16,
   missing_part: 0.28,
 };
-// Classes that are structural by nature. Plus: ANY detection covering ≥ LARGE_AREA of the
-// frame is treated as structural too — a "dent" spanning a quarter of the photo is a crush,
-// not a door ding. This is the fix for a wrecked car scoring 98/100: the OLD logic counted
-// instances and ignored area entirely, so a crushed front-end == one small dent == −2%.
 // Structural (collision-indicating) classes. Their CO-OCCURRENCE escalates the score —
 // a car showing crack + glass + lamp + missing_part has been in an accident, not just scuffed.
 const STRUCTURAL = new Set<DamageClass>(["crack", "glass_shatter", "lamp_broken", "punctured", "missing_part", "tire_flat"]);
-const REF_AREA = 0.06;        // area at which a detection reaches its base impact
-const AREA_CAP = 2.5;         // a large box hits at most this × the base
 const CONF_LO = 0.20;
 const CONF_HI = 0.55;
 const CONF_FLOOR = 0.35;      // even a borderline detection counts at least this much
+const SEV_MULT_LO = 0.5;      // pixel severity 0..1 → impact multiplier 0.5..2.5
+const SEV_MULT_HI = 2.5;
 const STRUCT_ESC = 0.4;       // co-occurrence exponent per extra structural finding
 const MAX_TOTAL_DEDUCTION = 0.62; // photos alone can't wipe out >62%; rest disclosed as uncertainty
+
+// Pixel-severity feature weights (kept in lock-step with cv_local.py). A detection's severity
+// (0..1) is graded from the crop's pixels — texture/gradient energy (crumple, cracks, scrapes),
+// dark fraction (deep dents, holes, voids), and extent — not just its box size.
+const SEV_W_AREA = 0.42, SEV_W_GRAD = 0.34, SEV_W_DARK = 0.24;
+const SEV_GRAD_NORM = 0.16, SEV_DARK_NORM = 0.45, SEV_AREA_NORM = 0.14;
+const SEV_CLASS_PRIOR: Partial<Record<DamageClass, number>> = {
+  glass_shatter: 0.15, missing_part: 0.20, punctured: 0.15, crack: 0.10, lamp_broken: 0.08,
+};
 
 export type Severity = "minor" | "moderate" | "severe";
 
@@ -66,21 +71,75 @@ function confWeight(c: number): number {
 }
 
 /**
- * Fraction of value one detection costs. TYPE-dominant (structural ≫ cosmetic), with area
- * and confidence as bounded modifiers — because this detector emits few, small, sometimes
- * mislabelled boxes, so bbox area alone (the v1 approach) badly under-scored real wrecks.
- * Calibrated against real crashed-car photos.
+ * Pixel evidence corroborates the detection: strong crumple/void pixels raise trust even when
+ * the model's own confidence is low (a 94%-severe missing_part at conf 0.35 is real).
  */
-function detImpact(label: DamageClass, area: number, conf: number): number {
-  const areaBoost = Math.max(1, Math.min(AREA_CAP, area / REF_AREA));
-  return BASE_SEVERITY[label] * areaBoost * confWeight(conf);
+function effWeight(conf: number, sev: number): number {
+  const cw = confWeight(conf);
+  return Math.min(1, cw + (1 - cw) * sev * 0.65);
 }
 
-/** A human severity band for one detection, from its class and how much of the frame it covers. */
-export function severityOf(label: DamageClass, area: number): Severity {
+/**
+ * Fraction of value one detection costs. TYPE-dominant (structural ≫ cosmetic), scaled by the
+ * pixel-graded severity (0..1) and the confidence-blended trust — because this detector emits
+ * few, small, sometimes-mislabelled boxes, so bbox area alone badly under-scored real wrecks.
+ */
+function detImpact(label: DamageClass, sev: number, conf: number): number {
+  return BASE_SEVERITY[label] * (SEV_MULT_LO + (SEV_MULT_HI - SEV_MULT_LO) * sev) * effWeight(conf, sev);
+}
+
+/**
+ * Grade severity (0..1) from a 48×48 grayscale crop: gradient energy (crumple/cracks/scrapes) +
+ * dark fraction (deep dents/holes/voids) + extent. Pure + testable for backend parity. np.gradient
+ * central-difference is replicated exactly. Add the class prior (structural bias) at the call site.
+ */
+export function severityFromGray(g: Float32Array, area: number): number {
+  const N = 48;
+  let gradSum = 0, dark = 0;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const i = y * N + x;
+      const gx = x === 0 ? g[i + 1] - g[i]
+        : x === N - 1 ? g[i] - g[i - 1]
+        : (g[i + 1] - g[i - 1]) / 2;
+      const gy = y === 0 ? g[i + N] - g[i]
+        : y === N - 1 ? g[i] - g[i - N]
+        : (g[i + N] - g[i - N]) / 2;
+      gradSum += Math.hypot(gx, gy);
+      if (g[i] < 0.18) dark++;
+    }
+  }
+  const grad = gradSum / (N * N);
+  const darkFrac = dark / (N * N);
+  const raw = SEV_W_AREA * Math.min(1, area / SEV_AREA_NORM)
+    + SEV_W_GRAD * Math.min(1, grad / SEV_GRAD_NORM)
+    + SEV_W_DARK * Math.min(1, darkFrac / SEV_DARK_NORM);
+  return Math.min(1, raw);
+}
+
+/** Draw the box crop of the source image to 48×48 gray and grade its severity (0..1). */
+function cropSeverity(source: CanvasImageSource, W: number, H: number, box: readonly [number, number, number, number], label: DamageClass): number {
+  const x1 = Math.round(box[0] * W), y1 = Math.round(box[1] * H);
+  const x2 = Math.max(x1 + 1, Math.round(box[2] * W)), y2 = Math.max(y1 + 1, Math.round(box[3] * H));
+  const canvas = document.createElement("canvas");
+  canvas.width = 48; canvas.height = 48;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(source, x1, y1, x2 - x1, y2 - y1, 0, 0, 48, 48);
+  const { data } = ctx.getImageData(0, 0, 48, 48);
+  const g = new Float32Array(48 * 48);
+  for (let i = 0; i < 48 * 48; i++) {
+    g[i] = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
+  }
+  const sev = severityFromGray(g, boxArea(box)) + (SEV_CLASS_PRIOR[label] ?? 0);
+  return Math.min(1, sev);
+}
+
+/** A human severity band for one detection, from its pixel-graded severity (0..1). */
+export function severityOf(label: DamageClass, sev: number): Severity {
   // scratches are cosmetic — a big one is still just paint, never "severe".
-  if (label !== "scratch" && (area >= 0.12 || (STRUCTURAL.has(label) && area >= 0.05))) return "severe";
-  if (area >= 0.05 || STRUCTURAL.has(label)) return "moderate";
+  if (label === "scratch") return sev >= 0.5 ? "moderate" : "minor";
+  if (sev >= 0.62) return "severe";
+  if (sev >= 0.34) return "moderate";
   return "minor";
 }
 
@@ -89,6 +148,8 @@ export interface Detection {
   confidence: number;
   /** [x1, y1, x2, y2] normalized to [0,1] in the original image space. */
   box: [number, number, number, number];
+  /** Pixel-graded severity (0..1), attached by detectImage. Optional until then. */
+  sev?: number;
 }
 
 export interface DamageFindingClient {
@@ -336,7 +397,22 @@ async function inferRegion(
     }));
 }
 
-/** Per-class NMS over the union of all tile passes — dedupes the same damage seen in overlap. */
+const WBF_IOU = 0.55;
+const AGREE_BONUS = 0.05; // +conf per extra tile a box was seen in (independent-crop agreement)
+
+function iou1(a: readonly number[], b: readonly number[]): number {
+  const x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]);
+  const x2 = Math.min(a[2], b[2]), y2 = Math.min(a[3], b[3]);
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  const ua = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
+  return inter / (ua + 1e-9);
+}
+
+/**
+ * Weighted Box Fusion over the tile passes. Unlike NMS (keep one box, discard the rest), WBF
+ * fuses a cluster of overlapping same-class boxes into a confidence-weighted average box —
+ * tighter localization — and boosts the fused confidence when several independent crops agree.
+ */
 function mergeDetections(dets: Detection[]): Detection[] {
   const byClass = new Map<DamageClass, Detection[]>();
   for (const d of dets) {
@@ -344,19 +420,33 @@ function mergeDetections(dets: Detection[]): Detection[] {
     if (g) g.push(d); else byClass.set(d.label, [d]);
   }
   const out: Detection[] = [];
-  for (const group of byClass.values()) {
-    const boxes = group.map((g) => g.box as unknown as number[]);
-    const scores = group.map((g) => g.confidence);
-    for (const k of nms(boxes, scores, IOU_THRES)) out.push(group[k]);
+  for (const [label, group] of byClass) {
+    const sorted = [...group].sort((a, b) => b.confidence - a.confidence);
+    const clusters: { box: number[]; boxes: number[][]; confs: number[] }[] = [];
+    for (const d of sorted) {
+      const hit = clusters.find((c) => iou1(c.box, d.box) >= WBF_IOU);
+      if (hit) {
+        hit.boxes.push(d.box); hit.confs.push(d.confidence);
+        const wsum = hit.confs.reduce((s, c) => s + c, 0);
+        hit.box = [0, 1, 2, 3].map((i) => hit.boxes.reduce((s, b, k) => s + b[i] * hit.confs[k], 0) / wsum);
+      } else {
+        clusters.push({ box: [...d.box], boxes: [d.box], confs: [d.confidence] });
+      }
+    }
+    for (const c of clusters) {
+      const fusedConf = Math.min(0.98, Math.max(...c.confs) + AGREE_BONUS * (c.confs.length - 1));
+      out.push({ label, confidence: fusedConf, box: c.box as [number, number, number, number] });
+    }
   }
   return out.sort((a, b) => b.confidence - a.confidence);
 }
 
 /**
- * Run detection on one image via TILED inference: the full frame plus 4 overlapping quadrants.
- * This detector emits few boxes on a whole-car photo (val recall ~0.4–0.5 on dents/cracks), so
- * zooming into quadrants is what actually surfaces real damage. glass_shatter is taken only from
- * the full pass (tiles hallucinate it). Union → per-class NMS → drop pinprick noise.
+ * Run detection on one image: TILED inference (full + top-half + 2 bottom quadrants) → Weighted
+ * Box Fusion → a pixel-graded severity (0..1) per detection from the crop's texture/shadow/extent.
+ * This detector emits few, small boxes on a whole-car photo, so tiling surfaces the damage and the
+ * pixel-severity head grades how bad each one actually is. glass_shatter is taken only from the
+ * full pass (tiles hallucinate it). Mirror of backend cv_local.detect.
  */
 export async function detectImage(img: HTMLImageElement | ImageBitmap): Promise<Detection[]> {
   const session = await loadSession();
@@ -374,7 +464,9 @@ export async function detectImage(img: HTMLImageElement | ImageBitmap): Promise<
       all.push(d);
     }
   }
-  return mergeDetections(all).filter((d) => boxArea(d.box) >= MIN_AREA);
+  const fused = mergeDetections(all).filter((d) => boxArea(d.box) >= MIN_AREA);
+  for (const d of fused) d.sev = cropSeverity(img, W, H, d.box, d.label);
+  return fused;
 }
 
 /** Load a data-URL / object-URL string into an HTMLImageElement. */
@@ -393,25 +485,32 @@ export function loadImageEl(src: string): Promise<HTMLImageElement> {
  * and price-adjustment factor — a faithful port of aggregation_agent.aggregate()
  * so the browser result is interchangeable with the server's.
  */
+/** Pixel severity if the detector attached it; else a coarse area+class fallback (mirrors backend). */
+function sevOfDet(d: Detection): number {
+  if (d.sev != null) return d.sev;
+  const area = boxArea(d.box);
+  return Math.min(1, 0.6 * Math.min(1, area / 0.14) + (SEV_CLASS_PRIOR[d.label] ?? 0));
+}
+
 export function conditionFromDetections(perPhoto: Detection[][]): ClientCondition {
-  // Aggregate per class, but track area/impact per detection (not just a count), so the
-  // score reflects how much of the car is damaged — not merely how many boxes fired.
+  // Aggregate per class, tracking each detection's pixel-graded severity + impact, so the score
+  // reflects how bad the damage actually is — not merely how many boxes fired or how big they are.
   interface Slot {
     maxConf: number;
     photos: Set<number>;
-    dets: { area: number; conf: number; impact: number }[];
-    worstArea: number;
+    dets: { sev: number; conf: number; impact: number }[];
+    worstSev: number;
   }
   const perClass = new Map<DamageClass, Slot>();
   perPhoto.forEach((dets, photoIdx) => {
     for (const d of dets) {
       if (!(d.label in BASE_SEVERITY) || d.confidence < TILE_CONF) continue;
-      const area = boxArea(d.box);
-      const slot = perClass.get(d.label) ?? { maxConf: 0, photos: new Set<number>(), dets: [], worstArea: 0 };
+      const sev = sevOfDet(d);
+      const slot = perClass.get(d.label) ?? { maxConf: 0, photos: new Set<number>(), dets: [], worstSev: 0 };
       slot.maxConf = Math.max(slot.maxConf, d.confidence);
       slot.photos.add(photoIdx);
-      slot.dets.push({ area, conf: d.confidence, impact: detImpact(d.label, area, d.confidence) });
-      slot.worstArea = Math.max(slot.worstArea, area);
+      slot.dets.push({ sev, conf: d.confidence, impact: detImpact(d.label, sev, d.confidence) });
+      slot.worstSev = Math.max(slot.worstSev, sev);
       perClass.set(d.label, slot);
     }
   });
@@ -437,7 +536,7 @@ export function conditionFromDetections(perPhoto: Detection[][]): ClientConditio
       max_confidence: Math.round(s.maxConf * 1e3) / 1e3,
       photos_with_damage: [...s.photos].sort((a, b) => a - b),
       value_impact_pct: Math.round(classImpact * 100 * 10) / 10,
-      severity: severityOf(label, s.worstArea),
+      severity: severityOf(label, s.worstSev),
     });
   }
 

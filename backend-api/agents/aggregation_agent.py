@@ -35,34 +35,52 @@ BASE_SEVERITY = {
 }
 STRUCTURAL = {"crack", "glass_shatter", "lamp_broken", "punctured", "missing_part", "tire_flat"}
 CONF_THRESHOLD = 0.33    # matches TILE_CONF — the lowest pass gate; detect() already gated
-REF_AREA = 0.06
-AREA_CAP = 2.5
 CONF_LO, CONF_HI = 0.20, 0.55
 CONF_FLOOR = 0.35
+SEV_MULT_LO, SEV_MULT_HI = 0.5, 2.5   # pixel severity 0..1 → impact multiplier 0.5..2.5
 STRUCT_ESC = 0.4         # co-occurrence exponent per extra structural finding
 MAX_TOTAL_DEDUCTION = 0.62  # photos alone can't wipe out >62%; rest disclosed as uncertainty
+# Fallback when a detection carries no pixel `sev` (e.g. the remote CV Space): estimate from area.
+_FALLBACK_PRIOR = {"glass_shatter": 0.15, "missing_part": 0.20, "punctured": 0.15, "crack": 0.10, "lamp_broken": 0.08}
 
 
 def _box_area(box) -> float:
     if not box or len(box) < 4:
-        return REF_AREA  # no box → assume a reference-sized instance
+        return 0.06
     return max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
+
+
+def _sev_of_det(d: dict) -> float:
+    """Pixel severity if the detector provided it; else a coarse area+class fallback."""
+    s = d.get("sev")
+    if s is not None:
+        return float(s)
+    area = _box_area(d.get("box"))
+    return min(1.0, 0.6 * min(1.0, area / 0.14) + _FALLBACK_PRIOR.get(d.get("label"), 0.0))
 
 
 def _conf_weight(c: float) -> float:
     return max(CONF_FLOOR, min(1.0, (c - CONF_LO) / (CONF_HI - CONF_LO)))
 
 
-def _det_impact(label: str, area: float, conf: float) -> float:
-    area_boost = max(1.0, min(AREA_CAP, area / REF_AREA))
-    return BASE_SEVERITY[label] * area_boost * _conf_weight(conf)
+def _eff_weight(conf: float, sev: float) -> float:
+    # Pixel evidence corroborates the detection: strong crumple/void pixels raise trust even
+    # when the model's own confidence is low (a 94%-severe missing_part at conf 0.35 is real).
+    cw = _conf_weight(conf)
+    return min(1.0, cw + (1 - cw) * sev * 0.65)
 
 
-def _severity_of(label: str, area: float) -> str:
-    # scratches are cosmetic — a big one is still just paint, never "severe".
-    if label != "scratch" and (area >= 0.12 or (label in STRUCTURAL and area >= 0.05)):
+def _det_impact(label: str, sev: float, conf: float) -> float:
+    return BASE_SEVERITY[label] * (SEV_MULT_LO + (SEV_MULT_HI - SEV_MULT_LO) * sev) * _eff_weight(conf, sev)
+
+
+def _severity_of(label: str, sev: float) -> str:
+    # graded from the crop pixels (0..1), not box size. scratches are cosmetic — never "severe".
+    if label == "scratch":
+        return "moderate" if sev >= 0.5 else "minor"
+    if sev >= 0.62:
         return "severe"
-    if area >= 0.05 or label in STRUCTURAL:
+    if sev >= 0.34:
         return "moderate"
     return "minor"
 
@@ -116,14 +134,14 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             conf = float(d.get("confidence", 0))
             if label not in BASE_SEVERITY or conf < CONF_THRESHOLD:
                 continue
-            area = _box_area(d.get("box"))
+            sev = _sev_of_det(d)
             slot = per_class.setdefault(
-                label, {"max_conf": 0.0, "photos": set(), "impacts": [], "worst_area": 0.0}
+                label, {"max_conf": 0.0, "photos": set(), "impacts": [], "worst_sev": 0.0}
             )
             slot["max_conf"] = max(slot["max_conf"], conf)
             slot["photos"].add(i)
-            slot["impacts"].append(_det_impact(label, area, conf))
-            slot["worst_area"] = max(slot["worst_area"], area)
+            slot["impacts"].append(_det_impact(label, sev, conf))
+            slot["worst_sev"] = max(slot["worst_sev"], sev)
 
     if assessed == 0:
         return {
@@ -152,7 +170,7 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             "max_confidence": round(s["max_conf"], 3),
             "photos_with_damage": sorted(s["photos"]),
             "value_impact_pct": round((1 - kept_class) * 100, 1),
-            "severity": _severity_of(label, s["worst_area"]),
+            "severity": _severity_of(label, s["worst_sev"]),
         })
 
     # Accident escalation: co-occurring structural findings signal a collision, so amplify.
