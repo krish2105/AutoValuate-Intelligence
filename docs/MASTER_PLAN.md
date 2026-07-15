@@ -39,9 +39,13 @@ exact blocker. Commits are on `feat/hero-scan-loop`.
 | D1 (code) | `scripts/generate_chat_dataset.py` — real pipeline → teacher LLM → Verifier filter; smoke-tested keyless | needs LLM keys to run at scale |
 | D3 (code) | `notebooks/07_chatbot_lora_finetune.ipynb` — ready-to-run LoRA scaffold with grounding/refusal gates asserted | needs Kaggle GPU + §13.1 decision |
 | E2 | `/estimate/batch` (fleet in one request) + dealer page wired with per-row fallback | live uvicorn + Playwright route-mock tests |
+| E3 (partial) | `model_version` (artifact content hash) stamped on every valuation's `model_meta` — rollbacks/retrains attributable | live `/v1/estimate` returns it |
+| E4 (partial) | Structured JSON access log (method/path/status/ms) per request — Render log stream gives latency/error visibility, account-free | live uvicorn |
+| E6 | Versioned `/v1/*` aliases (same handlers/schemas/limits) + OpenAPI description + `docs/API.md` reference | 7 `/v1` paths live; rate-limit + 429 verified on `/v1/estimate` |
 | E7 | gitleaks secret scan + Dependabot (npm/pip/actions) | `.github/` |
 | E8 | `/ready` readiness probe + per-provider LLM circuit breaker (3 fails → 120s cooldown) | live uvicorn verification |
-| F2 | Playwright E2E + axe in CI (hero animation, reduced-motion, dealer batch, a11y) — immediately caught & fixed a missing `<main>` landmark | `frontend-ci.yml`, 6/6 green |
+| F1 (partial) | WCAG-AA contrast gate over the semantic tokens, both themes, in CI | Playwright `contrast.spec.ts`, both themes pass |
+| F2 | Playwright E2E + axe in CI (hero animation, reduced-motion, dealer batch, contrast, a11y) — immediately caught & fixed a missing `<main>` landmark | `frontend-ci.yml`, 8/8 green |
 | G (partial) | `evals.yml` — corpus/retrieval/model-study regression gate on data & ML PRs | `.github/workflows/evals.yml` |
 | — | Hero: ambient appraisal-loop animation (scan → findings → price) + micro-life, reduced-motion safe | Playwright-verified |
 

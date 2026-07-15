@@ -21,6 +21,14 @@ _BUNDLE_PATH = Path(__file__).with_name("valuation_model.joblib")
 
 
 @lru_cache(maxsize=1)
+def _artifact_version() -> str:
+    """Short content hash of the model artifact (WS E3): every valuation names the exact
+    model that priced it, so a rollback or retrain is attributable in logs and reports."""
+    import hashlib
+    return hashlib.sha256(_BUNDLE_PATH.read_bytes()).hexdigest()[:12]
+
+
+@lru_cache(maxsize=1)
 def _load() -> dict:
     if not _BUNDLE_PATH.exists():
         raise FileNotFoundError(
@@ -108,6 +116,7 @@ def predict(vehicle: dict[str, Any], top_k: int = 6) -> dict[str, Any]:
             "top_factors": contribs[:top_k],
         },
         "model_meta": {
+            "model_version": _artifact_version(),
             "cv_median_ape_pct": bundle["cv_metrics"]["median_APE_pct"]["mean"],
             "cv_mae_aed": bundle["cv_metrics"]["MAE_AED"]["mean"],
             "training_rows": bundle["training_rows"],

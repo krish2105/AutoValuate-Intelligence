@@ -44,7 +44,9 @@ MAX_PHOTOS = 8
 MAX_PHOTO_CHARS = 8_000_000          # ~6 MB decoded per photo (base64 is ~1.33x)
 RATE_LIMIT_MAX = int(os.environ.get("RATE_LIMIT_MAX", "20"))     # requests
 RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))  # seconds
-_RATE_PATHS = ("/valuate", "/estimate", "/chat")   # rate-limited prefixes (never /health or /)
+# Rate-limited + API-key-metered prefixes (never /health, /ready, or /). The /v1 aliases
+# (WS E6) are listed explicitly so versioned paths carry the same limits and metering.
+_RATE_PATHS = ("/valuate", "/estimate", "/chat", "/v1/valuate", "/v1/estimate", "/v1/chat")
 # CORS: comma-separated origins (never wildcard). Defaults cover local dev + the
 # production Vercel app; the regex also allows this project's Vercel preview URLs.
 _origins = os.environ.get(
@@ -56,7 +58,16 @@ ALLOWED_ORIGIN_REGEX = os.environ.get(
     "ALLOWED_ORIGIN_REGEX", r"https://auto-valuate-intelligence[a-z0-9-]*\.vercel\.app"
 )
 
-app = FastAPI(title="AutoValuate Intelligence API", version="1.0.0")
+app = FastAPI(
+    title="AutoValuate Intelligence API",
+    version="1.0.0",
+    description=(
+        "Explainable, damage-aware used-car valuation for the UAE. Stable versioned "
+        "paths live under /v1 (aliases of the root paths); authenticate metered calls "
+        "with `Authorization: Bearer <api key>` from the Developers page. "
+        "Reference: docs/API.md."
+    ),
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -174,7 +185,8 @@ def root() -> dict:
         "status": "ok",
         "llm_provider_configured": orchestrator._LLM.has_live_provider,
         "cv_service_configured": bool(os.environ.get("CV_SERVICE_URL", "").strip()),
-        "endpoints": ["/health", "/valuate", "/valuate/stream", "/estimate", "/chat"],
+        "endpoints": ["/health", "/ready", "/valuate", "/valuate/stream", "/estimate",
+                      "/estimate/batch", "/chat", "/v1/*  (stable aliases)"],
     }
 
 
@@ -307,3 +319,33 @@ async def valuate_stream(req: ValuationRequest):
             yield {"event": event["type"], "data": json.dumps(event["data"], default=str)}
 
     return EventSourceResponse(gen())
+
+
+# ---- structured access log (WS E4, account-free slice) ------------------------------
+# One JSON line per request: method, path, status, duration. Render's log stream then
+# gives latency/error visibility with zero new services; a Sentry/PostHog layer can sit
+# on top later without touching this.
+@app.middleware("http")
+async def _access_log(request: Request, call_next):
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    print(json.dumps({
+        "evt": "request", "method": request.method, "path": request.url.path,
+        "status": response.status_code, "ms": round((time.perf_counter() - t0) * 1000, 1),
+    }), flush=True)
+    return response
+
+
+# ---- /v1 versioned aliases (WS E6) ---------------------------------------------------
+# Stable integration paths for API-key users: same handlers, same schemas, and the same
+# rate-limit + metering middleware (see _RATE_PATHS). Root paths stay for the app itself.
+for _path, _fn, _methods in (
+    ("/health", health, ["GET"]),
+    ("/ready", ready, ["GET"]),
+    ("/valuate", valuate, ["POST"]),
+    ("/valuate/stream", valuate_stream, ["POST"]),
+    ("/estimate", estimate, ["POST"]),
+    ("/estimate/batch", estimate_batch, ["POST"]),
+    ("/chat", chat, ["POST"]),
+):
+    app.add_api_route(f"/v1{_path}", _fn, methods=_methods)
