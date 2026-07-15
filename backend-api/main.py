@@ -183,6 +183,28 @@ def health() -> dict:
     return {"status": "healthy"}
 
 
+@app.get("/ready")
+def ready() -> dict:
+    """
+    Readiness probe (WS E8): /health says the process is up; this says it can actually
+    serve — the valuation model and comparables index are loaded. llm_provider is
+    informational only (the template fallback serves valuations without a key).
+    """
+    checks = {"valuation_model": False, "comparables_index": False,
+              "llm_provider": orchestrator._LLM.has_live_provider}
+    try:
+        from models import valuation_model as _vm
+        checks["valuation_model"] = bool(_vm._load())
+    except Exception as e:
+        print(f"[ready] valuation model: {type(e).__name__}: {e}", file=sys.stderr)
+    try:
+        checks["comparables_index"] = len(orchestrator._COMPARABLES.store) > 0
+    except Exception as e:
+        print(f"[ready] comparables index: {type(e).__name__}: {e}", file=sys.stderr)
+    ok = checks["valuation_model"] and checks["comparables_index"]
+    return {"status": "ready" if ok else "degraded", "checks": checks}
+
+
 @app.post("/valuate")
 async def valuate(req: ValuationRequest) -> dict:
     # run the blocking pipeline off the event loop
@@ -199,6 +221,30 @@ async def estimate(req: ValuationRequest) -> dict:
     consistent. Rate-limited + threadpooled like /valuate.
     """
     return await run_in_threadpool(orchestrator.estimate, req.model_dump())
+
+
+class BatchEstimateRequest(BaseModel):
+    """A dealer fleet in one request (WS E2) instead of N sequential /estimate calls."""
+    vehicles: list[ValuationRequest] = Field(min_length=1, max_length=100)
+
+
+@app.post("/estimate/batch")
+async def estimate_batch(req: BatchEstimateRequest) -> dict:
+    """
+    Bulk model-only valuation for the dealer dashboard: one request, one rate-limit
+    unit, per-vehicle isolation (a single bad row reports its own error instead of
+    sinking the fleet). Same estimator as /estimate, so numbers match exactly.
+    """
+    def run_all() -> dict:
+        results: list[dict] = []
+        for v in req.vehicles:
+            try:
+                results.append({"ok": True, **orchestrator.estimate(v.model_dump())})
+            except Exception as e:
+                print(f"[estimate/batch] {type(e).__name__}: {e}", file=sys.stderr)
+                results.append({"ok": False, "error": "estimate failed for this vehicle"})
+        return {"ok": True, "count": len(results), "results": results}
+    return await run_in_threadpool(run_all)
 
 
 class ChatMessage(BaseModel):

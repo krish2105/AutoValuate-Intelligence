@@ -164,6 +164,33 @@ export async function estimateValuation(
   }
 }
 
+/**
+ * Bulk model-only valuation for the dealer dashboard (WS E2): one request values the
+ * whole fleet — one rate-limit unit instead of N sequential calls. Returns null when
+ * the endpoint is unavailable (older deployed backend, fleet over the 100-row cap) so
+ * the caller can fall back to per-row estimates.
+ */
+export async function estimateBatch(
+  inputs: VehicleInput[],
+  timeoutMs = 120_000,
+): Promise<(Valuation | null)[] | null> {
+  try {
+    const res = await fetch(`${API}/estimate/batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vehicles: inputs }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (!j?.ok || !Array.isArray(j.results)) return null;
+    return j.results.map((r: { ok?: boolean; valuation?: Valuation }) =>
+      r?.ok && r.valuation ? r.valuation : null);
+  } catch {
+    return null;
+  }
+}
+
 export interface AssistantReply {
   answer: string;
   provider: string;

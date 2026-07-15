@@ -9,6 +9,7 @@ actually used is always returned, never hidden.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 
 
@@ -17,6 +18,37 @@ class LLMResult:
     text: str
     provider: str          # "gemini" | "groq" | "template"
     model: str
+
+
+class _Breaker:
+    """
+    Per-provider circuit breaker (WS E8). A provider that keeps failing — rate-limited,
+    quota-exhausted, outage — is skipped for a cooldown instead of adding its timeout to
+    every request, so the ladder degrades to the next provider (or template) instantly.
+    """
+    THRESHOLD = 3          # consecutive failures that trip the breaker
+    COOLDOWN = 120.0       # seconds a tripped provider sits out
+
+    def __init__(self) -> None:
+        self.fails = 0
+        self.open_until = 0.0
+
+    @property
+    def open(self) -> bool:
+        return time.monotonic() < self.open_until
+
+    def record(self, ok: bool) -> None:
+        if ok:
+            self.fails = 0
+            return
+        self.fails += 1
+        if self.fails >= self.THRESHOLD:
+            self.open_until = time.monotonic() + self.COOLDOWN
+            self.fails = 0
+
+
+# Shared across LLMClient instances — a breaker per process, not per request.
+_BREAKERS = {"gemini": _Breaker(), "groq": _Breaker()}
 
 
 class LLMClient:
@@ -57,16 +89,22 @@ class LLMClient:
                  template_fn=None) -> LLMResult:
         """Try Gemini, then Groq, then the deterministic template (if provided)."""
         errors = []
-        if self.gemini_key:
+        ladder = (("gemini", self.gemini_key, self._gemini, self.gemini_model),
+                  ("groq", self.groq_key, self._groq, self.groq_model))
+        for name, key, fn, model in ladder:
+            if not key:
+                continue
+            breaker = _BREAKERS[name]
+            if breaker.open:
+                errors.append(f"{name}: circuit open (cooling down)")
+                continue
             try:
-                return LLMResult(self._gemini(system, prompt, temperature), "gemini", self.gemini_model)
+                text = fn(system, prompt, temperature)
+                breaker.record(True)
+                return LLMResult(text, name, model)
             except Exception as e:  # rate limit / transient -> fall through
-                errors.append(f"gemini: {e}")
-        if self.groq_key:
-            try:
-                return LLMResult(self._groq(system, prompt, temperature), "groq", self.groq_model)
-            except Exception as e:
-                errors.append(f"groq: {e}")
+                breaker.record(False)
+                errors.append(f"{name}: {e}")
         if template_fn is not None:
             return LLMResult(template_fn(), "template", "deterministic")
         raise RuntimeError("No LLM provider available and no template fallback. " + "; ".join(errors))

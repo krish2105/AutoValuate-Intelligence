@@ -4,7 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Upload, Download, Loader2, ArrowLeft, Table2, AlertTriangle } from "lucide-react";
 import type { VehicleInput } from "@/lib/types";
-import { estimateValuation } from "@/lib/api";
+import { estimateBatch, estimateValuation } from "@/lib/api";
 import { parseVehicle } from "@/lib/parse-vehicle";
 import { aed, km } from "@/lib/utils";
 import { Logo, SectionCard, Pill } from "@/components/ui";
@@ -87,10 +87,26 @@ export default function DealerPage() {
     if (busy || !rows.length) return;
     setBusy(true);
     setDone(0);
+    const next = [...rows];
+
+    // One /estimate/batch request values the whole fleet in a single rate-limit unit
+    // (WS E2). Falls through to per-row calls if the endpoint isn't there yet (older
+    // deployed backend) or the fleet exceeds its 100-row cap.
+    const batch = await estimateBatch(next.map((r) => r.input));
+    if (batch) {
+      batch.forEach((v, i) => {
+        next[i] = v
+          ? { ...next[i], low: v.price_low_aed, mid: v.price_mid_aed, high: v.price_high_aed, status: "done" }
+          : { ...next[i], status: "failed" };
+      });
+      setRows([...next]);
+      setDone(next.length);
+      setBusy(false);
+      return;
+    }
 
     // Sequential with a small gap: the free backend is rate-limited, and hammering it
     // would trip the limiter and fail the whole batch. Progress updates as each lands.
-    const next = [...rows];
     for (let i = 0; i < next.length; i++) {
       const v = await estimateValuation(next[i].input);
       next[i] = v
