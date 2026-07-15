@@ -2,7 +2,7 @@
 # Comparables embeddings run on fastembed (onnxruntime), not sentence-transformers/torch,
 # so the whole API stays well under the free-tier RAM cap (see DECISIONS.md ADR-014).
 
-fastapi==0.115.6
+fastapi==0.139.0
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 python-multipart==0.0.20
