@@ -74,7 +74,8 @@ export function BrowserCV({
 
   const totalFindings = cond?.findings.length ?? 0;
   const score = cond?.condition_score ?? null;
-  const scoreTone = score == null ? "muted" : score >= 80 ? "good" : score >= 55 ? "warn" : "bad";
+  const scoreTone = score == null ? "muted" : score >= 78 ? "good" : score >= 60 ? "warn" : "bad";
+  const sevTone: Record<string, string> = { minor: "text-muted", moderate: "text-warn", severe: "text-bad" };
 
   return (
     <motion.div
@@ -97,7 +98,7 @@ export function BrowserCV({
           <Pill tone="info"><Loader2 className="h-3 w-3 animate-spin" /> scanning…</Pill>
         ) : status === "done" ? (
           <Pill tone={scoreTone as any}>
-            {score != null && score >= 80 ? <ShieldCheck className="h-3 w-3" /> : null}
+            {score != null && score >= 78 ? <ShieldCheck className="h-3 w-3" /> : null}
             {score}/100 · {totalFindings} issue{totalFindings === 1 ? "" : "s"}
           </Pill>
         ) : status === "error" ? (
@@ -141,14 +142,31 @@ export function BrowserCV({
         ))}
       </div>
 
+      {/* overall condition band + honest inspection prompt when damage is significant */}
+      {cond && cond.findings.length > 0 && (
+        <div className="mt-3">
+          <p className={`text-xs font-medium ${scoreTone === "good" ? "text-good" : scoreTone === "warn" ? "text-warn" : "text-bad"}`}>
+            {cond.assessment}
+          </p>
+          {cond.needs_inspection && (
+            <p className="mt-1 flex items-start gap-1.5 text-[11px] text-muted">
+              <AlertTriangle className="mt-px h-3 w-3 shrink-0 text-warn" />
+              Significant or structural damage detected — a professional inspection is recommended.
+              A photo scan can miss frame, mechanical and underbody damage.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* per-class findings chips */}
       {cond && cond.findings.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
           {cond.findings.map((f) => (
             <span key={f.damage_type}
               className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-[11px]">
               <span className="h-2 w-2 rounded-full" style={{ background: classColor(f.damage_type) }} />
               <span className="font-medium">{titleCase(f.damage_type.replace("_", " "))}</span>
+              <span className={sevTone[f.severity] ?? "text-muted"}>{f.severity}</span>
               <span className="text-muted">×{f.instances}</span>
               <span className="text-bad tnum">−{f.value_impact_pct}%</span>
             </span>
@@ -156,7 +174,10 @@ export function BrowserCV({
         </div>
       )}
       {cond && cond.findings.length === 0 && status === "done" && (
-        <p className="mt-3 text-[11px] text-good">No visible damage detected — condition looks clean.</p>
+        <p className="mt-3 text-[11px] text-good">
+          No visible damage detected in these photos — condition looks clean.
+          <span className="text-muted"> A photo scan can’t assess frame, mechanical or service history.</span>
+        </p>
       )}
     </motion.div>
   );

@@ -72,12 +72,12 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou: float) -> list[int]:
     return keep
 
 
-def detect(image_spec: str) -> list[dict]:
-    """Return [{label, confidence, box:[x1,y1,x2,y2] normalized}] for one image spec."""
+def _infer_pass(img: np.ndarray, flip: bool) -> list[dict]:
+    """One inference pass. Un-mirrors boxes back to true image space when flipped."""
     sess = _session()
-    img = _load_image(image_spec)
     H, W = img.shape[:2]
-    lb, r = _letterbox(img)
+    src = img[:, ::-1, :] if flip else img
+    lb, r = _letterbox(src)
     x = lb.astype(np.float32).transpose(2, 0, 1)[None] / 255.0
     out = np.squeeze(sess.run(None, {sess.get_inputs()[0].name: x})[0], 0).T  # (N, 4+nc)
     boxes, scores = out[:, :4], out[:, 4:]
@@ -94,11 +94,40 @@ def detect(image_spec: str) -> list[dict]:
         for k in _nms(xyxy[idx], conf[idx], IOU_THRES):
             j = idx[k]
             bx = xyxy[j] / r
+            x1, y1, x2, y2 = bx[0] / W, bx[1] / H, bx[2] / W, bx[3] / H
+            if flip:
+                x1, x2 = 1 - x2, 1 - x1  # un-mirror
             dets.append({
                 "label": CLASSES[int(c)],
                 "confidence": round(float(conf[j]), 4),
-                "box": [round(float(np.clip(bx[0] / W, 0, 1)), 4), round(float(np.clip(bx[1] / H, 0, 1)), 4),
-                        round(float(np.clip(bx[2] / W, 0, 1)), 4), round(float(np.clip(bx[3] / H, 0, 1)), 4)],
+                "box": [round(float(np.clip(v, 0, 1)), 4) for v in (x1, y1, x2, y2)],
             })
+    return dets
+
+
+def _merge(dets: list[dict]) -> list[dict]:
+    """Per-class NMS over the union of TTA passes — dedupes boxes found in both orientations."""
+    by_class: dict[int, list[dict]] = {}
+    for d in dets:
+        by_class.setdefault(CLASSES.index(d["label"]), []).append(d)
+    out: list[dict] = []
+    for group in by_class.values():
+        boxes = np.array([d["box"] for d in group], dtype=np.float32)
+        scores = np.array([d["confidence"] for d in group], dtype=np.float32)
+        for k in _nms(boxes, scores, IOU_THRES):
+            out.append(group[k])
+    return out
+
+
+def detect(image_spec: str) -> list[dict]:
+    """
+    Return [{label, confidence, box:[x1,y1,x2,y2] normalized}] for one image spec.
+
+    Uses horizontal-flip test-time augmentation (recall boost) — the detector is weak on
+    dents/cracks and not flip-invariant, so a mirrored second pass recovers damage the
+    single pass misses. Mirror of frontend cv-browser.detectImage.
+    """
+    img = _load_image(image_spec)
+    dets = _merge(_infer_pass(img, False) + _infer_pass(img, True))
     dets.sort(key=lambda d: -d["confidence"])
     return dets

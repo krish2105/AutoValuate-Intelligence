@@ -24,8 +24,10 @@ const CONF_THRES = 0.35; // matches cv_local.py CONF_THRES
 const IOU_THRES = 0.45;  // matches cv_local.py IOU_THRES
 const MODEL_URL = "/models/best.onnx";
 
-// Mirror of aggregation_agent.DAMAGE_SEVERITY (fraction of value lost per confident instance).
-const DAMAGE_SEVERITY: Record<DamageClass, number> = {
+// Base cosmetic severity per class — the value fraction a *reference-sized* (~4% of the
+// frame) instance costs. Extent (bbox area) and confidence scale this per detection below.
+// Mirror of aggregation_agent.BASE_SEVERITY — keep the two in lock-step.
+const BASE_SEVERITY: Record<DamageClass, number> = {
   scratch: 0.010,
   dent: 0.020,
   lamp_broken: 0.020,
@@ -35,7 +37,49 @@ const DAMAGE_SEVERITY: Record<DamageClass, number> = {
   punctured: 0.035,
   missing_part: 0.050,
 };
-const MAX_TOTAL_DEDUCTION = 0.35; // aggregation_agent.MAX_TOTAL_DEDUCTION
+// Classes that are structural by nature. Plus: ANY detection covering ≥ LARGE_AREA of the
+// frame is treated as structural too — a "dent" spanning a quarter of the photo is a crush,
+// not a door ding. This is the fix for a wrecked car scoring 98/100: the OLD logic counted
+// instances and ignored area entirely, so a crushed front-end == one small dent == −2%.
+const STRUCTURAL = new Set<DamageClass>(["crack", "glass_shatter", "punctured", "missing_part"]);
+const LARGE_AREA = 0.10;      // ≥10% of the frame ⇒ treat as structural regardless of class
+const REF_AREA = 0.04;        // a "typical" labelled cosmetic box is ~4% of the frame
+const STRUCT_COEF = 1.7;      // structural value loss ≈ coef × area-fraction (capped)
+const STRUCT_CAP = 0.62;      // a single structural region caps its own contribution here
+const COSMETIC_AREA_CAP = 3.0;
+const CONF_LO = 0.20;
+const CONF_HI = 0.55;
+const MAX_TOTAL_DEDUCTION = 0.55; // photos alone can't wipe out >55% — the rest is disclosed
+                                  // as uncertainty (matches aggregation_agent + main.py bound)
+
+export type Severity = "minor" | "moderate" | "severe";
+
+/** Box area as a fraction of the image (box is normalized [x1,y1,x2,y2]). */
+function boxArea(box: readonly [number, number, number, number]): number {
+  return Math.max(0, box[2] - box[0]) * Math.max(0, box[3] - box[1]);
+}
+
+/** Down-weight borderline detections so the model's weak, low-confidence calls can't dominate. */
+function confWeight(c: number): number {
+  return Math.max(0.15, Math.min(1, (c - CONF_LO) / (CONF_HI - CONF_LO)));
+}
+
+/** Fraction of value one detection costs — area- AND confidence-scaled, structural-aware. */
+function detImpact(label: DamageClass, area: number, conf: number): number {
+  const cw = confWeight(conf);
+  if (STRUCTURAL.has(label) || area >= LARGE_AREA) {
+    return cw * Math.min(STRUCT_CAP, STRUCT_COEF * area);
+  }
+  const areaMult = Math.max(0.4, Math.min(COSMETIC_AREA_CAP, area / REF_AREA));
+  return cw * BASE_SEVERITY[label] * areaMult;
+}
+
+/** A human severity band for one detection, from its class and how much of the frame it covers. */
+export function severityOf(label: DamageClass, area: number): Severity {
+  if (area >= 0.15 || (STRUCTURAL.has(label) && area >= 0.06)) return "severe";
+  if (area >= 0.05 || STRUCTURAL.has(label)) return "moderate";
+  return "minor";
+}
 
 export interface Detection {
   label: DamageClass;
@@ -50,6 +94,8 @@ export interface DamageFindingClient {
   max_confidence: number;
   photos_with_damage: number[];
   value_impact_pct: number;
+  /** Worst severity band seen for this damage class across all photos. */
+  severity: Severity;
 }
 
 /** Shape the backend expects for an optional client-side condition (see main.py ClientCondition). */
@@ -61,6 +107,19 @@ export interface ClientCondition {
   photos_assessed: number;
   total_value_impact_pct: number;
   source: "browser";
+  /** Overall plain-language condition band derived from the score. */
+  assessment: string;
+  /** True when damage is significant/structural — the UI should advise a physical inspection. */
+  needs_inspection: boolean;
+}
+
+/** Overall condition band from the 0-100 score — honest, no false precision. */
+export function assessmentBand(score: number): string {
+  if (score >= 90) return "Excellent — minimal visible damage";
+  if (score >= 78) return "Good — minor cosmetic damage";
+  if (score >= 60) return "Fair — notable damage";
+  if (score >= 45) return "Poor — significant damage";
+  return "Severe — major / likely structural damage";
 }
 
 type OrtModule = typeof import("onnxruntime-web/wasm");
@@ -119,7 +178,7 @@ interface PreprocessResult {
  * Letterbox to 640×640 (pad colour 114), RGB, /255, NCHW — identical to
  * cv_local._letterbox + the tensor build in detect().
  */
-function preprocess(source: CanvasImageSource, origW: number, origH: number): PreprocessResult {
+function preprocess(source: CanvasImageSource, origW: number, origH: number, flip = false): PreprocessResult {
   const ratio = IMGSZ / Math.max(origW, origH);
   const nw = Math.round(origW * ratio);
   const nh = Math.round(origH * ratio);
@@ -130,7 +189,16 @@ function preprocess(source: CanvasImageSource, origW: number, origH: number): Pr
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
   ctx.fillStyle = "rgb(114,114,114)"; // letterbox pad colour
   ctx.fillRect(0, 0, IMGSZ, IMGSZ);
-  ctx.drawImage(source, 0, 0, nw, nh); // top-left aligned, matching the backend
+  if (flip) {
+    // Mirror horizontally within the drawn region (test-time augmentation).
+    ctx.save();
+    ctx.translate(nw, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(source, 0, 0, nw, nh);
+    ctx.restore();
+  } else {
+    ctx.drawImage(source, 0, 0, nw, nh); // top-left aligned, matching the backend
+  }
 
   const { data: rgba } = ctx.getImageData(0, 0, IMGSZ, IMGSZ);
   const area = IMGSZ * IMGSZ;
@@ -229,7 +297,47 @@ function decode(output: Tensor, meta: PreprocessResult): Detection[] {
   return dets;
 }
 
-/** Run detection on one already-decoded image element. Returns detections. */
+const MIN_AREA = 0.0008; // drop pinprick boxes (<0.08% of frame) as likely noise
+const USE_TTA = true;    // horizontal-flip test-time augmentation (recall boost)
+
+/** One inference pass; un-mirrors boxes back to true image space when the input was flipped. */
+async function inferPass(
+  session: InferenceSession, ort: OrtModule,
+  img: CanvasImageSource, origW: number, origH: number, flip: boolean,
+): Promise<Detection[]> {
+  const meta = preprocess(img, origW, origH, flip);
+  const input = new ort.Tensor("float32", meta.data, [1, 3, IMGSZ, IMGSZ]);
+  const results = await session.run({ [session.inputNames[0]]: input });
+  const dets = decode(results[session.outputNames[0]], meta);
+  if (!flip) return dets;
+  return dets.map((d) => ({
+    ...d,
+    box: [1 - d.box[2], d.box[1], 1 - d.box[0], d.box[3]] as [number, number, number, number],
+  }));
+}
+
+/** Per-class NMS over the union of TTA passes — dedupes boxes found in both orientations. */
+function mergeDetections(dets: Detection[]): Detection[] {
+  const byClass = new Map<DamageClass, Detection[]>();
+  for (const d of dets) {
+    const g = byClass.get(d.label);
+    if (g) g.push(d); else byClass.set(d.label, [d]);
+  }
+  const out: Detection[] = [];
+  for (const group of byClass.values()) {
+    const boxes = group.map((g) => g.box as unknown as number[]);
+    const scores = group.map((g) => g.confidence);
+    for (const k of nms(boxes, scores, IOU_THRES)) out.push(group[k]);
+  }
+  return out.sort((a, b) => b.confidence - a.confidence);
+}
+
+/**
+ * Run detection on one image. Uses horizontal-flip test-time augmentation: the trained
+ * detector isn't perfectly flip-invariant and is weak on dents/cracks (val recall ~0.4–0.5),
+ * so a mirrored second pass recovers damage the single pass misses. Union → per-class NMS →
+ * drop pinprick noise boxes.
+ */
 export async function detectImage(img: HTMLImageElement | ImageBitmap): Promise<Detection[]> {
   const session = await loadSession();
   const ort = await getOrt();
@@ -237,12 +345,10 @@ export async function detectImage(img: HTMLImageElement | ImageBitmap): Promise<
   const origH = "naturalHeight" in img ? img.naturalHeight || img.height : img.height;
   if (!origW || !origH) return [];
 
-  const meta = preprocess(img, origW, origH);
-  const input = new ort.Tensor("float32", meta.data, [1, 3, IMGSZ, IMGSZ]);
-  const inputName = session.inputNames[0];
-  const outputName = session.outputNames[0];
-  const results = await session.run({ [inputName]: input });
-  return decode(results[outputName], meta);
+  const passes = USE_TTA ? [false, true] : [false];
+  const all: Detection[] = [];
+  for (const flip of passes) all.push(...await inferPass(session, ort, img, origW, origH, flip));
+  return mergeDetections(all).filter((d) => boxArea(d.box) >= MIN_AREA);
 }
 
 /** Load a data-URL / object-URL string into an HTMLImageElement. */
@@ -262,44 +368,64 @@ export function loadImageEl(src: string): Promise<HTMLImageElement> {
  * so the browser result is interchangeable with the server's.
  */
 export function conditionFromDetections(perPhoto: Detection[][]): ClientCondition {
-  const perClass = new Map<DamageClass, { count: number; maxConf: number; photos: Set<number> }>();
+  // Aggregate per class, but track area/impact per detection (not just a count), so the
+  // score reflects how much of the car is damaged — not merely how many boxes fired.
+  interface Slot {
+    maxConf: number;
+    photos: Set<number>;
+    dets: { area: number; conf: number; impact: number }[];
+    worstArea: number;
+  }
+  const perClass = new Map<DamageClass, Slot>();
   perPhoto.forEach((dets, photoIdx) => {
     for (const d of dets) {
-      if (!(d.label in DAMAGE_SEVERITY) || d.confidence < CONF_THRES) continue;
-      const slot = perClass.get(d.label) ?? { count: 0, maxConf: 0, photos: new Set<number>() };
-      slot.count += 1;
+      if (!(d.label in BASE_SEVERITY) || d.confidence < CONF_THRES) continue;
+      const area = boxArea(d.box);
+      const slot = perClass.get(d.label) ?? { maxConf: 0, photos: new Set<number>(), dets: [], worstArea: 0 };
       slot.maxConf = Math.max(slot.maxConf, d.confidence);
       slot.photos.add(photoIdx);
+      slot.dets.push({ area, conf: d.confidence, impact: detImpact(d.label, area, d.confidence) });
+      slot.worstArea = Math.max(slot.worstArea, area);
       perClass.set(d.label, slot);
     }
   });
 
+  // Probabilistic union across every detection: kept = Π(1 − impact) ⇒ saturates naturally
+  // as damage accumulates, instead of the old linear sum that a −35% cap had to rescue.
   const findings: DamageFindingClient[] = [];
-  let deduction = 0;
-  const ordered = [...perClass.entries()].sort((a, b) => b[1].count - a[1].count);
+  let keptAll = 1;
+  const ordered = [...perClass.entries()].sort((a, b) => {
+    const ia = a[1].dets.reduce((s, d) => s + d.impact, 0);
+    const ib = b[1].dets.reduce((s, d) => s + d.impact, 0);
+    return ib - ia;
+  });
   for (const [label, s] of ordered) {
-    const sev = DAMAGE_SEVERITY[label];
-    // diminishing marginal deduction per additional instance (matches server)
-    const contrib = sev * (1 + 0.5 * (s.count - 1));
-    deduction += contrib;
+    let keptClass = 1;
+    for (const d of s.dets) { keptClass *= 1 - d.impact; keptAll *= 1 - d.impact; }
+    const classImpact = 1 - keptClass;
     findings.push({
       damage_type: label,
-      instances: s.count,
+      instances: s.dets.length,
       max_confidence: Math.round(s.maxConf * 1e3) / 1e3,
       photos_with_damage: [...s.photos].sort((a, b) => a - b),
-      value_impact_pct: Math.round(contrib * 100 * 10) / 10,
+      value_impact_pct: Math.round(classImpact * 100 * 10) / 10,
+      severity: severityOf(label, s.worstArea),
     });
   }
 
-  deduction = Math.min(deduction, MAX_TOTAL_DEDUCTION);
+  const deduction = Math.min(MAX_TOTAL_DEDUCTION, 1 - keptAll);
+  const score = Math.round(100 * (1 - deduction));
+  const needsInspection = score < 70 || findings.some((f) => f.severity === "severe");
   return {
     cv_available: true,
-    condition_score: Math.round(100 * (1 - deduction)),
+    condition_score: score,
     price_adjustment_factor: Math.round((1 - deduction) * 1e4) / 1e4,
     findings,
     photos_assessed: perPhoto.length,
     total_value_impact_pct: Math.round(deduction * 100 * 10) / 10,
     source: "browser",
+    assessment: assessmentBand(score),
+    needs_inspection: needsInspection,
   };
 }
 

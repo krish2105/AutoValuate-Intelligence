@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SlidersHorizontal, RotateCcw, TrendingUp, TrendingDown, Minus, Loader2 } from "lucide-react";
 import type { ValuationResult, VehicleInput } from "@/lib/types";
 import { estimateValuation } from "@/lib/api";
+import { assessmentBand } from "@/lib/cv-browser";
 import { aed, cn } from "@/lib/utils";
 import { SectionCard, Pill } from "./ui";
 import { CountUp } from "./fx";
@@ -106,6 +107,8 @@ export function WhatIf({ result, online }: { result: ValuationResult; online: bo
           photos_assessed: 0,
           total_value_impact_pct: Math.round((100 - nextCond) * 10) / 10,
           source: "browser",
+          assessment: assessmentBand(nextCond),
+          needs_inspection: nextCond < 70,
         },
       };
 

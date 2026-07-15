@@ -129,6 +129,7 @@ class ClientFinding(BaseModel):
     max_confidence: float = Field(ge=0.0, le=1.0)
     photos_with_damage: list[int] = Field(default_factory=list, max_length=MAX_PHOTOS)
     value_impact_pct: float = Field(ge=0.0, le=100.0)
+    severity: str | None = Field(default=None, max_length=16)  # minor | moderate | severe
 
 
 class ClientCondition(BaseModel):
@@ -139,11 +140,15 @@ class ClientCondition(BaseModel):
     """
     cv_available: bool = True
     condition_score: int = Field(ge=0, le=100)
-    price_adjustment_factor: float = Field(ge=0.5, le=1.0)  # never boosts price; capped like the server
+    # Never boosts price; floored at 0.45 — a photo-only scan can't justify wiping out
+    # >55% of value (mirrors aggregation_agent.MAX_TOTAL_DEDUCTION). Was 0.5.
+    price_adjustment_factor: float = Field(ge=0.45, le=1.0)
     findings: list[ClientFinding] = Field(default_factory=list, max_length=len(DAMAGE_CLASSES))
     photos_assessed: int = Field(ge=0, le=MAX_PHOTOS)
     total_value_impact_pct: float = Field(ge=0.0, le=100.0)
     source: str = Field(default="browser", max_length=20)
+    assessment: str | None = Field(default=None, max_length=80)
+    needs_inspection: bool = False
 
 
 class ValuationRequest(BaseModel):
