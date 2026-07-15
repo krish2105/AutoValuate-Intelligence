@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LogIn, LogOut, User, X, Loader2, Mail, Sparkles, Check } from "lucide-react";
 import { supabase, signIn, signUp, signOut, resendConfirmation, type Session } from "@/lib/supabase";
+import { Button } from "./button";
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
@@ -89,10 +90,9 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
                     : <Mail className="h-4 w-4" />}
                   {resent === "sent" ? "Email re-sent" : resent === "fail" ? "Rate-limited — try later" : "Resend confirmation email"}
                 </button>
-                <button onClick={onClose}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-accent-fg transition hover:brightness-105">
-                  <Sparkles className="h-4 w-4" /> Continue without an account
-                </button>
+                <Button onClick={onClose} fullWidth leftIcon={<Sparkles className="h-4 w-4" />}>
+                  Continue without an account
+                </Button>
                 <button onClick={() => { reset(); setMode("in"); }} className="mt-3 w-full text-center text-xs text-muted hover:text-accent">
                   Back to sign in
                 </button>
@@ -106,10 +106,9 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
               <input className={input} type="email" required placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
               <input className={input} type="password" required minLength={6} placeholder="Password (min 6 chars)" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === "in" ? "current-password" : "new-password"} />
               {msg && <p className="text-xs text-warn">{msg}</p>}
-              <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition hover:brightness-105 disabled:opacity-60">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+              <Button type="submit" fullWidth loading={busy} leftIcon={<LogIn className="h-4 w-4" />}>
                 {mode === "in" ? "Sign in" : "Sign up"}
-              </button>
+              </Button>
             </form>
             <button onClick={() => { setMode(mode === "in" ? "up" : "in"); setMsg(null); }} className="mt-3 w-full text-center text-xs text-muted hover:text-accent">
               {mode === "in" ? "New here? Create an account" : "Already have an account? Sign in"}

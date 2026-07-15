@@ -3,3 +3,10 @@
 # Playwright output
 test-results/
 playwright-report/
+
+# Next.js
+.next/
+out/
+
+# Storybook build output
+storybook-static/

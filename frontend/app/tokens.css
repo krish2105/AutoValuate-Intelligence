@@ -1,0 +1,110 @@
+/* =============================================================================
+   Design tokens — three tiers (master plan WS-F1)
+
+   Tier 1  PRIMITIVES   raw palette scales. The only place literal color values
+                        live. Stored as bare `H S% L%` triplets so Tailwind can
+                        compose alpha:  hsl(var(--token) / <alpha-value>).
+   Tier 2  SEMANTIC     intent-named tokens (--bg, --accent, --good, ...). These
+                        REFERENCE primitives — no literals — so a palette change
+                        happens in one place. Names + computed values are kept
+                        identical to the pre-refactor system, so the WCAG-AA
+                        contrast gate (tests/contrast.spec.ts) and every existing
+                        `bg-accent`/`text-fg` class render byte-for-byte the same.
+   Tier 3  COMPONENT    tokens for repeated component patterns (button, card).
+                        Reference SEMANTIC tokens, never primitives directly, so
+                        a component inherits a theme change for free.
+
+   Chromium resolves var() references in getComputedStyle().getPropertyValue(),
+   so the contrast gate still reads a valid triplet off each semantic token.
+
+   Plain (unlayered) selectors on purpose: this file is @import'd as its own
+   PostCSS module, so a Tailwind `@layer` here has no matching `@tailwind base`
+   and errors. Custom-property declarations need no cascade layer anyway.
+   ============================================================================= */
+
+  :root {
+    /* ---- Tier 1 · PRIMITIVES ------------------------------------------------ */
+    /* Neutrals — cool, slightly blue-shifted (instrument-cluster graphite). */
+    --neutral-0:   0 0% 100%;
+    --neutral-25:  210 40% 98%;
+    --neutral-50:  214 32% 96%;
+    --neutral-100: 214 25% 88%;
+    --neutral-300: 215 16% 62%;
+    --neutral-400: 215 16% 42%;
+    --neutral-600: 220 18% 20%;
+    --neutral-700: 220 24% 14%;
+    --neutral-800: 222 26% 10%;
+    --neutral-900: 222 30% 7%;
+    --neutral-950: 222 60% 2%;
+    --ink-dark:    210 30% 96%;   /* body text on the dark theme */
+    --ink-light:   222 47% 11%;   /* body text on the light theme */
+    --shadow-light: 215 40% 55%;  /* diffuse shadow tint under the light theme */
+
+    /* Amber — the marque accent (dashboard warning-light warmth). */
+    --amber-500: 38 96% 56%;
+    --amber-700: 32 95% 44%;
+    --amber-ink: 30 40% 8%;   /* readable ink on amber fills (dark theme) */
+
+    /* Blue — data / info. */
+    --blue-400: 205 90% 60%;
+    --blue-600: 205 85% 42%;
+
+    /* Green — good / gain. */
+    --green-500: 152 60% 46%;
+    --green-600: 152 55% 36%;
+
+    /* Red — bad / loss. */
+    --red-400: 0 78% 62%;
+    --red-600: 0 72% 48%;
+  }
+
+  /* ---- Tier 2 · SEMANTIC — Dark (primary) --------------------------------- */
+  :root,
+  .dark {
+    --bg:         var(--neutral-900);
+    --surface:    var(--neutral-800);
+    --surface-2:  var(--neutral-700);
+    --border:     var(--neutral-600);
+    --fg:         var(--ink-dark);
+    --muted:      var(--neutral-300);
+    --accent:     var(--amber-500);
+    --accent-fg:  var(--amber-ink);
+    --info:       var(--blue-400);
+    --good:       var(--green-500);
+    --warn:       var(--amber-500);
+    --bad:        var(--red-400);
+    --shadow:     var(--neutral-950);
+  }
+
+  /* ---- Tier 2 · SEMANTIC — Light ------------------------------------------ */
+  .light {
+    --bg:         var(--neutral-25);
+    --surface:    var(--neutral-0);
+    --surface-2:  var(--neutral-50);
+    --border:     var(--neutral-100);
+    --fg:         var(--ink-light);
+    --muted:      var(--neutral-400);
+    --accent:     var(--amber-700);
+    --accent-fg:  var(--neutral-0);
+    --info:       var(--blue-600);
+    --good:       var(--green-600);
+    --warn:       var(--amber-700);
+    --bad:        var(--red-600);
+    --shadow:     var(--shadow-light);
+  }
+
+  /* ---- Tier 3 · COMPONENT — button + card --------------------------------- */
+  /* Reference semantic tokens only. A theme swap flows through automatically. */
+  :root,
+  .dark,
+  .light {
+    --btn-primary-bg:      var(--accent);
+    --btn-primary-fg:      var(--accent-fg);
+    --btn-secondary-bg:    var(--surface-2);
+    --btn-secondary-fg:    var(--fg);
+    --btn-ghost-fg:        var(--muted);
+    --btn-danger-bg:       var(--bad);
+    --btn-danger-fg:       var(--neutral-0);
+    --card-bg:             var(--surface);
+    --card-border:         var(--border);
+  }

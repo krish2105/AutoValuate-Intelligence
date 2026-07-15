@@ -1,0 +1,16 @@
+<!-- Fonts for the Storybook workbench. The app uses next/font (Inter / JetBrains Mono
+     / Archivo); next/font is Next-only, so here we load the same families from Google
+     Fonts and bind them to the --font-* variables tokens.css + Tailwind expect. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  :root {
+    --font-inter: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --font-display: "Archivo", "Inter", system-ui, sans-serif;
+  }
+</style>

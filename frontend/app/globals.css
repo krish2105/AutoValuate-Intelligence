@@ -1,43 +1,12 @@
+/* Design tokens (3-tier: primitives → semantic → component) live in tokens.css.
+   Must precede the @tailwind directives — CSS requires @import before other rules. */
+@import "./tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  /* ---- Dark (primary — instrument-cluster aesthetic) ---- */
-  :root,
-  .dark {
-    --bg: 222 30% 7%;
-    --surface: 222 26% 10%;
-    --surface-2: 220 24% 14%;
-    --border: 220 18% 20%;
-    --fg: 210 30% 96%;
-    --muted: 217 15% 62%;
-    --accent: 38 96% 56%;        /* amber — dashboard warning-light warmth */
-    --accent-fg: 30 40% 8%;
-    --info: 205 90% 60%;         /* electric blue for data */
-    --good: 152 60% 46%;
-    --warn: 38 96% 56%;
-    --bad: 0 78% 62%;
-    --shadow: 222 60% 2%;
-  }
-
-  /* ---- Light ---- */
-  .light {
-    --bg: 210 40% 98%;
-    --surface: 0 0% 100%;
-    --surface-2: 214 32% 96%;
-    --border: 214 25% 88%;
-    --fg: 222 47% 11%;
-    --muted: 215 16% 42%;
-    --accent: 32 95% 44%;        /* deeper amber for light-mode contrast */
-    --accent-fg: 0 0% 100%;
-    --info: 205 85% 42%;
-    --good: 152 55% 36%;
-    --warn: 32 95% 44%;
-    --bad: 0 72% 48%;
-    --shadow: 215 40% 55%;
-  }
-
   * { @apply border-border; }
   html { -webkit-tap-highlight-color: transparent; }
   body {

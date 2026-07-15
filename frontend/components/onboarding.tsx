@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRight, ScanLine, Sparkles, ShieldCheck } from "lucide-react";
+import { Button } from "./button";
 
 const KEY = "av_onboarded_v1";
 
@@ -93,12 +94,13 @@ export function Onboarding() {
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={close} className="rounded-lg px-2.5 py-1.5 text-xs text-muted transition hover:text-fg">Skip</button>
-                <button
+                <Button
+                  size="sm"
                   onClick={() => (last ? close() : setI(i + 1))}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-semibold text-accent-fg transition hover:brightness-105"
+                  className="gap-1.5 px-3.5 text-sm"
                 >
                   {last ? "Value my car" : "Next"} <ArrowRight className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </div>
             </div>
           </motion.div>

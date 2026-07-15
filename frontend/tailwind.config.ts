@@ -18,6 +18,15 @@ const config: Config = {
         good: "hsl(var(--good) / <alpha-value>)",
         warn: "hsl(var(--warn) / <alpha-value>)",
         bad: "hsl(var(--bad) / <alpha-value>)",
+        // Tier-3 component tokens (see app/tokens.css) — the Button primitive
+        // authors against these so a theme change flows through automatically.
+        "btn-primary": "hsl(var(--btn-primary-bg) / <alpha-value>)",
+        "btn-primary-fg": "hsl(var(--btn-primary-fg) / <alpha-value>)",
+        "btn-secondary": "hsl(var(--btn-secondary-bg) / <alpha-value>)",
+        "btn-secondary-fg": "hsl(var(--btn-secondary-fg) / <alpha-value>)",
+        "btn-ghost-fg": "hsl(var(--btn-ghost-fg) / <alpha-value>)",
+        "btn-danger": "hsl(var(--btn-danger-bg) / <alpha-value>)",
+        "btn-danger-fg": "hsl(var(--btn-danger-fg) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],

@@ -1,0 +1,62 @@
+# Chromatic — visual-regression review of the Storybook design system (master plan WS-F1:
+# "Chromatic free tier — a PR that shifts a button by 2px gets flagged automatically").
+#
+# Opt-in by design: it no-ops cleanly until CHROMATIC_PROJECT_TOKEN is set, so the repo
+# builds green with zero external accounts. To enable: create a free project at
+# chromatic.com, then add the token as a repo secret (Settings → Secrets → Actions →
+# CHROMATIC_PROJECT_TOKEN). No code change needed — the next push runs it.
+name: Chromatic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+  pull_request:
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visual-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate on the token (skip cleanly when unset)
+        id: guard
+        run: |
+          if [ -z "${{ secrets.CHROMATIC_PROJECT_TOKEN }}" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CHROMATIC_PROJECT_TOKEN not set — skipping visual regression. Add the secret to enable."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          fetch-depth: 0 # Chromatic needs full history to baseline against the last build
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        if: steps.guard.outputs.run == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Publish to Chromatic (builds Storybook, diffs every story)
+        if: steps.guard.outputs.run == 'true'
+        uses: chromaui/action@latest
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          workingDir: frontend
+          buildScriptName: build-storybook
+          onlyChanged: true # TurboSnap — only re-snapshot stories touched by the diff
+          exitZeroOnChanges: true # a visual change flags for review, doesn't fail the build
