@@ -43,7 +43,7 @@ jobs:
           cache: pip
 
       - name: Install deps
-        run: pip install --quiet pandas numpy requests joblib scikit-learn xgboost fastembed rank-bm25
+        run: pip install --quiet pandas numpy requests joblib scikit-learn xgboost fastembed rank-bm25 pandera
 
       - name: Corpus validation gate (WS 0.5)
         run: python scripts/validate_corpus.py --min-rows 672
