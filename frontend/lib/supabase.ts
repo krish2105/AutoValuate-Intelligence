@@ -15,14 +15,21 @@ export const supabase = createClient(URL, ANON, {
 export type { Session };
 
 // ---- auth ----
+// Return the confirmation link to THIS origin (prod on Vercel, localhost in dev) rather
+// than whatever Supabase's "Site URL" happens to be — so clicking the emailed link lands
+// back in the app, where supabase-js auto-detects the token and completes sign-in.
+// (Add this origin to Supabase → Authentication → URL Configuration → Redirect URLs.)
+const emailRedirectTo =
+  typeof window !== "undefined" ? `${window.location.origin}/` : undefined;
+
 export const signUp = (email: string, password: string) =>
-  supabase.auth.signUp({ email, password });
+  supabase.auth.signUp({ email, password, options: { emailRedirectTo } });
 export const signIn = (email: string, password: string) =>
   supabase.auth.signInWithPassword({ email, password });
 export const signOut = () => supabase.auth.signOut();
 /** Re-send the confirmation email (Supabase's built-in sender is heavily rate-limited). */
 export const resendConfirmation = (email: string) =>
-  supabase.auth.resend({ type: "signup", email });
+  supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo } });
 
 // ---- server-side valuation history (RLS: each row scoped to auth.uid()) ----
 export interface CloudValuation {
