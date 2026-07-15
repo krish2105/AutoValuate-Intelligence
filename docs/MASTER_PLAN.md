@@ -45,6 +45,7 @@ exact blocker. Commits are on `feat/hero-scan-loop`.
 | E7 | gitleaks secret scan + Dependabot (npm/pip/actions) | `.github/` |
 | E8 | `/ready` readiness probe + per-provider LLM circuit breaker (3 fails → 120s cooldown) | live uvicorn verification |
 | F1 (partial) | WCAG-AA contrast gate over the semantic tokens, both themes, in CI | Playwright `contrast.spec.ts`, both themes pass |
+| Hero cinematic | Design brief for a bonkers Porsche 911 GT3 RS hero animation (hybrid render, HUD payoff) — **Krishna to brainstorm + build** | [`docs/animation/README.md`](animation/README.md) |
 | F2 | Playwright E2E + axe in CI (hero animation, reduced-motion, dealer batch, contrast, a11y) — immediately caught & fixed a missing `<main>` landmark | `frontend-ci.yml`, 8/8 green |
 | G (partial) | `evals.yml` — corpus/retrieval/model-study regression gate on data & ML PRs | `.github/workflows/evals.yml` |
 | — | Hero: ambient appraisal-loop animation (scan → findings → price) + micro-life, reduced-motion safe | Playwright-verified |
