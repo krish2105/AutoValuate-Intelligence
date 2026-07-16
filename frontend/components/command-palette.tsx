@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
   Search, Command, CornerDownLeft, Car, Clock, Sun, Moon, FileText,
@@ -80,12 +80,26 @@ export function CommandPalette({
     ];
   }, [theme, setTheme, hasResult, onNewValuation, onOpenHistory, onScrollTo]);
 
-  const results = useMemo(() => {
+  // Forgiving search: every query token must either be a substring of the haystack or
+  // share a ≥3-char prefix with some word ("validate" still finds "valuation"). If
+  // nothing survives, fall back to ALL commands — a palette must never dead-end, or
+  // Enter silently does nothing and the whole thing feels broken.
+  const { results, fallback } = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return actions;
-    return actions.filter((a) =>
-      `${a.label} ${a.hint ?? ""} ${a.keywords ?? ""}`.toLowerCase().includes(needle),
-    );
+    if (!needle) return { results: actions, fallback: false };
+    const tokens = needle.split(/\s+/);
+    const matches = actions.filter((a) => {
+      const hay = `${a.label} ${a.hint ?? ""} ${a.keywords ?? ""}`.toLowerCase();
+      const words = hay.split(/[^a-z0-9]+/);
+      return tokens.every((t) =>
+        hay.includes(t) ||
+        words.some((w) => {
+          const n = Math.min(t.length, w.length, 4);
+          return n >= 3 && w.slice(0, n) === t.slice(0, n);
+        }),
+      );
+    });
+    return matches.length > 0 ? { results: matches, fallback: false } : { results: actions, fallback: true };
   }, [q, actions]);
 
   useEffect(() => { setSel(0); }, [q]);
@@ -107,18 +121,21 @@ export function CommandPalette({
         <Command className="h-3.5 w-3.5" /> K
       </button>
 
-      <AnimatePresence>
-        {open && (
+      {/* No <AnimatePresence>: if its exit-complete callback fails to fire (observed with
+          rapidly swapping children elsewhere on this page), the palette gets STUCK open
+          after running a command. Closing instantly is the correct trade for an overlay
+          that must never wedge; opening still animates via initial/animate. */}
+      {open && (
           <>
             <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-[60] bg-black/55 backdrop-blur-sm"
             />
             {/* flex-centred: framer's inline transform would clobber a Tailwind translate */}
             <div className="fixed inset-0 z-[61] flex items-start justify-center overflow-y-auto p-4 pt-[14vh]">
             <motion.div
-              initial={{ opacity: 0, scale: 0.97, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -8 }}
+              initial={{ opacity: 0, scale: 0.97, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 26 }}
               role="dialog" aria-modal="true" aria-label="Command palette"
               className="relative w-full max-w-[520px] overflow-hidden rounded-2xl border bg-surface shadow-lift"
@@ -138,8 +155,10 @@ export function CommandPalette({
               </div>
 
               <ul className="max-h-[320px] overflow-y-auto p-1.5" role="listbox">
-                {results.length === 0 && (
-                  <li className="px-3 py-6 text-center text-xs text-muted">No matching command</li>
+                {fallback && (
+                  <li className="px-3 pb-1 pt-2 text-[11px] text-muted" aria-live="polite">
+                    No exact match for “{q.trim()}” — all commands:
+                  </li>
                 )}
                 {results.map((a, i) => (
                   <li key={a.id} role="option" aria-selected={i === sel}>
@@ -162,7 +181,6 @@ export function CommandPalette({
             </div>
           </>
         )}
-      </AnimatePresence>
     </>
   );
 }

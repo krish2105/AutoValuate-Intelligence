@@ -178,11 +178,15 @@ export default function Home() {
           {error ? `Error: ${error}` : ""}
         </div>
 
-        {/* right: results */}
+        {/* right: results.
+            NOTE: deliberately NOT wrapped in <AnimatePresence mode="wait"> — with three
+            children swapping quickly (empty → loading → result) the skeleton's
+            exit-complete callback could fail to fire, so the result pane never mounted
+            and users saw a blank column after "Value my car". Plain conditional
+            rendering with mount animations is deadlock-proof. */}
         <div ref={resultsRef} className="min-w-0 space-y-5">
-          <AnimatePresence mode="wait">
             {!result && !loading && (
-              <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 className="flex min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center">
                 <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                   className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-accent/10 text-accent">
@@ -195,7 +199,7 @@ export default function Home() {
             )}
 
             {loading && !result && (
-              <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 className="space-y-5">
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="card overflow-hidden p-6">
@@ -233,7 +237,6 @@ export default function Home() {
                 <Negotiation result={result} />
               </motion.div>
             )}
-          </AnimatePresence>
         </div>
       </div>
       </main>

@@ -219,6 +219,13 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
       >
         {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing…</> : <><Sparkles className="h-4 w-4" /> Value my car</>}
       </motion.button>
+      {/* say WHY the button is disabled — a grey button with no reason reads as broken,
+          especially after a photo scan has already succeeded */}
+      {!valid && !loading && (
+        <p className="-mt-2 text-center text-[11px] text-muted" aria-live="polite">
+          Enter the <span className="font-medium text-fg">make</span> and <span className="font-medium text-fg">model</span> to enable the valuation.
+        </p>
+      )}
     </form>
   );
 }
