@@ -1,7 +1,7 @@
 {
   "model": "XGBoost reg:squarederror, monotone(age,kilometers), on log1p(price)",
   "cv": "5 seeds x 5-fold shuffled \u2014 held-out folds only",
-  "training_rows": 671,
+  "training_rows": 1302,
   "features": [
     "make",
     "model",
@@ -18,41 +18,41 @@
   "xgboost_version": "2.1.3",
   "metrics": {
     "MAE_AED": {
-      "mean": 33792.66,
-      "std": 6740.24
+      "mean": 26245.9,
+      "std": 2789.52
     },
     "RMSE_AED": {
-      "mean": 85827.47,
-      "std": 27361.64
+      "mean": 63890.48,
+      "std": 16107.45
     },
     "MAPE_pct": {
-      "mean": 24.27,
-      "std": 2.52
+      "mean": 21.89,
+      "std": 1.53
     },
     "median_APE_pct": {
-      "mean": 15.87,
-      "std": 1.86
+      "mean": 15.65,
+      "std": 1.07
     }
   },
-  "baseline_make_model_median_MAE_AED": 55262.26,
-  "improvement_over_baseline_pct": 38.9,
+  "baseline_make_model_median_MAE_AED": 48652.27,
+  "improvement_over_baseline_pct": 46.1,
   "conformal": {
     "method": "Mondrian (per-brand-tier) split-conformal",
     "delta_log_by_tier": {
-      "luxury": 0.4222,
-      "mass": 0.3735
+      "luxury": 0.3672,
+      "mass": 0.3525
     },
-    "delta_log_global_fallback": 0.3803,
-    "honest_test_coverage": 0.805,
+    "delta_log_global_fallback": 0.355,
+    "honest_test_coverage": 0.789,
     "coverage_by_tier": {
       "luxury": {
-        "coverage": 0.782,
-        "std": 0.105,
+        "coverage": 0.766,
+        "std": 0.076,
         "n_splits": 20
       },
       "mass": {
-        "coverage": 0.814,
-        "std": 0.053,
+        "coverage": 0.798,
+        "std": 0.057,
         "n_splits": 20
       }
     },
@@ -62,36 +62,36 @@
   "calibration_curve": [
     {
       "nominal": 0.5,
-      "actual": 0.5174,
-      "std": 0.0456
+      "actual": 0.5044,
+      "std": 0.0446
     },
     {
       "nominal": 0.6,
-      "actual": 0.6126,
-      "std": 0.0367
+      "actual": 0.5887,
+      "std": 0.0535
     },
     {
       "nominal": 0.7,
-      "actual": 0.7059,
-      "std": 0.0402
+      "actual": 0.6912,
+      "std": 0.055
     },
     {
       "nominal": 0.8,
-      "actual": 0.8048,
-      "std": 0.0425
+      "actual": 0.7893,
+      "std": 0.0455
     },
     {
       "nominal": 0.9,
-      "actual": 0.9007,
-      "std": 0.0302
+      "actual": 0.8992,
+      "std": 0.034
     },
     {
       "nominal": 0.95,
-      "actual": 0.9526,
-      "std": 0.0289
+      "actual": 0.951,
+      "std": 0.0184
     }
   ],
-  "calibration_error": 0.0073,
+  "calibration_error": 0.0062,
   "monotonicity": {
     "kilometers": {
       "violation_rate": 0.0,
@@ -102,5 +102,5 @@
       "max_single_step_price_rise_pct": 0.0
     }
   },
-  "honest_note": "Median APE ~16% is the best this 671-row corpus supports; the literature's ~8% floor assumes a corpus ~15x larger. Coverage carries a ~5pp per-split std at this size, so every coverage number here is a mean over 20 seeds \u2014 single-split coverage claims are noise (see RESEARCH.md B5). Both numbers move mainly with data, not tuning."
+  "honest_note": "Median APE ~16% is the best this 1302-row corpus supports; the literature's ~8% floor assumes a corpus ~15x larger. Coverage carries a ~5pp per-split std at this size, so every coverage number here is a mean over 20 seeds \u2014 single-split coverage claims are noise (see RESEARCH.md B5). Both numbers move mainly with data, not tuning."
 }
