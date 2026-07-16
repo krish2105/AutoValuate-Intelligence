@@ -56,6 +56,19 @@ check("5 comparables", len(body["comparables"]) == 5)
 bad = client.post("/valuate", json={"make": "toyota"})
 check("POST /valuate rejects incomplete body (422)", bad.status_code == 422)
 
+# depreciation curve (WS E3): corpus points + median, honest scope fallback
+dep = client.get("/market/depreciation", params={"make": "nissan", "model": "patrol"}).json()
+check("GET /market/depreciation ok", dep.get("ok") is True)
+check("depreciation scope named", dep.get("scope") in ("model", "make"))
+check("depreciation points have age+price",
+      all(p["age"] >= 0 and p["price"] > 0 for p in dep.get("points", [])) and dep.get("points"))
+check("depreciation median ages need >=2 listings",
+      all(m["n"] >= 2 for m in dep.get("median", [])))
+rare = client.get("/market/depreciation", params={"make": "ferrari", "model": "roma"}).json()
+check("thin model widens scope to make", rare.get("scope") == "make")
+check("GET /market/depreciation requires make",
+      client.get("/market/depreciation").status_code == 422)
+
 print("\nSSE stream:")
 with client.stream("POST", "/valuate/stream", json=VEHICLE) as s:
     check("stream 200", s.status_code == 200)

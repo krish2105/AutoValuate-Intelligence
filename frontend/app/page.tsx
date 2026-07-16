@@ -18,6 +18,7 @@ import { DealScore } from "@/components/deal-score";
 import { DamageReport } from "@/components/damage-report";
 import { Comparables } from "@/components/comparables";
 import { MarketAnalytics } from "@/components/market-analytics";
+import { Depreciation } from "@/components/depreciation";
 import { RepairEstimateCard } from "@/components/repair-estimate";
 import { Forecast } from "@/components/forecast";
 import { SellerReport } from "@/components/seller-report";
@@ -233,6 +234,7 @@ export default function Home() {
                 <CardBoundary name="damage assessment"><DamageReport c={result.condition} valuation={result.valuation} /></CardBoundary>
                 <CardBoundary name="repair estimate"><RepairEstimateCard result={result} /></CardBoundary>
                 <CardBoundary name="market analytics"><MarketAnalytics result={result} /></CardBoundary>
+                <CardBoundary name="depreciation"><Depreciation result={result} /></CardBoundary>
                 <CardBoundary name="forecast"><Forecast result={result} /></CardBoundary>
                 <CardBoundary name="comparables"><Comparables items={result.comparables} /></CardBoundary>
                 <CardBoundary name="seller report"><SellerReport result={result} /></CardBoundary>
