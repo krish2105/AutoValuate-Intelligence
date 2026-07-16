@@ -1,0 +1,11 @@
+# keep the build context lean & deterministic
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+.env
+*.log
+Dockerfile
+.dockerignore

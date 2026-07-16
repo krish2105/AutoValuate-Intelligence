@@ -26,6 +26,7 @@ import { Assistant } from "@/components/assistant";
 import { ConfidencePanel } from "@/components/confidence-panel";
 import { HistoryDrawer } from "@/components/history-drawer";
 import { useAuth, AuthModal, UserButton } from "@/components/auth";
+import { CardBoundary } from "@/components/card-boundary";
 import { CommandPalette } from "@/components/command-palette";
 import { Onboarding } from "@/components/onboarding";
 import { saveValuationCloud, loadValuationsCloud, clearValuationsCloud } from "@/lib/supabase";
@@ -223,18 +224,20 @@ export default function Home() {
                     Demo data shown — the live API wasn’t reachable. Numbers mirror a real pipeline run.
                   </div>
                 )}
-                <ConfidencePanel c={result.confidence} />
-                <ValuationDashboard v={result.valuation} />
-                <DealScore result={result} asking={asking} />
-                <WhatIf result={result} online={online} />
-                <DamageReport c={result.condition} valuation={result.valuation} />
-                <RepairEstimateCard result={result} />
-                <MarketAnalytics result={result} />
-                <Forecast result={result} />
-                <Comparables items={result.comparables} />
-                <SellerReport result={result} />
-                <Assistant result={result} />
-                <Negotiation result={result} />
+                {/* each card in its own boundary: one crashing section degrades to a
+                    one-line notice instead of blanking the entire valuation */}
+                <CardBoundary name="confidence"><ConfidencePanel c={result.confidence} /></CardBoundary>
+                <CardBoundary name="valuation"><ValuationDashboard v={result.valuation} /></CardBoundary>
+                <CardBoundary name="deal score"><DealScore result={result} asking={asking} /></CardBoundary>
+                <CardBoundary name="what-if explorer"><WhatIf result={result} online={online} /></CardBoundary>
+                <CardBoundary name="damage assessment"><DamageReport c={result.condition} valuation={result.valuation} /></CardBoundary>
+                <CardBoundary name="repair estimate"><RepairEstimateCard result={result} /></CardBoundary>
+                <CardBoundary name="market analytics"><MarketAnalytics result={result} /></CardBoundary>
+                <CardBoundary name="forecast"><Forecast result={result} /></CardBoundary>
+                <CardBoundary name="comparables"><Comparables items={result.comparables} /></CardBoundary>
+                <CardBoundary name="seller report"><SellerReport result={result} /></CardBoundary>
+                <CardBoundary name="assistant"><Assistant result={result} /></CardBoundary>
+                <CardBoundary name="negotiation coach"><Negotiation result={result} /></CardBoundary>
               </motion.div>
             )}
         </div>
