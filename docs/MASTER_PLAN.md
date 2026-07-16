@@ -49,6 +49,9 @@ exact blocker. Commits are on `feat/hero-scan-loop`.
 | F2 | Playwright E2E + axe in CI (hero animation, reduced-motion, dealer batch, contrast, a11y) — immediately caught & fixed a missing `<main>` landmark | `frontend-ci.yml`, 8/8 green |
 | G (partial) | `evals.yml` — corpus/retrieval/model-study regression gate on data & ML PRs | `.github/workflows/evals.yml` |
 | — | Hero: ambient appraisal-loop animation (scan → findings → price) + micro-life, reduced-motion safe | Playwright-verified |
+| B1 (2026-07-16) | Retrained on the cron-grown corpus (671→1302 rows): MAE 33.8k→26.2k AED (−22%), MAPE 24.3→21.9%, calibration error 0.006 — data, not tuning, moved it | `eval/valuation_metrics.json` |
+| E3 visual (2026-07-16) | Depreciation curve: `GET /market/depreciation` (corpus price-vs-age, honest model→make scope fallback) + card with median line and the user's car plotted | 30/30 API + 34/34 E2E |
+| E2 visual (2026-07-16) | Damage map: capture angles now survive guided-capture → findings → backend; top-view dial plots findings per camera position (never claims panels); fixed severity being dropped server-side | 34/34 E2E |
 
 **🪦 Retired by evidence (formal):**
 
