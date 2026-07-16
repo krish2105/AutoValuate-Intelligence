@@ -19,7 +19,12 @@ function depPayload(scope: "model" | "make") {
   return { ok: true, scope, make: "toyota", model: "corolla", n: points.length, reference_year: 2026, points, median };
 }
 
-async function mockAndValue(page: Page, asking?: number, dep: object | null = depPayload("model")) {
+async function mockAndValue(
+  page: Page,
+  asking?: number,
+  dep: object | null = depPayload("model"),
+  payload: object = VALUATION,
+) {
   // E3 depreciation curve: fulfilled (or deliberately failed) so no test hits the live dyno.
   await page.route("**/market/depreciation*", async (route) => {
     if (dep) await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(dep) });
@@ -29,7 +34,7 @@ async function mockAndValue(page: Page, asking?: number, dep: object | null = de
     await route.fulfill({
       status: 200,
       headers: { "content-type": "text/event-stream" },
-      body: `event: result\ndata: ${JSON.stringify(VALUATION)}\n\n`,
+      body: `event: result\ndata: ${JSON.stringify(payload)}\n\n`,
     });
   });
   // Sensitivity curve: a monotonically decreasing price per mileage step.
@@ -137,6 +142,33 @@ test("E3: card is simply absent when the endpoint is unavailable", async ({ page
   await mockAndValue(page, undefined, null);
   await expect(page.getByText(/comparable listings/i).first()).toBeVisible();
   await expect(page.getByText(/depreciation curve/i)).toHaveCount(0);
+});
+
+test("E2: damage map plots findings at their capture angles, camera-position honest", async ({ page }) => {
+  const withAngles = {
+    ...VALUATION,
+    condition: {
+      ...VALUATION.condition,
+      cv_available: true,
+      findings: [
+        { damage_type: "dent", instances: 2, max_confidence: 0.8, photos_with_damage: [0, 1],
+          value_impact_pct: 4, severity: "moderate", angles_with_damage: ["rear-left", "left"] },
+        { damage_type: "scratch", instances: 1, max_confidence: 0.6, photos_with_damage: [0],
+          value_impact_pct: 1.5, severity: "minor", angles_with_damage: ["rear-left"] },
+      ],
+    },
+  };
+  await mockAndValue(page, undefined, depPayload("model"), withAngles);
+  await expect(page.getByText(/damage map/i).first()).toBeVisible();
+  await expect(page.getByText(/rear left worst/i)).toBeVisible();
+  await expect(page.getByText(/where damage was/i)).toBeVisible(); // the honesty caption
+  await expect(page.getByText(/not a claim about the exact panel/i)).toBeVisible();
+});
+
+test("E2: damage map is absent when findings carry no capture angles", async ({ page }) => {
+  await mockAndValue(page); // default fixture: quick-upload style findings, no angle data
+  await expect(page.getByText(/comparable listings/i).first()).toBeVisible();
+  await expect(page.getByText(/damage map/i)).toHaveCount(0);
 });
 
 test("E7: beeswarm renders one dot per sampled car for every ranked feature", async ({ page }) => {

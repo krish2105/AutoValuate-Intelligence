@@ -130,6 +130,16 @@ class ClientFinding(BaseModel):
     photos_with_damage: list[int] = Field(default_factory=list, max_length=MAX_PHOTOS)
     value_impact_pct: float = Field(ge=0.0, le=100.0)
     severity: str | None = Field(default=None, max_length=16)  # minor | moderate | severe
+    # Guided walk-around capture angles this damage appeared in ("front", "rear-left", …).
+    # A camera position, not a panel claim; absent for quick uploads (E2 damage map).
+    angles_with_damage: list[str] | None = Field(default=None, max_length=MAX_PHOTOS)
+
+    @field_validator("angles_with_damage")
+    @classmethod
+    def _cap_angle_len(cls, v: list[str] | None) -> list[str] | None:
+        if v and any(len(a) > 16 for a in v):
+            raise ValueError("an angle id exceeds the length limit")
+        return v
 
 
 class ClientCondition(BaseModel):

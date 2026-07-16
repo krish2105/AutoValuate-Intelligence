@@ -56,6 +56,23 @@ check("5 comparables", len(body["comparables"]) == 5)
 bad = client.post("/valuate", json={"make": "toyota"})
 check("POST /valuate rejects incomplete body (422)", bad.status_code == 422)
 
+# client condition round-trip (WS E2): severity + capture angles must survive into the
+# result — the orchestrator used to silently drop severity, blanking the UI's chips.
+cc = {"cv_available": True, "condition_score": 88, "price_adjustment_factor": 0.95,
+      "photos_assessed": 3, "total_value_impact_pct": 5.0, "source": "browser",
+      "findings": [{"damage_type": "dent", "instances": 2, "max_confidence": 0.8,
+                    "photos_with_damage": [0, 1], "value_impact_pct": 4.0,
+                    "severity": "moderate", "angles_with_damage": ["rear-left", "left"]}]}
+r = client.post("/valuate", json={**VEHICLE, "client_condition": cc})
+check("POST /valuate with client_condition 200", r.status_code == 200)
+f0 = (r.json().get("condition") or {}).get("findings", [{}])[0]
+check("finding severity survives the round-trip", f0.get("severity") == "moderate")
+check("finding capture angles survive the round-trip",
+      f0.get("angles_with_damage") == ["rear-left", "left"])
+bad_cc = {**cc, "findings": [{**cc["findings"][0], "angles_with_damage": ["x" * 30]}]}
+check("oversize angle id rejected (422)",
+      client.post("/valuate", json={**VEHICLE, "client_condition": bad_cc}).status_code == 422)
+
 # depreciation curve (WS E3): corpus points + median, honest scope fallback
 dep = client.get("/market/depreciation", params={"make": "nissan", "model": "patrol"}).json()
 check("GET /market/depreciation ok", dep.get("ok") is True)

@@ -84,6 +84,11 @@ def _condition_from_client(client: dict) -> dict:
             "max_confidence": round(float(f.get("max_confidence", 0.0)), 3),
             "photos_with_damage": list(f.get("photos_with_damage", [])),
             "value_impact_pct": round(float(f.get("value_impact_pct", 0.0)), 1),
+            # already validated by ClientFinding; dropping them here silently blanked the
+            # severity chips (and would blank the E2 damage map) on every live-backend run
+            **({"severity": f["severity"]} if f.get("severity") else {}),
+            **({"angles_with_damage": list(f["angles_with_damage"])}
+               if f.get("angles_with_damage") else {}),
         }
         for f in client.get("findings", [])
     ]

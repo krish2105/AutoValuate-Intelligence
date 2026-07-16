@@ -63,6 +63,9 @@ export interface DamageFinding {
   max_confidence: number;
   photos_with_damage: number[];
   value_impact_pct: number;
+  severity?: string;
+  /** Capture angles ("front", "rear-left", …) this damage appeared in — guided scans only. */
+  angles_with_damage?: string[];
 }
 
 export interface Condition {

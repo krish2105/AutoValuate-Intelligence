@@ -165,6 +165,12 @@ export interface DamageFindingClient {
   value_impact_pct: number;
   /** Worst severity band seen for this damage class across all photos. */
   severity: Severity;
+  /**
+   * Guided walk-around only: the capture angles ("front", "rear-left", …) of the photos
+   * this damage appeared in. Says which PHOTO caught it — the camera position — never a
+   * panel-level location the detector can't actually know. Absent for quick uploads.
+   */
+  angles_with_damage?: string[];
 }
 
 /** Shape the backend expects for an optional client-side condition (see main.py ClientCondition). */
@@ -503,7 +509,11 @@ function sevOfDet(d: Detection): number {
   return Math.min(1, 0.6 * Math.min(1, area / 0.14) + (SEV_CLASS_PRIOR[d.label] ?? 0));
 }
 
-export function conditionFromDetections(perPhoto: Detection[][]): ClientCondition {
+export function conditionFromDetections(
+  perPhoto: Detection[][],
+  /** Capture angle id per photo (guided walk-around); undefined for quick uploads. */
+  angles?: (string | undefined)[],
+): ClientCondition {
   // Aggregate per class, tracking each detection's pixel-graded severity + impact, so the score
   // reflects how bad the damage actually is — not merely how many boxes fired or how big they are.
   interface Slot {
@@ -541,13 +551,18 @@ export function conditionFromDetections(perPhoto: Detection[][]): ClientConditio
     for (const d of s.dets) { keptClass *= 1 - d.impact; keptAll *= 1 - d.impact; }
     if (STRUCTURAL.has(label)) structHits += s.dets.length;
     const classImpact = 1 - keptClass;
+    const photoIdx = [...s.photos].sort((a, b) => a - b);
+    const hitAngles = angles
+      ? [...new Set(photoIdx.map((i) => angles[i]).filter((a): a is string => !!a))]
+      : undefined;
     findings.push({
       damage_type: label,
       instances: s.dets.length,
       max_confidence: Math.round(s.maxConf * 1e3) / 1e3,
-      photos_with_damage: [...s.photos].sort((a, b) => a - b),
+      photos_with_damage: photoIdx,
       value_impact_pct: Math.round(classImpact * 100 * 10) / 10,
       severity: severityOf(label, s.worstSev),
+      ...(hitAngles && hitAngles.length ? { angles_with_damage: hitAngles } : {}),
     });
   }
 

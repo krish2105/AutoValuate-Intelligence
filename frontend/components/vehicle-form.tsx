@@ -34,6 +34,9 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
     regionalSpecs: "GCC", noOfCylinders: 4, city: "Dubai", sellerType: "Owner", photos: [],
   });
   const [photos, setPhotos] = useState<string[]>([]);
+  // Aligned with `photos` for guided captures ("front", "rear-left", …); undefined for
+  // quick uploads, whose photos carry no trustworthy position information.
+  const [photoAngles, setPhotoAngles] = useState<string[] | undefined>(undefined);
   const [clientCondition, setClientCondition] = useState<ClientCondition | null>(null);
   const [drag, setDrag] = useState(false);
   const [mode, setMode] = useState<"quick" | "guided">("quick");
@@ -117,7 +120,7 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
             type="button"
             role="tab"
             aria-selected={mode === m}
-            onClick={() => { setMode(m); setPhotos([]); setClientCondition(null); }}
+            onClick={() => { setMode(m); setPhotos([]); setPhotoAngles(undefined); setClientCondition(null); }}
             className={cn(
               "flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition",
               mode === m ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg",
@@ -129,7 +132,7 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
       </div>
 
       {mode === "guided" ? (
-        <GuidedCapture onPhotos={setPhotos} />
+        <GuidedCapture onPhotos={(p, a) => { setPhotos(p); setPhotoAngles(a); }} />
       ) : (
       /* photo dropzone */
       <div
@@ -178,7 +181,7 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
       </AnimatePresence>
 
       {/* on-device damage scan (browser WASM) */}
-      <BrowserCV photos={photos} onCondition={setClientCondition} />
+      <BrowserCV photos={photos} angles={photoAngles} onCondition={setClientCondition} />
 
       {/* details grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

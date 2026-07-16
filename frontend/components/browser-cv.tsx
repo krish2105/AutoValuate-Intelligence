@@ -18,8 +18,13 @@ type Status = "idle" | "loading" | "scanning" | "done" | "error";
  * adjusted (see lib/cv-browser.conditionFromDetections + backend client_condition).
  */
 export function BrowserCV({
-  photos, onCondition,
-}: { photos: string[]; onCondition: (c: ClientCondition | null) => void }) {
+  photos, angles, onCondition,
+}: {
+  photos: string[];
+  /** Capture angle per photo (guided walk-around) — lets findings say which angle caught them. */
+  angles?: string[];
+  onCondition: (c: ClientCondition | null) => void;
+}) {
   const [status, setStatus] = useState<Status>("idle");
   const [dets, setDets] = useState<Detection[][]>([]);
   const [cond, setCond] = useState<ClientCondition | null>(null);
@@ -54,7 +59,7 @@ export function BrowserCV({
           await new Promise((r) => setTimeout(r, 0));
         }
         if (cancelled || myRun !== runId.current) return;
-        const c = conditionFromDetections(perPhoto);
+        const c = conditionFromDetections(perPhoto, angles);
         setCond(c);
         onCondition(c);
         setStatus("done");

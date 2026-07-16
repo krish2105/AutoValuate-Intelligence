@@ -63,9 +63,9 @@ export const DEMO_CARS: DemoCar[] = [
       regionalSpecs: "GCC", noOfCylinders: 8, city: "Abu Dhabi", sellerType: "Dealer",
       photos: [],
       client_condition: condition([
-        { damage_type: "dent", instances: 3, max_confidence: 0.74, photos_with_damage: [0, 1], value_impact_pct: 4.0, severity: "moderate" },
-        { damage_type: "scratch", instances: 2, max_confidence: 0.58, photos_with_damage: [0], value_impact_pct: 1.5, severity: "minor" },
-        { damage_type: "lamp_broken", instances: 1, max_confidence: 0.81, photos_with_damage: [2], value_impact_pct: 2.0, severity: "minor" },
+        { damage_type: "dent", instances: 3, max_confidence: 0.74, photos_with_damage: [0, 1], value_impact_pct: 4.0, severity: "moderate", angles_with_damage: ["rear-left", "left"] },
+        { damage_type: "scratch", instances: 2, max_confidence: 0.58, photos_with_damage: [0], value_impact_pct: 1.5, severity: "minor", angles_with_damage: ["rear-left"] },
+        { damage_type: "lamp_broken", instances: 1, max_confidence: 0.81, photos_with_damage: [2], value_impact_pct: 2.0, severity: "minor", angles_with_damage: ["front-right"] },
       ]),
     },
   },
