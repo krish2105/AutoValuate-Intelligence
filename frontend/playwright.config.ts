@@ -13,6 +13,24 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:3000",
     trace: "retain-on-failure",
   },
+  projects: [
+    {
+      // Fast UI suite — everything except the on-device scan.
+      name: "ui",
+      testIgnore: /cv-scan\.spec\.ts/,
+    },
+    {
+      // The CV specs download and run the real 44 MB ONNX model through WASM, so a single
+      // test costs seconds rather than milliseconds. They are deliberately NOT mocked —
+      // mocking inference would void the very privacy and provenance guarantees they
+      // exist to prove — so they get their own project and a realistic timeout instead.
+      //   npm run test:e2e      → fast suite
+      //   npm run test:e2e:cv   → the scan suite
+      name: "cv",
+      testMatch: /cv-scan\.spec\.ts/,
+      timeout: 240_000,
+    },
+  ],
   webServer: {
     command: "npm run start",
     url: "http://127.0.0.1:3000",

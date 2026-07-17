@@ -12,6 +12,27 @@
  * a server scan produce the same condition score and price-adjustment factor.
  */
 import type { InferenceSession, Tensor } from "onnxruntime-web";
+import buildVersion from "./cv/model-version.json";
+
+/**
+ * Identity of the exact artifacts that produce a detection, generated at build time from
+ * the model bytes (scripts/cv-version.mjs). A ClientCondition carries these so a result
+ * can be traced back to the weights + runtime that produced it, and so a condition made by
+ * an unrecognised model can be rejected rather than silently priced.
+ */
+export const MODEL_VERSION = buildVersion.modelVersion;
+export const MODEL_SHA256 = buildVersion.modelSha256;
+export const ORT_VERSION = buildVersion.ortVersion;
+
+/**
+ * Bump when ANY preprocessing or post-processing behaviour changes (sizes, letterbox,
+ * normalization, thresholds, NMS/WBF, severity, aggregation). It is part of the condition's
+ * identity: the same photo and the same weights can yield a different result under a
+ * different config, so a stale condition must be detectable as stale. See
+ * docs/CV_INFERENCE_SPEC.md — this constant and that document version together.
+ */
+export const PREPROCESSING_VERSION = "1.0.0";
+export const INFERENCE_CONFIG_VERSION = "1.0.0";
 
 export const CV_CLASSES = [
   "dent", "scratch", "crack", "glass_shatter",
@@ -23,7 +44,9 @@ const IMGSZ = 640;
 const CONF_THRES = 0.35;   // full-frame pass gate (matches cv_local.py CONF_THRES)
 const DECODE_FLOOR = 0.20; // decode keeps everything above this; the per-pass gate is applied later
 const IOU_THRES = 0.45;  // matches cv_local.py IOU_THRES
-const MODEL_URL = "/models/best.onnx";
+// Content-addressed (`?v=<sha256[:12]>`) so a redeployed model is a cache miss rather than
+// being served forever from the SW/HTTP caches. Generated — never hardcode this.
+const MODEL_URL = buildVersion.modelUrl;
 
 // Base cosmetic severity per class — the value fraction a *reference-sized* (~4% of the
 // frame) instance costs. Extent (bbox area) and confidence scale this per detection below.
@@ -175,12 +198,54 @@ export interface ClientCondition {
   findings: DamageFindingClient[];
   photos_assessed: number;
   total_value_impact_pct: number;
-  source: "browser";
+  /**
+   * "browser"   — produced by a real on-device scan of real photos.
+   * "synthetic" — fabricated from UI inputs with no detector involved: the what-if sliders
+   *               and the demo-garage fixtures. These MUST NOT claim to be scans; labelling
+   *               a slider result "browser" makes a hypothetical indistinguishable from
+   *               evidence, both to the backend and to anyone auditing where a price came from.
+   */
+  source: "browser" | "synthetic";
   /** Overall plain-language condition band derived from the score. */
   assessment: string;
   /** True when damage is significant/structural — the UI should advise a physical inspection. */
   needs_inspection: boolean;
+
+  // ---- Provenance. Everything below binds this condition to the exact inputs that
+  // produced it. Without these a condition is an anonymous number that reduces a price by
+  // up to 62%, with no way to tell whether it came from these photos, other photos, an
+  // older model, or a hand-written POST. They are what makes a damage finding traceable
+  // back to a specific image + model + detection output.
+
+  /** SHA-256 over the ordered per-photo byte hashes (lib/cv/hashes.photoSetHash). */
+  photo_set_hash: string;
+  /** SHA-256[:12] of the .onnx that produced the detections. */
+  model_version: string;
+  preprocessing_version: string;
+  inference_config_version: string;
+  /**
+   * "complete" — every photo decoded and scanned.
+   * "partial"  — at least one photo failed; the score covers only `photos_assessed` of them.
+   * A partial scan is NOT a clean bill of health, and must never be submitted without the
+   * user explicitly accepting it. This distinction did not previously exist: a scan where
+   * every photo failed to decode was indistinguishable from a scan that found no damage.
+   */
+  status: "complete" | "partial";
 }
+
+/**
+ * Provenance fields for a condition that no detector produced (what-if sliders,
+ * demo-garage fixtures). Spread into such a condition so it is self-describing rather
+ * than masquerading as a scan result.
+ */
+export const SYNTHETIC_PROVENANCE = {
+  source: "synthetic",
+  photo_set_hash: "none",
+  model_version: "none",
+  preprocessing_version: "none",
+  inference_config_version: "none",
+  status: "complete",
+} as const satisfies Partial<ClientCondition>;
 
 /** Overall condition band from the 0-100 score — honest, no false precision. */
 export function assessmentBand(score: number): string {
@@ -202,11 +267,12 @@ async function getOrt(): Promise<OrtModule> {
   // Terser can't minify ORT's import.meta.url wasm glue, so we never let it try.
   // The specifier is a variable (not a literal) so TypeScript doesn't try to resolve
   // the /public path at compile time. The .mjs + .wasm come from scripts/copy-ort.mjs.
-  const ortUrl = "/ort/ort.wasm.bundle.min.mjs";
+  const ortUrl = `${buildVersion.ortDir}ort.wasm.bundle.min.mjs`;
   const mod: any = await import(/* webpackIgnore: true */ ortUrl);
   const ort: OrtModule = mod.default ?? mod;
-  // Serve wasm binaries from our own origin (copied by scripts/copy-ort.mjs).
-  ort.env.wasm.wasmPaths = "/ort/";
+  // Serve wasm binaries from our own origin, under the version-scoped directory that
+  // scripts/copy-ort.mjs wrote — see MODEL_VERSION above for why the path carries a version.
+  ort.env.wasm.wasmPaths = buildVersion.ortDir;
   // Single-threaded: avoids the COOP/COEP cross-origin-isolation headers threads need.
   ort.env.wasm.numThreads = 1;
   ort.env.wasm.proxy = false;
@@ -503,7 +569,23 @@ function sevOfDet(d: Detection): number {
   return Math.min(1, 0.6 * Math.min(1, area / 0.14) + (SEV_CLASS_PRIOR[d.label] ?? 0));
 }
 
-export function conditionFromDetections(perPhoto: Detection[][]): ClientCondition {
+/** Provenance the aggregator cannot derive from detections alone — supplied by the caller. */
+export interface ConditionBinding {
+  /** lib/cv/hashes.photoSetHash of the exact set these detections came from. */
+  photoSetHash: string;
+  /**
+   * Photos that decoded AND completed inference. Deliberately not `perPhoto.length`:
+   * a photo that threw contributes an empty detection array, so counting the array would
+   * report a failed scan as a clean one.
+   */
+  photosAssessed: number;
+  status: "complete" | "partial";
+}
+
+export function conditionFromDetections(
+  perPhoto: Detection[][],
+  binding: ConditionBinding,
+): ClientCondition {
   // Aggregate per class, tracking each detection's pixel-graded severity + impact, so the score
   // reflects how bad the damage actually is — not merely how many boxes fired or how big they are.
   interface Slot {
@@ -563,11 +645,18 @@ export function conditionFromDetections(perPhoto: Detection[][]): ClientConditio
     condition_score: score,
     price_adjustment_factor: Math.round((1 - deduction) * 1e4) / 1e4,
     findings,
-    photos_assessed: perPhoto.length,
+    photos_assessed: binding.photosAssessed,
     total_value_impact_pct: Math.round(deduction * 100 * 10) / 10,
     source: "browser",
     assessment: assessmentBand(score),
-    needs_inspection: needsInspection,
+    // A partial scan always warrants inspection: the photos we couldn't read are exactly
+    // the ones we can say nothing about, so we must not imply the car is clean.
+    needs_inspection: needsInspection || binding.status === "partial",
+    photo_set_hash: binding.photoSetHash,
+    model_version: MODEL_VERSION,
+    preprocessing_version: PREPROCESSING_VERSION,
+    inference_config_version: INFERENCE_CONFIG_VERSION,
+    status: binding.status,
   };
 }
 

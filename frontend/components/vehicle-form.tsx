@@ -4,10 +4,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ImagePlus, X, Sparkles, Loader2, Wand2 } from "lucide-react";
 import type { VehicleInput } from "@/lib/types";
 import type { ClientCondition } from "@/lib/cv-browser";
+import { useScanJob, conditionBlockReason } from "@/lib/cv/scan-job";
 import { parseVehicle } from "@/lib/parse-vehicle";
 import { cn } from "@/lib/utils";
 import { BrowserCV } from "./browser-cv";
 import { GuidedCapture } from "./guided-capture";
+
+/** Mirrors the backend's MAX_PHOTOS (backend-api/main.py). */
+const MAX_PHOTOS = 8;
 
 const BODY = ["SUV", "Sedan", "Coupe", "Hatchback", "Pick Up Truck", "Van", "Convertible", "Wagon"];
 const SPECS = ["GCC", "American", "European", "Japanese", "Canadian", "Korean", "Chinese", "Other"];
@@ -34,7 +38,13 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
     regionalSpecs: "GCC", noOfCylinders: 4, city: "Dubai", sellerType: "Owner", photos: [],
   });
   const [photos, setPhotos] = useState<string[]>([]);
-  const [clientCondition, setClientCondition] = useState<ClientCondition | null>(null);
+  /**
+   * Demo-garage presets carry a synthetic condition and no photos. Kept separate from the
+   * scan job so a preset can never be mistaken for the output of a real scan.
+   */
+  const [presetCondition, setPresetCondition] = useState<ClientCondition | null>(null);
+  /** Explicit user consent to be valued on an incomplete scan. Reset with every photo change. */
+  const [acceptedPartial, setAcceptedPartial] = useState(false);
   const [drag, setDrag] = useState(false);
   const [mode, setMode] = useState<"quick" | "guided">("quick");
   const [desc, setDesc] = useState("");
@@ -57,23 +67,74 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
     const { photos: _p, client_condition: _c, ...rest } = preset;
     setV((p) => ({ ...p, ...rest }));
     setPhotos([]);
-    setClientCondition(preset.client_condition ?? null);
+    setPresetCondition(preset.client_condition ?? null);
+    setAcceptedPartial(false);
   }, [preset]);
 
-  function addFiles(files: FileList | null) {
+  // Any change to the photo set retracts consent given for a previous set's partial scan —
+  // otherwise one "continue anyway" would silently apply to every later scan.
+  useEffect(() => { setAcceptedPartial(false); }, [photos]);
+
+  /**
+   * Read files and append them IN THE ORDER THE USER PICKED THEM.
+   *
+   * The previous version started one FileReader per file and appended from each `onload`.
+   * Completion order is not selection order (a small file beats a large one), so the photo
+   * strip could silently reorder — and since the condition reports per-photo indices
+   * ("damage in photo 2"), the report could point at the wrong photo. It also read
+   * `photos.length` from the render closure while the appending guard read live state, so
+   * two quick picks could exceed the cap or drop files.
+   *
+   * Awaiting all reads, then appending once, makes order independent of decode timing and
+   * makes the cap a single check against live state.
+   */
+  async function addFiles(files: FileList | null) {
     if (!files) return;
-    Array.from(files).slice(0, 8 - photos.length).forEach((f) => {
-      const reader = new FileReader();
-      reader.onload = () => setPhotos((p) => (p.length < 8 ? [...p, reader.result as string] : p));
-      reader.readAsDataURL(f);
-    });
+    const picked = Array.from(files);
+    const read = (f: File) =>
+      new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        // An unreadable file is dropped rather than appended as `undefined`, which would
+        // later throw in the hasher and fail the whole scan.
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(f);
+      });
+    const results = (await Promise.all(picked.map(read))).filter((s): s is string => !!s);
+    setPhotos((p) => [...p, ...results].slice(0, MAX_PHOTOS));
   }
 
   const valid = v.make.trim() && v.model.trim() && v.year && v.kilometers >= 0;
 
+  // Single source of truth for the scan. Derived from `photos`, so it can never describe
+  // a stale set — see lib/cv/scan-job.ts.
+  const job = useScanJob(photos);
+  const blockReason = conditionBlockReason(job, photos, acceptedPartial);
+  const canSubmit = !!valid && !loading && !blockReason;
+
+  /**
+   * The condition to send. For demo-garage presets there are no photos, so the preset's
+   * synthetic condition stands in; otherwise it comes from the live job and only when the
+   * job matches the current photos.
+   */
+  const outgoingCondition = photos.length === 0 ? presetCondition : job.condition;
+
+  function submit() {
+    if (!canSubmit) return;
+    // Belt and braces: assert the binding right before the wire. `blockReason` should have
+    // caught any mismatch, but this is the last point where sending the wrong photo set's
+    // damage result is still preventable, and it silently changes the price.
+    if (outgoingCondition && photos.length > 0) {
+      if (outgoingCondition.photo_set_hash !== job.photoSetHash) return;
+      if (outgoingCondition.model_version !== job.modelVersion) return;
+      if (outgoingCondition.status !== "complete" && !acceptedPartial) return;
+    }
+    onSubmit({ ...v, photos, client_condition: outgoingCondition });
+  }
+
   return (
     <form
-      onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit({ ...v, photos, client_condition: clientCondition }); }}
+      onSubmit={(e) => { e.preventDefault(); submit(); }}
       className="space-y-5"
     >
       {/* M7 — describe your car in plain English */}
@@ -117,7 +178,7 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
             type="button"
             role="tab"
             aria-selected={mode === m}
-            onClick={() => { setMode(m); setPhotos([]); setClientCondition(null); }}
+            onClick={() => { setMode(m); setPhotos([]); setPresetCondition(null); }}
             className={cn(
               "flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition",
               mode === m ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg",
@@ -178,7 +239,31 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
       </AnimatePresence>
 
       {/* on-device damage scan (browser WASM) */}
-      <BrowserCV photos={photos} onCondition={setClientCondition} />
+      <BrowserCV job={job} />
+
+      {/*
+        "Continue without visual assessment" — the ONLY way to be valued on an incomplete
+        scan. Submitting a stale or partial condition silently used to be the default;
+        now skipping the assessment is a deliberate, visible choice.
+      */}
+      {photos.length > 0 && (job.status === "partial" || job.status === "failed") && (
+        <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-warn/40 bg-warn/5 p-3 text-[11px]">
+          <input
+            type="checkbox"
+            checked={acceptedPartial}
+            onChange={(e) => setAcceptedPartial(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium">Continue without a complete visual assessment.</span>{" "}
+            <span className="text-muted">
+              {job.status === "failed"
+                ? "No photo could be scanned, so the valuation will assume market-typical condition."
+                : "Some photos could not be scanned, so damage in them is not reflected in the price."}
+            </span>
+          </span>
+        </label>
+      )}
 
       {/* details grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -209,21 +294,31 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
         given to the model, which would only teach it to agree with the seller.
       </p>
 
+      {/*
+        Submission is blocked while a scan for the current photos is non-terminal. This is
+        the policy that stops an in-flight scan's photos being priced with the PREVIOUS
+        set's damage result — previously `disabled` knew nothing about the scan at all, so
+        submitting mid-scan silently shipped a stale condition and a wrong price.
+      */}
       <motion.button
-        type="submit" disabled={!valid || loading}
+        type="submit" disabled={!canSubmit}
         whileTap={{ scale: 0.98 }}
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold transition",
-          valid && !loading ? "bg-accent text-accent-fg shadow-glow hover:brightness-105" : "cursor-not-allowed bg-surface-2 text-muted"
+          canSubmit ? "bg-accent text-accent-fg shadow-glow hover:brightness-105" : "cursor-not-allowed bg-surface-2 text-muted"
         )}
       >
         {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing…</> : <><Sparkles className="h-4 w-4" /> Value my car</>}
       </motion.button>
       {/* say WHY the button is disabled — a grey button with no reason reads as broken,
           especially after a photo scan has already succeeded */}
-      {!valid && !loading && (
+      {!loading && (!valid || blockReason) && (
         <p className="-mt-2 text-center text-[11px] text-muted" aria-live="polite">
-          Enter the <span className="font-medium text-fg">make</span> and <span className="font-medium text-fg">model</span> to enable the valuation.
+          {!valid ? (
+            <>Enter the <span className="font-medium text-fg">make</span> and <span className="font-medium text-fg">model</span> to enable the valuation.</>
+          ) : (
+            <>Waiting — {blockReason}.</>
+          )}
         </p>
       )}
     </form>

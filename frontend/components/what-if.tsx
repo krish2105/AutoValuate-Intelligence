@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SlidersHorizontal, RotateCcw, TrendingUp, TrendingDown, Minus, Loader2 } from "lucide-react";
 import type { ValuationResult, VehicleInput } from "@/lib/types";
 import { estimateValuation } from "@/lib/api";
-import { assessmentBand } from "@/lib/cv-browser";
+import { assessmentBand, SYNTHETIC_PROVENANCE } from "@/lib/cv-browser";
 import { aed, cn } from "@/lib/utils";
 import { SectionCard, Pill } from "./ui";
 import { CountUp } from "./fx";
@@ -99,14 +99,17 @@ export function WhatIf({ result, online }: { result: ValuationResult; online: bo
         kilometers: nextKm,
         year: nextYear,
         photos: [],
+        // Driven by the condition SLIDER, not by any detector — hence source "synthetic".
+        // It previously claimed source "browser", i.e. a hypothetical was indistinguishable
+        // from a real on-device scan of real photos.
         client_condition: nextCond >= 100 ? null : {
+          ...SYNTHETIC_PROVENANCE,
           cv_available: true,
           condition_score: nextCond,
           price_adjustment_factor: Math.round(factor * 1e4) / 1e4,
           findings: [],
           photos_assessed: 0,
           total_value_impact_pct: Math.round((100 - nextCond) * 10) / 10,
-          source: "browser",
           assessment: assessmentBand(nextCond),
           needs_inspection: nextCond < 70,
         },
