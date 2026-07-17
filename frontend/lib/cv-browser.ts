@@ -332,6 +332,10 @@ function preprocess(source: CanvasImageSource, region: Region): PreprocessResult
   canvas.width = IMGSZ;
   canvas.height = IMGSZ;
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  // Pin the resample explicitly instead of relying on the browser default, so the same crop
+  // always downscales to the same pixels (determinism, and a fixed point vs the backend).
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.fillStyle = "rgb(114,114,114)"; // letterbox pad colour
   ctx.fillRect(0, 0, IMGSZ, IMGSZ);
   // Draw only the [sx,sy,sw,sh] crop of the source, letterboxed top-left (matches backend).
@@ -577,7 +581,19 @@ export function loadImageEl(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const el = new Image();
     el.crossOrigin = "anonymous";
-    el.onload = () => resolve(el);
+    el.onload = async () => {
+      // `onload` means the bytes downloaded — NOT that the pixels are decoded. Drawing a
+      // not-yet-decoded image to the canvas reads timing-dependent partial pixels, so the
+      // SAME photo produced a DIFFERENT tensor (and a different score) on each scan. decode()
+      // forces a complete decode before we ever draw it. (Tiny images decode synchronously,
+      // which is why the bug only showed on real, large photos.)
+      try {
+        if (typeof el.decode === "function") await el.decode();
+      } catch {
+        /* decode() can reject in some engines even when the pixels are usable; onload already fired */
+      }
+      resolve(el);
+    };
     el.onerror = () => reject(new Error("image failed to load"));
     el.src = src;
   });

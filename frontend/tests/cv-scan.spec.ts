@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Request } from "@playwright/test";
-import { PNG_1x1_RED, PNG_2x1_BLUE, CORRUPT_IMAGE, makeFiles } from "./_cv-fixtures";
+import { PNG_1x1_RED, PNG_2x1_BLUE, CORRUPT_IMAGE, JPEG_SYNTH_CAR, makeFiles, makeJpegFiles } from "./_cv-fixtures";
 
 /**
  * Regression tests for the on-device damage scan.
@@ -169,6 +169,34 @@ test("an unreadable photo blocks submit until explicitly accepted, and is never 
   expect(cc.status, "an incomplete scan must declare itself partial").toBe("partial");
   expect(cc.photos_assessed, "only the readable photo was assessed").toBe(1);
   expect(cc.needs_inspection, "a partial scan can never imply a clean car").toBe(true);
+});
+
+test("the same photo scanned repeatedly yields the SAME score (deterministic)", async ({ page }) => {
+  // The reported bug: scanning one photo several times gave different scores. The ONNX model
+  // is deterministic (proven separately); the cause was loadImageEl resolving on `onload`
+  // before the pixels were decoded, so each scan drew slightly different pixels to the canvas.
+  // This uses a large image (real decode window) the detector actually fires on, so a drifting
+  // score is visible. Five INDEPENDENT scans (fresh page each) must all agree.
+  await page.route(API_GLOB, (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+  const posts = captureValuationPosts(page);
+  const submit = page.getByRole("button", { name: /value my car/i });
+  const scores: number[] = [];
+
+  for (let i = 0; i < 5; i++) {
+    await page.goto("/");                       // fresh state → single-photo set each time
+    await fillCar(page);
+    await page.setInputFiles('input[type="file"]', makeJpegFiles([JPEG_SYNTH_CAR]));
+    await expect(submit).toBeEnabled({ timeout: 120_000 });
+    const before = posts.length;
+    await submit.click();
+    await expect.poll(() => posts.length, { timeout: 30_000 }).toBeGreaterThan(before);
+    const cc = JSON.parse(posts[posts.length - 1].postData() ?? "{}").client_condition;
+    expect(cc, "a completed scan must produce a condition").toBeTruthy();
+    scores.push(cc.condition_score);
+  }
+
+  // Every scan of identical bytes must produce the identical score.
+  expect(new Set(scores).size, `condition_score across 5 scans of the same photo: ${scores.join(", ")}`).toBe(1);
 });
 
 test("re-selecting the same file repeatedly is stable", async ({ page }) => {
