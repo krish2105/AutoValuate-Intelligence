@@ -93,8 +93,9 @@ scores. Per row: `class = argmax(scores)`, `confidence = max(scores)`. Convert t
 | `MIN_AREA` | 0.0008 | minimum box area as a fraction of frame |
 | `GLASS_CONF` | 0.55 | `glass_shatter`-only final gate |
 
-**Comparison direction is normative.** Browser: `>= minConf` after NMS. Backend:
-`> min_conf` before NMS. These differ — see §6.
+**Comparison direction is normative:** `>= minConf`, applied **after** NMS, on both paths.
+The backend previously gated `> min_conf` *before* NMS; it now decodes above `DECODE_FLOOR`,
+runs NMS, then gates `>= min_conf` — matching the browser (was §6 #2, now closed).
 
 > These thresholds are **hand-set**, with no tuning experiment behind them. No script in the
 > repo derives them and none was tuned on a split. Treat them as engineering judgement, not
@@ -167,6 +168,12 @@ Canonical order for hashing and comparison:
 
     class_id ASC, confidence DESC, x1, y1, x2, y2
 
+Now applied in code on both paths (`cv-browser.fuseDetections`, `cv_local._fuse_detections`);
+the browser previously sorted by confidence only. **No version bump for this**: the condition
+score, factor, findings and provenance are all order-independent (aggregation is per-class), so
+no existing condition becomes stale — the change makes the output match a rule this document
+already declared normative. Flagged here so the call is reviewable.
+
 ## 4. Provenance contract
 
 Every `ClientCondition` carries the identity of what produced it:
@@ -198,27 +205,31 @@ unreachable behind those caches forever.
 A floating ORT range is a determinism defect, not a convenience — a different runtime build
 can produce different floats from identical weights.
 
-## 6. Known divergences — OPEN
+## 6. Known divergences
 
-Browser and backend are **not** bit-identical today. Confirmed by reading both:
+The shared **post-processing** (fusion + filter, §3.7 steps 3–6) is now conformance-tested:
+`eval/cv_conformance.py` feeds identical synthetic per-tile detections to both
+`cv_local._fuse_detections` (Python) and `cv-browser.fuseDetections` (TypeScript, via esbuild)
+and asserts they agree — labels/counts/order exact, box coordinates within `1e-4`. The test
+fails when they disagree (verified by disabling the backend area filter). The **preprocessing**
+divergences remain: they feed the model different pixels, so the *detections* still differ, and
+no post-processing can reconcile that.
 
-| # | Divergence | Browser | Backend (`cv_local.py`) |
-|---|---|---|---|
-| 1 | Minimum box area | drops `< 0.0008` | **no area filter at all** |
-| 2 | Confidence gate | `>=`, applied after NMS | `>`, applied before NMS |
-| 3 | Severity crop order | resize to 48×48, then grayscale | grayscale at full res, then resize |
-| 4 | Resampler | canvas `drawImage` | `cv2.resize` INTER_LINEAR / `PIL.resize` |
-| 5 | Crop coordinate rounding | float / `Math.round` | `int()` truncation |
-| 6 | Output rounding | unrounded | 4 dp |
-| 7 | EXIF orientation | browser auto-applies | PIL does not rotate |
+| # | Divergence | Browser | Backend (`cv_local.py`) | Status |
+|---|---|---|---|---|
+| 1 | Minimum box area | drops `< 0.0008` | drops `< 0.0008` | **closed** — backend filter added |
+| 2 | Confidence gate | `>=`, after NMS | `>=`, after NMS | **closed** — decode-floor + gate after NMS |
+| 3 | Severity crop order | resize 48×48 then grayscale | resize 48×48 then grayscale | **closed** — backend order aligned |
+| 5 | Crop coordinate rounding | `Math.round` | round-half-up (`int(v+0.5)`) | **closed** — backend rounds, not truncates |
+| 4 | Resampler | canvas `drawImage` | `cv2.resize` / `PIL.resize` | **OPEN** — environmental; no shared native resampler |
+| 6 | Fused-box output rounding | unrounded | 4 dp | **OPEN (bounded)** — ≤ `5e-5`; the conformance tolerance |
+| 7 | EXIF orientation | browser auto-applies | PIL does not rotate | **OPEN** — environmental; needs an explicit EXIF step |
 
-Consequence: **the same photo can produce different detections on the two paths.** In
-production this is latent — the browser path serves all users and the backend path only runs
-for direct photo POSTs — but it is real, and any parity claim is currently unsupported. #1
-and #7 are the ones that change results most.
-
-Closing these requires either extracting shared post-processing or defining tolerances and
-holding both to conformance vectors. Neither is done.
+Consequence: for a **direct photo POST to the backend**, the same phone photo can still produce
+different detections than the browser would, because of #4 and #7 (different input pixels). This
+is latent in production — the browser path serves all users; the backend path runs only for
+direct photo POSTs. Closing #4/#7 requires an explicit shared resample + EXIF-normalize step (a
+native dependency), not a post-processing change; #6 is bounded and covered by the tolerance.
 
 ## 7. What is NOT established about this model
 
