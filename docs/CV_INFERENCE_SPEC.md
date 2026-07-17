@@ -33,7 +33,7 @@ Read from the ONNX metadata, which outranks any documentation:
 | Input | `images` — `float32[1,3,640,640]`, NCHW, RGB |
 | Output | `output0` — `float32[1,12,8400]` = 4 box + 8 class scores |
 | Exported | 2026-07-14 |
-| License | AGPL-3.0 (Ultralytics) — **the repo has no LICENSE file; resolve before any commercial use** |
+| License | AGPL-3.0 (Ultralytics) — **the repo has no LICENSE file; escalated in [`docs/LICENSING.md`](LICENSING.md), unresolved** |
 
 Both copies (`frontend/public/models/best.onnx`, `cv-service/model/best.onnx`) are
 byte-identical; `scripts/cv_baseline.py` asserts this.
