@@ -38,7 +38,9 @@ export const ORT_VERSION = buildVersion.ortVersion;
 // therefore a different number of borderline detections (a scratch flickering in/out) → a
 // different score on each scan. See docs/CV_INFERENCE_SPEC.md §6 #4.
 export const PREPROCESSING_VERSION = "1.1.0";
-export const INFERENCE_CONFIG_VERSION = "1.0.0";
+// 1.1.0: adds damage-EXTENT escalation to the aggregation (see EXTENT_KNEE below) so a large-area
+// collision is no longer scored as "minor cosmetic". A scoring/aggregation change = a config change.
+export const INFERENCE_CONFIG_VERSION = "1.1.0";
 
 export const CV_CLASSES = [
   "dent", "scratch", "crack", "glass_shatter",
@@ -81,6 +83,16 @@ const SEV_MULT_LO = 0.5;      // pixel severity 0..1 → impact multiplier 0.5..
 const SEV_MULT_HI = 2.5;
 const STRUCT_ESC = 0.4;       // co-occurrence exponent per extra structural finding
 const MAX_TOTAL_DEDUCTION = 0.62; // photos alone can't wipe out >62%; rest disclosed as uncertainty
+// Damage-EXTENT escalation. The model often labels a whole crushed side as a few "dent" boxes, and
+// three cosmetic dents can only ever deduct ~30% — so a real wreck read as "Good / minor cosmetic".
+// This adds a label-agnostic signal: how much of the CAR is covered by damage. Extensive coverage
+// is a major-damage signature regardless of the class label, so it escalates the deduction. Tuned
+// (scratch/tune_extent.py) so clean=100, one small ding≈95, but a side-collision (~23% coverage)
+// drops from 82→~53. Below the knee it does nothing, so minor cars are untouched.
+const EXTENT_KNEE = 0.10;       // damage covering >10% of the frame begins to escalate
+const EXTENT_ESC = 12.0;        // escalation strength above the knee
+const EXTENT_SEVERE_COV = 0.20; // at/above this coverage the worst finding reads "severe" (honesty)
+const COV_GRID = 48;            // grid resolution for the union-coverage estimate (parity w/ backend)
 
 // Pixel-severity feature weights (kept in lock-step with cv_local.py). A detection's severity
 // (0..1) is graded from the crop's pixels — texture/gradient energy (crumple, cracks, scrapes),
@@ -727,6 +739,25 @@ export function loadImageEl(src: string): Promise<HTMLImageElement> {
  * and price-adjustment factor — a faithful port of aggregation_agent.aggregate()
  * so the browser result is interchangeable with the server's.
  */
+/**
+ * Fraction of the frame covered by damage, as a UNION over the boxes (grid-rasterized so
+ * overlapping boxes aren't double-counted). Deterministic; mirrored in aggregation_agent._coverage.
+ * This is the "how much of the car is damaged" signal that box counts and per-class impact miss.
+ */
+function damageCoverage(dets: { box: readonly number[] }[]): number {
+  if (dets.length === 0) return 0;
+  const G = COV_GRID;
+  const grid = new Uint8Array(G * G);
+  for (const d of dets) {
+    const x0 = Math.max(0, Math.floor(d.box[0] * G)), x1 = Math.min(G, Math.ceil(d.box[2] * G));
+    const y0 = Math.max(0, Math.floor(d.box[1] * G)), y1 = Math.min(G, Math.ceil(d.box[3] * G));
+    for (let gy = y0; gy < y1; gy++) for (let gx = x0; gx < x1; gx++) grid[gy * G + gx] = 1;
+  }
+  let n = 0;
+  for (let i = 0; i < grid.length; i++) n += grid[i];
+  return n / (G * G);
+}
+
 /** Pixel severity if the detector attached it; else a coarse area+class fallback (mirrors backend). */
 function sevOfDet(d: Detection): number {
   if (d.sev != null) return d.sev;
@@ -798,11 +829,28 @@ export function conditionFromDetections(
     });
   }
 
-  // Accident escalation: multiple co-occurring structural findings signal a collision, so
-  // amplify the deduction (a wreck shows crack + glass + lamp + missing_part together).
+  // How much of the car is covered by damage — the label-agnostic "extent" signal.
+  let maxCoverage = 0;
+  for (const dets of perPhoto) {
+    const kept = dets.filter((d) => d.label in BASE_SEVERITY && d.confidence >= TILE_CONF);
+    maxCoverage = Math.max(maxCoverage, damageCoverage(kept));
+  }
+
+  // Escalations. (1) Accident: co-occurring STRUCTURAL findings signal a collision (crack + glass
+  // + lamp + missing_part together). (2) Extent: damage spread across a large AREA is major damage
+  // even when the model only calls it "dent" — this is what stops a crushed side reading as "minor".
   let deduction = 1 - keptAll;
   if (structHits >= 2) deduction = 1 - Math.pow(1 - deduction, 1 + STRUCT_ESC * (structHits - 1));
+  if (maxCoverage > EXTENT_KNEE) deduction = 1 - Math.pow(1 - deduction, 1 + EXTENT_ESC * (maxCoverage - EXTENT_KNEE));
   deduction = Math.min(MAX_TOTAL_DEDUCTION, deduction);
+
+  // Extensive coverage ⇒ the worst finding IS severe, whatever the fine label says (honest UI +
+  // triggers the inspection prompt). Scratch/glass stay capped — they're cheap regardless of area.
+  if (maxCoverage >= EXTENT_SEVERE_COV && findings.length > 0
+      && findings[0].damage_type !== "scratch" && findings[0].damage_type !== "glass_shatter") {
+    findings[0].severity = "severe";
+  }
+
   const score = Math.round(100 * (1 - deduction));
   const needsInspection = score < 70 || findings.some((f) => f.severity === "severe");
   return {

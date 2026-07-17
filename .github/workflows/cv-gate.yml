@@ -23,6 +23,11 @@ on:
       - "eval/unit_tests.py"
       - "eval/cv_conformance.py"
       - "eval/cv_conformance_fixtures.json"
+      - "eval/cv_scoring.py"
+      - "eval/cv_scoring_fixtures.json"
+      - "frontend/scripts/cv-conformance-run.mjs"
+      - "frontend/scripts/cv-scoring-run.mjs"
+      - "frontend/scripts/cv-determinism-run.mjs"
       - "docs/CV_INFERENCE_SPEC.md"
       - ".github/workflows/cv-gate.yml"
   push:
@@ -41,6 +46,10 @@ on:
       - "eval/unit_tests.py"
       - "eval/cv_conformance.py"
       - "eval/cv_conformance_fixtures.json"
+      - "eval/cv_scoring.py"
+      - "eval/cv_scoring_fixtures.json"
+      - "frontend/scripts/cv-scoring-run.mjs"
+      - "frontend/scripts/cv-determinism-run.mjs"
       - "docs/CV_INFERENCE_SPEC.md"
       - ".github/workflows/cv-gate.yml"
   workflow_dispatch:
@@ -85,6 +94,17 @@ jobs:
       # The browser and backend post-processing must stay in lock-step (spec §3.7 / §6).
       - name: Cross-language post-processing conformance
         run: python eval/cv_conformance.py
+
+      # Scoring bands: a large-area collision must NOT score as "minor cosmetic", clean/minor cars
+      # must stay high, and the browser + backend scorers must agree (regression guard for the
+      # "wreck scored 82/100 Good" bug). Runs both scorers over shared synthetic fixtures.
+      - name: Scoring bands + browser/backend parity
+        run: python eval/cv_scoring.py
+
+      # In-browser preprocessing must be deterministic — the same photo must score the same twice.
+      - name: Preprocessing determinism
+        working-directory: frontend
+        run: node scripts/cv-determinism-run.mjs
 
       # playwright.config's webServer runs `next start`, which needs a production build —
       # without this the CV e2e fails at "Could not find a production build in '.next'"

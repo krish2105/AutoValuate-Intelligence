@@ -60,7 +60,9 @@ from functools import lru_cache
 # its scan is valid for the code that produced it. Neither ever bit-matched the server resampler
 # (spec §6 #4 is environmental), so this gate is about identity, not pixel parity.
 ACCEPTED_PREPROCESSING_VERSIONS = frozenset({"1.0.0", "1.1.0"})
-ACCEPTED_INFERENCE_CONFIG_VERSIONS = frozenset({"1.0.0"})
+# 1.1.0 = adds damage-extent escalation to the scoring (aggregation_agent). Both accepted so a
+# browser on the older bundle isn't rejected during a rolling deploy.
+ACCEPTED_INFERENCE_CONFIG_VERSIONS = frozenset({"1.0.0", "1.1.0"})
 
 
 @lru_cache(maxsize=1)

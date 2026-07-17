@@ -1,0 +1,30 @@
+{
+  "_comment": "Synthetic detection sets (one photo each) for the scoring check. Each case is a list of detections {label, confidence, box:[x1,y1,x2,y2] normalized, sev:0..1}. Run through BOTH the browser scorer (frontend/scripts/cv-scoring-run.mjs -> conditionFromDetections) and the backend scorer (eval/cv_scoring.py -> aggregation_agent.aggregate); the two must agree within tolerance, and each must land in its expected band. This is the regression guard for 'a crushed side must not score as minor cosmetic'.",
+  "bands": {
+    "clean": [95, 100],
+    "small_ding": [88, 99],
+    "one_moderate": [80, 96],
+    "side_collision": [44, 60],
+    "structural_wreck": [1, 50]
+  },
+  "cases": {
+    "clean": [],
+    "small_ding": [
+      {"label": "dent", "confidence": 0.5, "box": [0.45, 0.5, 0.52, 0.57], "sev": 0.3}
+    ],
+    "one_moderate": [
+      {"label": "dent", "confidence": 0.55, "box": [0.40, 0.45, 0.60, 0.62], "sev": 0.5}
+    ],
+    "side_collision": [
+      {"label": "dent", "confidence": 0.60, "box": [0.24, 0.55, 0.55, 0.78], "sev": 0.55},
+      {"label": "dent", "confidence": 0.55, "box": [0.37, 0.60, 0.72, 0.82], "sev": 0.5},
+      {"label": "dent", "confidence": 0.60, "box": [0.72, 0.55, 0.98, 0.86], "sev": 0.6}
+    ],
+    "structural_wreck": [
+      {"label": "crack", "confidence": 0.6, "box": [0.7, 0.5, 0.85, 0.62], "sev": 0.6},
+      {"label": "glass_shatter", "confidence": 0.8, "box": [0.4, 0.2, 0.6, 0.35], "sev": 0.5},
+      {"label": "lamp_broken", "confidence": 0.6, "box": [0.9, 0.55, 0.98, 0.66], "sev": 0.5},
+      {"label": "missing_part", "confidence": 0.6, "box": [0.75, 0.6, 0.95, 0.85], "sev": 0.7}
+    ]
+  }
+}

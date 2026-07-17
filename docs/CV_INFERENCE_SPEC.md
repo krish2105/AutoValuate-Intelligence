@@ -154,10 +154,19 @@ where `conf_weight = clamp((conf − 0.20) / 0.35, 0.35, 1)` and
 `eff_weight = min(1, cw + (1 − cw)·sev·0.65)`.
 
 Combine as a probabilistic union — `kept = Π(1 − impact)` — so damage saturates instead of
-summing past 100%. If two or more structural findings co-occur
-(`crack, glass_shatter, lamp_broken, punctured, missing_part, tire_flat`), escalate:
-`deduction = 1 − (1 − deduction)^(1 + 0.4·(structHits − 1))`. Cap at
-`MAX_TOTAL_DEDUCTION = 0.62`. `condition_score = round(100 · (1 − deduction))`.
+summing past 100%. Two escalations then apply (config version 1.1.0):
+1. **Structural co-occurrence** — if two or more structural findings co-occur
+   (`crack, glass_shatter, lamp_broken, punctured, missing_part, tire_flat`):
+   `deduction = 1 − (1 − deduction)^(1 + 0.4·(structHits − 1))`.
+2. **Damage extent** — `coverage` = the union fraction of the frame covered by damage boxes
+   (grid-rasterized, `COV_GRID=48`). Above `EXTENT_KNEE=0.10`:
+   `deduction = 1 − (1 − deduction)^(1 + 12·(coverage − 0.10))`. This is label-agnostic: the model
+   often labels a whole crushed side as a few `dent` boxes, and cosmetic dents alone can only
+   deduct ~30%, so extensive coverage is the signal that a car is a major-damage car regardless of
+   the fine label. At `coverage ≥ 0.20` the worst finding is reported as `severe`. Tuned in
+   `scratch/tune_extent.py`; guarded by `eval/cv_scoring.py` (bands + browser/backend parity).
+
+Cap at `MAX_TOTAL_DEDUCTION = 0.62`. `condition_score = round(100 · (1 − deduction))`.
 
 Only photos that actually decoded **and** completed inference are aggregated;
 `photos_assessed` counts those, never the number submitted.

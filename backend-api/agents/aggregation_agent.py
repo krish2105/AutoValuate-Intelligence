@@ -49,8 +49,36 @@ CONF_FLOOR = 0.35
 SEV_MULT_LO, SEV_MULT_HI = 0.5, 2.5   # pixel severity 0..1 → impact multiplier 0.5..2.5
 STRUCT_ESC = 0.4         # co-occurrence exponent per extra structural finding
 MAX_TOTAL_DEDUCTION = 0.62  # photos alone can't wipe out >62%; rest disclosed as uncertainty
+# Damage-EXTENT escalation — parity with frontend/lib/cv-browser.ts. The model labels a whole
+# crushed side as a few "dent" boxes, and cosmetic dents alone can only deduct ~30%, so a real
+# wreck read as "minor cosmetic". Coverage (how much of the car is damaged) is a label-agnostic
+# major-damage signal; above the knee it escalates the deduction. Tuned in scratch/tune_extent.py.
+EXTENT_KNEE = 0.10
+EXTENT_ESC = 12.0
+EXTENT_SEVERE_COV = 0.20   # coverage at/above which the worst finding reads "severe"
+COV_GRID = 48
 # Fallback when a detection carries no pixel `sev` (e.g. the remote CV Space): estimate from area.
 _FALLBACK_PRIOR = {"glass_shatter": 0.15, "missing_part": 0.20, "punctured": 0.15, "crack": 0.10, "lamp_broken": 0.08}
+
+
+def _coverage(boxes) -> float:
+    """Union fraction of the frame covered by damage boxes (grid-rasterized so overlaps aren't
+    double-counted). The label-agnostic 'how much of the car is damaged' signal. Parity with
+    cv-browser.damageCoverage (same COV_GRID + floor/ceil rasterization)."""
+    if not boxes:
+        return 0.0
+    import math
+    g = COV_GRID
+    grid = bytearray(g * g)
+    for b in boxes:
+        if not b or len(b) < 4:
+            continue
+        x0, x1 = max(0, math.floor(b[0] * g)), min(g, math.ceil(b[2] * g))
+        y0, y1 = max(0, math.floor(b[1] * g)), min(g, math.ceil(b[3] * g))
+        for gy in range(y0, y1):
+            for gx in range(x0, x1):
+                grid[gy * g + gx] = 1
+    return sum(grid) / (g * g)
 
 
 def _box_area(box) -> float:
@@ -138,6 +166,7 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     per_class: dict[str, dict] = {}
     assessed = 0
     failures: list[str] = []
+    max_coverage = 0.0  # largest single-photo damage coverage (the extent signal)
     for i, photo in enumerate(photos):
         try:
             dets = cv_local.detect(photo)
@@ -150,6 +179,7 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             failures.append(f"photo {i}: {type(e).__name__}: {e}")
             log.warning("CV failed on photo %d: %s", i, e)
             continue
+        kept_boxes = []
         for d in dets:
             label = d.get("label")
             conf = float(d.get("confidence", 0))
@@ -163,6 +193,8 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             slot["photos"].add(i)
             slot["impacts"].append(_det_impact(label, sev, conf))
             slot["worst_sev"] = max(slot["worst_sev"], sev)
+            kept_boxes.append(d.get("box"))
+        max_coverage = max(max_coverage, _coverage(kept_boxes))
 
     if assessed == 0:
         return {
@@ -195,11 +227,21 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             "severity": _severity_of(label, s["worst_sev"]),
         })
 
-    # Accident escalation: co-occurring structural findings signal a collision, so amplify.
+    # Escalations. (1) Accident: co-occurring structural findings signal a collision. (2) Extent:
+    # damage spread over a large AREA is major damage even when only labelled "dent" — this is what
+    # stops a crushed side reading as "minor cosmetic". Parity with cv-browser.conditionFromDetections.
     deduction = 1 - kept_all
     if struct_hits >= 2:
         deduction = 1 - (1 - deduction) ** (1 + STRUCT_ESC * (struct_hits - 1))
+    if max_coverage > EXTENT_KNEE:
+        deduction = 1 - (1 - deduction) ** (1 + EXTENT_ESC * (max_coverage - EXTENT_KNEE))
     deduction = min(MAX_TOTAL_DEDUCTION, deduction)
+
+    # Extensive coverage ⇒ the worst finding IS severe, whatever the fine label says (findings are
+    # sorted highest-impact first). Scratch/glass stay capped — cheap to fix regardless of area.
+    if max_coverage >= EXTENT_SEVERE_COV and findings \
+            and findings[0]["damage_type"] not in ("scratch", "glass_shatter"):
+        findings[0]["severity"] = "severe"
     # round-half-up (not Python's banker's rounding) so it matches the browser's Math.round
     condition_score = int(100 * (1 - deduction) + 0.5)
     # A scan that could only read some of the photos is not a clean bill of health: the
