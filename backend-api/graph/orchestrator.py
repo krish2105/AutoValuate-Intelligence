@@ -11,7 +11,10 @@ Exposes both `run()` (batch) and `stream_steps()` (generator for SSE).
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Iterator, TypedDict
+
+log = logging.getLogger(__name__)
 
 from langgraph.graph import END, StateGraph
 
@@ -25,6 +28,94 @@ from llm_client.client import LLMClient
 # single shared instances (models/index load once)
 _COMPARABLES = comparables_rag_agent.ComparablesAgent()
 _LLM = LLMClient()
+
+# The ONE bound on how far a CV condition may deflate a price, derived from the single
+# source of truth (aggregation_agent.MAX_TOTAL_DEDUCTION) so it can never drift. Both the
+# full graph (n_valuation) and the fast path (estimate) apply this same clamp, so /valuate
+# and /estimate return the same price for the same car. Previously estimate re-clamped to
+# 0.5 while /valuate honoured the 0.38 Pydantic bound, so a factor of 0.40 gave two prices.
+CONDITION_FACTOR_FLOOR = round(1.0 - aggregation_agent.MAX_TOTAL_DEDUCTION, 4)  # 0.38
+
+
+def _clamp_condition_factor(factor: float) -> float:
+    """A CV condition may only deflate a price, and never below the canonical floor."""
+    return max(CONDITION_FACTOR_FLOOR, min(1.0, factor))
+
+
+# --- client_condition provenance enforcement (docs/CV_INFERENCE_SPEC.md §4) ---------------
+# A browser-produced condition can move the price, so it must be provably from THIS model and
+# config — otherwise a POST with photos:[] and a hand-written condition could deflate a price
+# to the 0.38 floor with no scan behind it. We reject a browser condition whose model_version
+# is not the one we ship, whose pre/post-processing version is stale, whose photo_set_hash is
+# malformed, or whose scan is partial without explicit consent. On rejection the condition is
+# dropped (treated as no-CV, factor 1.0) — fail-safe: the only thing a forger loses is the
+# ability to *lower* a price they never scanned. `source:"synthetic"` (what-if sliders, demo
+# fixtures) is a user-chosen hypothetical, not a claimed scan, so it is exempt from the model
+# checks but is never reported as a real CV assessment (see _condition_from_client).
+import hashlib
+from functools import lru_cache
+
+ACCEPTED_PREPROCESSING_VERSIONS = frozenset({"1.0.0"})
+ACCEPTED_INFERENCE_CONFIG_VERSIONS = frozenset({"1.0.0"})
+
+
+@lru_cache(maxsize=1)
+def _server_model_version() -> str:
+    """
+    SHA-256[:12] of the shipped ONNX — the model_version a genuine browser scan stamps.
+    Computed from the backend's own copy so it cannot drift from a hardcoded constant.
+
+    Returns "" if that copy is not present in the deployment (the model lives outside the
+    Render `rootDir` and server-side CV is off there, so it may legitimately be absent). In
+    that case the model_version check is skipped — never crashed — and the other provenance
+    checks (config versions, photo_set_hash, status/consent) still apply. A missing model file
+    must degrade enforcement, not 500 every valuation.
+    """
+    from agents import cv_local
+    try:
+        return hashlib.sha256(cv_local.MODEL_PATH.read_bytes()).hexdigest()[:12]
+    except OSError:
+        log.warning("server ONNX unavailable (%s); model_version enforcement degraded", cv_local.MODEL_PATH)
+        return ""
+
+
+def _is_hex_hash(v, length: int = 64) -> bool:
+    if not isinstance(v, str) or len(v) != length:
+        return False
+    try:
+        int(v, 16)
+        return True
+    except ValueError:
+        return False
+
+
+def accept_client_condition(client: dict) -> tuple[bool, str]:
+    """Return (accepted, reason). A rejected condition is dropped, not trusted."""
+    if not client or not client.get("cv_available"):
+        return False, "no condition"
+    if client.get("source") == "synthetic":
+        # A what-if hypothesis, not a claimed scan. Allowed to move the price (bounded by the
+        # Pydantic 0.38 floor); flagged non-real downstream so it is never called an assessment.
+        return True, "synthetic (what-if)"
+    mv = client.get("model_version")
+    server_mv = _server_model_version()
+    if server_mv and mv != server_mv:  # skip only when the server has no model file to compare
+        return False, f"unrecognised model_version {mv!r}"
+    if client.get("preprocessing_version") not in ACCEPTED_PREPROCESSING_VERSIONS:
+        return False, f"stale preprocessing_version {client.get('preprocessing_version')!r}"
+    if client.get("inference_config_version") not in ACCEPTED_INFERENCE_CONFIG_VERSIONS:
+        return False, f"stale inference_config_version {client.get('inference_config_version')!r}"
+    # The photos never reach the server (privacy), so the hash cannot be RE-computed here — we
+    # verify it is present and well-formed. A full match is only possible on the server-CV path
+    # (photos posted), where the server computes its own condition and ignores the client's.
+    if not _is_hex_hash(client.get("photo_set_hash")):
+        return False, "missing or malformed photo_set_hash"
+    status = client.get("status")
+    if status == "partial" and not client.get("partial_scan_consent"):
+        return False, "partial scan without explicit consent"
+    if status not in ("complete", "partial"):
+        return False, f"unknown scan status {status!r}"
+    return True, "verified browser scan"
 
 
 class State(TypedDict, total=False):
@@ -62,10 +153,16 @@ def n_aggregate(state: State) -> State:
     # aggregator, so downstream valuation/report/confidence are unchanged.
     client = (state.get("payload") or {}).get("client_condition")
     if client and client.get("cv_available"):
-        cond = _condition_from_client(client)
-        detail = (f'condition {cond["condition_score"]}/100, {len(cond["findings"])} '
-                  f'damage type(s) · on-device scan')
-        return {"condition": cond, "trace": _trace(state, "aggregation", "ok", detail)}
+        accepted, reason = accept_client_condition(client)
+        if accepted:
+            cond = _condition_from_client(client)
+            src = "what-if" if client.get("source") == "synthetic" else "on-device scan"
+            detail = (f'condition {cond["condition_score"]}/100, {len(cond["findings"])} '
+                      f'damage type(s) · {src}')
+            return {"condition": cond, "trace": _trace(state, "aggregation", "ok", detail)}
+        # Unverifiable client condition: do not price on it. Fall through to server CV (if a
+        # detector + photos are available) or an honest no-CV condition (factor 1.0).
+        log.warning("rejected client_condition: %s", reason)
 
     cond = aggregation_agent.aggregate(state["vehicle"])
     if cond["cv_available"]:
@@ -114,7 +211,7 @@ def _condition_from_client(client: dict) -> dict:
 def n_valuation(state: State) -> State:
     val = valuation_model.predict(state["vehicle"])
     # apply the CV condition adjustment to the market-condition price
-    factor = state["condition"].get("price_adjustment_factor", 1.0)
+    factor = _clamp_condition_factor(state["condition"].get("price_adjustment_factor", 1.0))
     if factor != 1.0:
         for k in ("price_low_aed", "price_mid_aed", "price_high_aed"):
             val[k] = round(val[k] * factor)
@@ -256,9 +353,13 @@ def estimate(payload: dict) -> dict:
     client = payload.get("client_condition")
     factor = 1.0
     if client and client.get("cv_available"):
-        factor = float(client.get("price_adjustment_factor", 1.0))
-    # clamp defensively (mirrors the backend ClientCondition bounds)
-    factor = max(0.5, min(1.0, factor))
+        accepted, reason = accept_client_condition(client)
+        if accepted:
+            factor = float(client.get("price_adjustment_factor", 1.0))
+        else:
+            log.warning("estimate: rejected client_condition: %s", reason)
+    # Same clamp as the full graph (n_valuation) so /estimate and /valuate agree exactly.
+    factor = _clamp_condition_factor(factor)
     if factor != 1.0:
         for k in ("price_low_aed", "price_mid_aed", "price_high_aed"):
             val[k] = round(val[k] * factor)

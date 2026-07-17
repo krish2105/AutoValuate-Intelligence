@@ -231,6 +231,13 @@ export interface ClientCondition {
    * every photo failed to decode was indistinguishable from a scan that found no damage.
    */
   status: "complete" | "partial";
+  /**
+   * Explicit user consent to be valued on an incomplete (partial) scan. Set true only when
+   * the user ticks the "value it anyway" box. The server rejects a `status:"partial"`
+   * condition that arrives without this, so a partial scan can never silently deflate a
+   * price. Absent/false for complete and synthetic conditions.
+   */
+  partial_scan_consent?: boolean;
 }
 
 /**
@@ -515,6 +522,28 @@ function mergeDetections(dets: Detection[]): Detection[] {
   return out.sort((a, b) => b.confidence - a.confidence);
 }
 
+/** Canonical output order (spec §3.10): class_id ASC, confidence DESC, then x1,y1,x2,y2. */
+function canonicalSort(dets: Detection[]): Detection[] {
+  return dets.sort((a, b) =>
+    CV_CLASSES.indexOf(a.label) - CV_CLASSES.indexOf(b.label)
+    || b.confidence - a.confidence
+    || a.box[0] - b.box[0] || a.box[1] - b.box[1] || a.box[2] - b.box[2] || a.box[3] - b.box[3]);
+}
+
+/**
+ * The post-inference fusion + filter pipeline (spec §3.7 steps 3–6), pure and shared between
+ * the real scan and the cross-language conformance test (eval/cv_conformance*): Weighted Box
+ * Fusion → drop boxes below MIN_AREA → drop low-confidence glass_shatter → canonical order.
+ * Given identical per-tile detections, this MUST match backend cv_local._fuse_detections; the
+ * model + preprocessing (canvas vs cv2 resample, EXIF) still differ — see spec §6.
+ */
+export function fuseDetections(dets: Detection[]): Detection[] {
+  const fused = mergeDetections(dets).filter((d) =>
+    boxArea(d.box) >= MIN_AREA
+    && !(d.label === "glass_shatter" && d.confidence < GLASS_CONF));
+  return canonicalSort(fused);
+}
+
 /**
  * Run detection on one image: TILED inference (full + top-half + 2 bottom quadrants) → Weighted
  * Box Fusion → a pixel-graded severity (0..1) per detection from the crop's texture/shadow/extent.
@@ -538,10 +567,7 @@ export async function detectImage(img: HTMLImageElement | ImageBitmap): Promise<
       all.push(d);
     }
   }
-  const fused = mergeDetections(all).filter((d) =>
-    boxArea(d.box) >= MIN_AREA
-    && !(d.label === "glass_shatter" && d.confidence < GLASS_CONF), // drop reflection FPs
-  );
+  const fused = fuseDetections(all); // WBF → MIN_AREA → glass gate → canonical order (spec §3.7)
   for (const d of fused) d.sev = cropSeverity(img, W, H, d.box, d.label);
   return fused;
 }

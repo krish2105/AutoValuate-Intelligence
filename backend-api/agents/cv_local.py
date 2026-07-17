@@ -18,9 +18,11 @@ import numpy as np
 
 MODEL_PATH = Path(__file__).resolve().parents[2] / "cv-service" / "model" / "best.onnx"
 IMGSZ = 640
-CONF_THRES = 0.35        # full-frame pass gate
+DECODE_FLOOR = 0.20      # keep candidates above this at decode; per-pass gate applied AFTER NMS
+CONF_THRES = 0.35        # full-frame pass gate (applied after NMS, matching the browser)
 TILE_CONF = 0.33         # tile-only pass gate
 IOU_THRES = 0.45
+MIN_AREA = 0.0008        # minimum box area as a fraction of frame (spec §3.7 step 5)
 CLASSES = ["dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat", "punctured", "missing_part"]
 # Full frame + top half + the two bottom quadrants (4 passes). Zooming into regions recovers
 # small/localized damage a single 640² letterbox squashes away — the main recall lever, no
@@ -44,9 +46,36 @@ def _session():
     return ort.InferenceSession(str(MODEL_PATH), providers=["CPUExecutionProvider"])
 
 
+# SSRF guard: a "photo" is client-supplied, so fetching an arbitrary http(s) URL here would let
+# a caller make the server request internal/cloud-metadata endpoints (169.254.169.254, etc.).
+# The production path sends base64/data URIs (photos never leave the browser), so URL fetching
+# is default-DENIED; set CV_IMAGE_HOST_ALLOWLIST (comma-separated hostnames) to opt specific
+# hosts back in. Private, loopback, link-local and reserved IPs are never allowed.
+def _url_host_allowed(url: str) -> bool:
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+    allow = {h.strip().lower() for h in os.environ.get("CV_IMAGE_HOST_ALLOWLIST", "").split(",") if h.strip()}
+    if not allow:
+        return False
+    host = (urlparse(url).hostname or "").lower()
+    if host not in allow:
+        return False
+    try:  # the allow-listed name must not resolve to a private/reserved address
+        for info in socket.getaddrinfo(host, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+    except (socket.gaierror, ValueError):
+        return False
+    return True
+
+
 def _load_image(spec: str) -> np.ndarray:
     from PIL import Image
     if spec.startswith("http://") or spec.startswith("https://"):
+        if not _url_host_allowed(spec):
+            raise ValueError("image URLs are not permitted (SSRF guard); send base64/data URI")
         import httpx
         data = httpx.get(spec, timeout=20).content
     else:
@@ -98,7 +127,10 @@ def _infer_region(img: np.ndarray, frac, min_conf: float) -> list[dict]:
     out = np.squeeze(sess.run(None, {sess.get_inputs()[0].name: x})[0], 0).T  # (N, 4+nc)
     boxes, scores = out[:, :4], out[:, 4:]
     cls = scores.argmax(1); conf = scores.max(1)
-    m = conf > min_conf
+    # Keep everything above the DECODE_FLOOR, run NMS, THEN apply the per-pass gate — the
+    # browser's order (spec §3.7). Previously this gated `conf > min_conf` BEFORE NMS, which
+    # differed from the browser's `>= min_conf` after NMS at the exact-boundary case.
+    m = conf > DECODE_FLOOR
     boxes, cls, conf = boxes[m], cls[m], conf[m]
     if len(boxes) == 0:
         return []
@@ -109,6 +141,8 @@ def _infer_region(img: np.ndarray, frac, min_conf: float) -> list[dict]:
         idx = np.where(cls == c)[0]
         for k in _nms(xyxy[idx], conf[idx], IOU_THRES):
             j = idx[k]
+            if conf[j] < min_conf:      # per-pass gate AFTER NMS, `>=` (matches browser)
+                continue
             bx = xyxy[j] / r  # back to crop pixels
             X1 = (sx + bx[0]) / W; Y1 = (sy + bx[1]) / H
             X2 = (sx + bx[2]) / W; Y2 = (sy + bx[3]) / H
@@ -165,6 +199,27 @@ def _wbf(dets: list[dict]) -> list[dict]:
     return out
 
 
+def _box_area(box) -> float:
+    return max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
+
+
+def _fuse_detections(dets: list[dict]) -> list[dict]:
+    """
+    Post-inference fusion + filter (spec §3.7 steps 3–6), shared by detect() and the
+    cross-language conformance test: Weighted Box Fusion → drop boxes below MIN_AREA → drop
+    low-confidence glass_shatter → canonical order (class_id ASC, confidence DESC, then box).
+    Mirror of frontend cv-browser.fuseDetections. Given identical per-tile detections the two
+    MUST agree; the model + preprocessing still differ (canvas vs cv2 resample, EXIF — spec §6).
+    """
+    fused = _wbf(dets)
+    fused = [d for d in fused
+             if _box_area(d["box"]) >= MIN_AREA
+             and not (d["label"] == "glass_shatter" and d["confidence"] < GLASS_CONF)]
+    fused.sort(key=lambda d: (CLASSES.index(d["label"]), -d["confidence"],
+                              d["box"][0], d["box"][1], d["box"][2], d["box"][3]))
+    return fused
+
+
 # ---- Pixel-based severity head (grades damage from crop texture/shadow/extent) ----
 SEV_W_AREA, SEV_W_GRAD, SEV_W_DARK = 0.42, 0.34, 0.24
 SEV_GRAD_NORM, SEV_DARK_NORM, SEV_AREA_NORM = 0.16, 0.45, 0.14
@@ -178,14 +233,19 @@ def _pixel_severity(img: np.ndarray, box) -> float:
     on top. Structural classes get a small prior. Resampled to 48×48 gray for scale invariance.
     """
     H, W = img.shape[:2]
-    x1, y1, x2, y2 = int(box[0] * W), int(box[1] * H), int(box[2] * W), int(box[3] * H)
+    # Round (not truncate) the crop corners to match the browser's Math.round (spec §6 #5).
+    x1, y1 = int(box[0] * W + 0.5), int(box[1] * H + 0.5)
+    x2, y2 = int(box[2] * W + 0.5), int(box[3] * H + 0.5)
     x2, y2 = max(x2, x1 + 1), max(y2, y1 + 1)
     crop = img[y1:y2, x1:x2]
     if crop.size == 0:
         return 0.3
     from PIL import Image as _I
-    g = (0.299 * crop[:, :, 0] + 0.587 * crop[:, :, 1] + 0.114 * crop[:, :, 2]).astype(np.uint8)
-    g = np.asarray(_I.fromarray(g).resize((48, 48))).astype(np.float32) / 255.0
+    # Resize the RGB crop to 48×48 FIRST, then grayscale — the browser's order (spec §6 #3):
+    # cropSeverity draws to a 48×48 canvas (RGB resample) and only then computes luma. Doing
+    # grayscale-then-resize gave a different 48×48 field for the same crop.
+    crop48 = np.asarray(_I.fromarray(crop).resize((48, 48))).astype(np.float32)
+    g = (0.299 * crop48[:, :, 0] + 0.587 * crop48[:, :, 1] + 0.114 * crop48[:, :, 2]) / 255.0
     gy, gx = np.gradient(g)
     grad = float(np.mean(np.sqrt(gx * gx + gy * gy)))
     dark = float(np.mean(g < 0.18))
@@ -217,10 +277,7 @@ def detect(image_spec: str) -> list[dict]:
             if not is_full and d["label"] in TILE_EXCLUDE:
                 continue
             all_dets.append(d)
-    dets = _wbf(all_dets)
-    # Drop low-confidence glass_shatter (reflection false positives).
-    dets = [d for d in dets if not (d["label"] == "glass_shatter" and d["confidence"] < GLASS_CONF)]
+    dets = _fuse_detections(all_dets)  # already in canonical order (spec §3.10)
     for d in dets:
         d["sev"] = round(min(1.0, _pixel_severity(img, d["box"]) + severity_prior(d["label"])), 4)
-    dets.sort(key=lambda d: -d["confidence"])
     return dets

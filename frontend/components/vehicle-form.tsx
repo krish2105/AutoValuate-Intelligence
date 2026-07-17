@@ -129,7 +129,12 @@ export function VehicleForm({ onSubmit, loading, preset }: { onSubmit: (v: Vehic
       if (outgoingCondition.model_version !== job.modelVersion) return;
       if (outgoingCondition.status !== "complete" && !acceptedPartial) return;
     }
-    onSubmit({ ...v, photos, client_condition: outgoingCondition });
+    // Carry the partial-scan consent to the server. It enforces the same rule (a partial
+    // condition is not priced without explicit consent), so it must be able to see the consent.
+    const conditionToSend = outgoingCondition && outgoingCondition.status === "partial"
+      ? { ...outgoingCondition, partial_scan_consent: acceptedPartial }
+      : outgoingCondition;
+    onSubmit({ ...v, photos, client_condition: conditionToSend });
   }
 
   return (

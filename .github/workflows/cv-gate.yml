@@ -1,0 +1,102 @@
+# CV regression gate (docs/CV_FINDINGS.md §4.7). The tabular Eval gate (evals.yml) never ran
+# any CV check and its path filters did not even watch the model or the notebooks, so the only
+# CV assertion in CI was "the file exists" — which passes on random weights. This gate runs the
+# backend guardrail/contract tests, the cross-language post-processing conformance test, and the
+# browser CV e2e whenever anything that defines the detector changes.
+name: CV gate
+
+# (GitHub Actions does not support YAML anchors, per the repo convention in evals.yml, so the
+# path list is duplicated verbatim between the two triggers.)
+on:
+  pull_request:
+    paths:
+      - "**/best.onnx"
+      - "frontend/lib/cv-browser.ts"
+      - "frontend/lib/cv/**"
+      - "frontend/scripts/cv-conformance-run.mjs"
+      - "backend-api/agents/cv_local.py"
+      - "backend-api/agents/aggregation_agent.py"
+      - "backend-api/agents/repair_cost.py"
+      - "backend-api/graph/orchestrator.py"
+      - "backend-api/main.py"
+      - "notebooks/**"
+      - "eval/unit_tests.py"
+      - "eval/cv_conformance.py"
+      - "eval/cv_conformance_fixtures.json"
+      - "docs/CV_INFERENCE_SPEC.md"
+      - ".github/workflows/cv-gate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "**/best.onnx"
+      - "frontend/lib/cv-browser.ts"
+      - "frontend/lib/cv/**"
+      - "frontend/scripts/cv-conformance-run.mjs"
+      - "backend-api/agents/cv_local.py"
+      - "backend-api/agents/aggregation_agent.py"
+      - "backend-api/agents/repair_cost.py"
+      - "backend-api/graph/orchestrator.py"
+      - "backend-api/main.py"
+      - "notebooks/**"
+      - "eval/unit_tests.py"
+      - "eval/cv_conformance.py"
+      - "eval/cv_conformance_fixtures.json"
+      - "docs/CV_INFERENCE_SPEC.md"
+      - ".github/workflows/cv-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Backend deps + the CV-only extras that Render never installs (local CV is off there):
+      # onnxruntime runs the model, opencv/pillow do the letterbox + severity crop.
+      - name: Install backend + CV deps
+        run: |
+          pip install --quiet -r backend-api/requirements.txt
+          pip install --quiet onnxruntime==1.20.1 opencv-python-headless pillow
+
+      - name: Frontend deps (for the esbuild conformance run + CV e2e)
+        working-directory: frontend
+        run: npm ci
+
+      # Backend guardrails + contracts: verifier catches hallucinations, class order matches the
+      # ONNX metadata, confidence-is-not-severity, price bound, client_condition enforcement,
+      # damage_type validation, SSRF guard.
+      - name: Backend unit + contract tests
+        run: python eval/unit_tests.py
+
+      # The browser and backend post-processing must stay in lock-step (spec §3.7 / §6).
+      - name: Cross-language post-processing conformance
+        run: python eval/cv_conformance.py
+
+      # playwright.config's webServer runs `next start`, which needs a production build —
+      # without this the CV e2e fails at "Could not find a production build in '.next'"
+      # before a single test runs (frontend-ci's build-and-test builds; this gate didn't).
+      - name: Build frontend (prebuild stages the ORT wasm the scan loads)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser CV e2e (privacy, scan-state, provenance)
+        working-directory: frontend
+        run: npm run test:e2e:cv

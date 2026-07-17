@@ -184,5 +184,149 @@ check("an unpriceable listing is left alone, not flagged",
 check("annotate does not mutate its input",
       "price_anomaly" not in {**_car, "price_aed": 9_000})
 
+# ---- /valuate and /estimate must price the same car identically (P1) ----
+# main.py allowed price_adjustment_factor >= 0.38 while orchestrator.estimate re-clamped to
+# 0.5, so a factor of 0.40 gave two different prices from two endpoints documented to agree.
+# Both paths now apply the one _clamp_condition_factor. This exercises both factor-application
+# sites directly (no LLM/graph needed): estimate() and n_valuation().
+print("\nPrice consistency (/valuate vs /estimate):")
+from graph import orchestrator  # noqa: E402
+
+_veh_payload = {
+    "make": "Toyota", "model": "Corolla", "year": 2019, "kilometers": 90000,
+    "bodyType": "Sedan", "transmissionType": "Automatic", "fuelType": "Petrol",
+    "regionalSpecs": "GCC", "sellerType": "Owner", "city": "Dubai", "noOfCylinders": 4,
+}
+# Valid provenance so the condition passes server-side enforcement (tested separately below);
+# these tests are about the price *bound*, not the binding.
+_PROV = {
+    "source": "browser", "photo_set_hash": "cd" * 32,
+    "model_version": orchestrator._server_model_version(),
+    "preprocessing_version": "1.0.0", "inference_config_version": "1.0.0", "status": "complete",
+}
+# A factor of 0.40 sits in the 0.38–0.50 gap where the two endpoints used to disagree.
+_cond_040 = {
+    "cv_available": True, "condition_score": 60, "price_adjustment_factor": 0.40,
+    "findings": [], "photos_assessed": 1, "total_value_impact_pct": 60.0, **_PROV,
+}
+_est = orchestrator.estimate({**_veh_payload, "client_condition": _cond_040})
+_veh = intake_agent.validate({**_veh_payload})
+_state = {"vehicle": _veh, "condition": orchestrator._condition_from_client(_cond_040)}
+_val = orchestrator.n_valuation(_state)["valuation"]
+check("the shared floor is the canonical 0.38, derived from MAX_TOTAL_DEDUCTION",
+      abs(orchestrator.CONDITION_FACTOR_FLOOR - 0.38) < 1e-9)
+check("/estimate applies factor 0.40 (no longer re-clamped up to 0.50)",
+      abs(_est["valuation"].get("condition_factor", 1.0) - 0.40) < 1e-9)
+check("/estimate and /valuate return the identical mid price for the same car+condition",
+      _est["valuation"]["price_mid_aed"] == _val["price_mid_aed"])
+# A factor below the floor is clamped identically on both paths (not to two different floors).
+_cond_010 = {**_cond_040, "price_adjustment_factor": 0.10}
+_est_lo = orchestrator.estimate({**_veh_payload, "client_condition": _cond_010})
+_val_lo = orchestrator.n_valuation(
+    {"vehicle": _veh, "condition": orchestrator._condition_from_client(_cond_010)})["valuation"]
+check("a below-floor factor clamps to 0.38 on both paths, not 0.38 vs 0.50",
+      _est_lo["valuation"]["price_mid_aed"] == _val_lo["price_mid_aed"]
+      and abs(_est_lo["valuation"]["condition_factor"] - 0.38) < 1e-9)
+
+# ---- client_condition provenance enforcement (P1, forgeable condition) ----
+# A browser condition can deflate a price to 0.38, so it must be provably from THIS model +
+# config. A hand-written POST with photos:[] and a low factor must be rejected, not priced.
+print("\nclient_condition enforcement (forgeable binding):")
+_MV = orchestrator._server_model_version()          # the version a genuine scan stamps
+_HASH = "ab" * 32                                    # a well-formed 64-hex photo_set_hash
+
+
+def _cond(**over):
+    base = {
+        "cv_available": True, "condition_score": 50, "price_adjustment_factor": 0.40,
+        "findings": [], "photos_assessed": 1, "total_value_impact_pct": 60.0,
+        "source": "browser", "photo_set_hash": _HASH, "model_version": _MV,
+        "preprocessing_version": "1.0.0", "inference_config_version": "1.0.0",
+        "status": "complete",
+    }
+    base.update(over)
+    return base
+
+
+_ok = lambda c: orchestrator.accept_client_condition(c)[0]
+check("a genuine browser condition (right model + config + hash + complete) is accepted",
+      _ok(_cond()))
+check("a forged condition with an unknown model_version is REJECTED",
+      not _ok(_cond(model_version="deadbeef0000")))
+check("a condition with no model_version is REJECTED",
+      not _ok(_cond(model_version=None)))
+check("a stale preprocessing_version is REJECTED",
+      not _ok(_cond(preprocessing_version="0.9.0")))
+check("a malformed photo_set_hash is REJECTED",
+      not _ok(_cond(photo_set_hash="not-a-hash")))
+check("a partial scan WITHOUT consent is REJECTED",
+      not _ok(_cond(status="partial")))
+check("a partial scan WITH explicit consent is accepted",
+      _ok(_cond(status="partial", partial_scan_consent=True)))
+check("a synthetic (what-if) condition is accepted even with model_version 'none'",
+      _ok(_cond(source="synthetic", model_version="none", photo_set_hash="none")))
+
+# Degraded mode: if the server has no model file to compare (the model lives outside Render's
+# rootDir), the model_version check is SKIPPED — not crashed — but the other checks still apply.
+orchestrator._server_model_version.cache_clear()
+_orig = orchestrator._server_model_version
+orchestrator._server_model_version = lambda: ""   # simulate a deployment with no model file
+try:
+    check("no server model file: enforcement degrades (does not 500), still checks status",
+          _ok(_cond(model_version="anything")) and not _ok(_cond(status="partial")))
+finally:
+    orchestrator._server_model_version = _orig
+    orchestrator._server_model_version.cache_clear()
+
+# End-to-end: a forged condition must NOT deflate the /estimate price (falls back to 1.0).
+_forged = _cond(model_version="deadbeef0000", price_adjustment_factor=0.40)
+_est_forged = orchestrator.estimate({**_veh_payload, "client_condition": _forged})
+_est_clean = orchestrator.estimate({**_veh_payload})  # no condition at all
+check("a forged condition does NOT deflate the price (server prices it as un-scanned)",
+      _est_forged["valuation"]["price_mid_aed"] == _est_clean["valuation"]["price_mid_aed"])
+check("a genuine condition DOES still deflate the price",
+      orchestrator.estimate({**_veh_payload, "client_condition": _cond()})["valuation"]["price_mid_aed"]
+      < _est_clean["valuation"]["price_mid_aed"])
+
+# ---- damage_type validated against the model's class list (P2) ----
+print("\ndamage_type validation:")
+import main as api_main  # noqa: E402
+from agents import cv_local  # noqa: E402
+
+
+def _finding_ok(dtype) -> bool:
+    try:
+        api_main.ClientFinding(damage_type=dtype, instances=1, max_confidence=0.5, value_impact_pct=1.0)
+        return True
+    except Exception:
+        return False
+
+
+check("the API class list is the detector's list, not a second hand-copied constant",
+      api_main.DAMAGE_CLASSES == frozenset(cv_local.CLASSES))
+check("a valid damage_type ('dent') is accepted", _finding_ok("dent"))
+check("an unknown damage_type ('frame_bent') is REJECTED, not silently zero-impacted",
+      not _finding_ok("frame_bent"))
+check("a garbage damage_type is REJECTED", not _finding_ok("'; DROP TABLE"))
+
+# ---- SSRF guard on server-side image loading (P2) ----
+print("\nSSRF guard (cv_local._load_image):")
+os.environ.pop("CV_IMAGE_HOST_ALLOWLIST", None)
+
+
+def _load_raises(spec) -> bool:
+    try:
+        cv_local._load_image(spec)
+        return False
+    except Exception:
+        return True
+
+
+check("an http(s) image URL is denied by default (no allowlist)",
+      cv_local._url_host_allowed("http://example.com/x.jpg") is False)
+check("the cloud-metadata endpoint is denied", _load_raises("http://169.254.169.254/latest/meta-data/"))
+check("an arbitrary external URL is denied", _load_raises("https://evil.example/x.jpg"))
+check("a localhost URL is denied", _load_raises("http://127.0.0.1:8080/x"))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
