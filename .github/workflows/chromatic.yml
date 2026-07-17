@@ -34,7 +34,7 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.guard.outputs.run == 'true'
         with:
           fetch-depth: 0 # Chromatic needs full history to baseline against the last build
