@@ -84,6 +84,11 @@ def _condition_from_client(client: dict) -> dict:
             "max_confidence": round(float(f.get("max_confidence", 0.0)), 3),
             "photos_with_damage": list(f.get("photos_with_damage", [])),
             "value_impact_pct": round(float(f.get("value_impact_pct", 0.0)), 1),
+            # Carried through, not dropped. The browser graded this from the crop's actual
+            # pixels (gradient energy, dark fraction, extent). Dropping it here left
+            # repair_cost with nothing to price on but detector confidence — so a scratch
+            # the model was merely *sure* about got billed as severe. See repair_cost._severity.
+            "severity": f.get("severity"),
         }
         for f in client.get("findings", [])
     ]
@@ -95,6 +100,14 @@ def _condition_from_client(client: dict) -> dict:
         "photos_assessed": int(client.get("photos_assessed", 0)),
         "total_value_impact_pct": round(float(client.get("total_value_impact_pct", 0.0)), 1),
         "source": "browser",
+        # Provenance: which photos, which weights, which config produced this. Lets a
+        # damage finding (and the price it moved) be traced back to a specific image +
+        # model + detection output instead of being an anonymous multiplier.
+        "photo_set_hash": client.get("photo_set_hash"),
+        "model_version": client.get("model_version"),
+        "preprocessing_version": client.get("preprocessing_version"),
+        "inference_config_version": client.get("inference_config_version"),
+        "scan_status": client.get("status"),
     }
 
 

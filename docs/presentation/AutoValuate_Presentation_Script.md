@@ -94,7 +94,7 @@ Here's the point I'd make to a technical audience. This is a genuine hybrid. The
 
 Let's take the three brains one at a time, starting with the vision model.
 
-We trained it on about eighteen thousand real, human-annotated photos of damaged cars, from two public datasets called CarDD and VehiDE. We merged them into one set with eight kinds of damage — dents, scratches, cracks, shattered glass, broken lamps, and so on.
+We trained it on just over fifteen thousand real, human-annotated photos of damaged cars, from two public datasets called CarDD and VehiDE. We merged them into one set with eight kinds of damage — dents, scratches, cracks, shattered glass, broken lamps, and so on.
 
 We used a model called YOLOv8, and we deliberately chose *detection* over plain *classification*. That difference matters for money. Knowing a car is damaged isn't enough — a crack in the windshield costs very differently from a scratch on a bumper. So the model has to find *where* the damage is, not just *whether* it exists.
 

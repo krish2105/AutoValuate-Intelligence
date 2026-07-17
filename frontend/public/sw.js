@@ -17,6 +17,14 @@ const HEAVY = `${VERSION}-heavy`; // model + wasm: immutable, cached forever
 const isHeavy = (url) =>
   url.pathname.startsWith("/models/") || url.pathname.startsWith("/ort/");
 
+/** Drop cached model blobs other than `keep` — one deploy's weights, one cache entry. */
+async function purgeOtherModels(cache, keep) {
+  for (const req of await cache.keys()) {
+    const u = new URL(req.url);
+    if (u.pathname.startsWith("/models/") && u.href !== keep.href) await cache.delete(req);
+  }
+}
+
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/"]).catch(() => {})));
@@ -38,13 +46,23 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return; // never touch the API or Supabase
 
   // 1) Model + wasm runtime: cache-first, forever. Makes the scanner work offline.
+  //
+  // Safe ONLY because the model URL is content-addressed (`/models/best.onnx?v=<sha256>`,
+  // see scripts/cv-version.mjs). The cache key includes the query string, so new weights
+  // are a cache MISS and get fetched. Before this, the URL was a fixed literal and a
+  // redeployed model was permanently unreachable behind this cache-first branch.
   if (isHeavy(url)) {
     event.respondWith(
       caches.open(HEAVY).then(async (cache) => {
         const hit = await cache.match(request);
         if (hit) return hit;
         const res = await fetch(request);
-        if (res.ok) cache.put(request, res.clone());
+        if (res.ok) {
+          // A miss under /models/ means the digest changed. Evict every other model blob
+          // first — otherwise each deploy strands another ~45 MB in the user's cache.
+          if (url.pathname.startsWith("/models/")) await purgeOtherModels(cache, url);
+          cache.put(request, res.clone());
+        }
         return res;
       }),
     );

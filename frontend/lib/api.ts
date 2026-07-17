@@ -1,5 +1,9 @@
-import type { Condition, TraceStep, Valuation, ValuationResult, VehicleInput } from "./types";
+import type {
+  BackendValuationRequest, Condition, TraceStep, Valuation, ValuationResult,
+  VehicleAttributes, VehicleInput,
+} from "./types";
 import { demoResult } from "./demo";
+import { EMPTY_PHOTO_SET_HASH } from "./cv/hashes";
 
 /**
  * Fold an on-device (browser CV) condition into a result. The live backend already
@@ -53,17 +57,43 @@ export interface StreamHandlers {
 }
 
 /**
- * Strip client-only fields before anything goes over the wire.
+ * The only fields that describe the car to the backend. An explicit allowlist, not a
+ * subtraction.
  *
- * `asking_price_aed` exists purely to score the deal locally (E4). Sending it would let the
- * valuation anchor to the seller's number — the exact bias the product exists to counter —
- * and would persist a user's private figure into saved and shared reports for no benefit.
- * The backend would silently ignore it (pydantic defaults to extra="ignore"), which is
- * precisely why this is enforced here rather than trusted there.
+ * This distinction is the whole point. The previous implementation was
+ * `const { asking_price_aed, ...rest } = v` — it removed the one field it remembered and
+ * forwarded everything else, so `photos` (up to 8 base64 data URLs) was POSTed to
+ * /valuate/stream on every valuation while the UI, the manifest, the pricing page and the
+ * README all promised "photos never leave your device". Omission-based filtering fails
+ * open: every field added to the form ships by default until someone notices. An
+ * allowlist fails closed — a new private field is simply never sent.
  */
-export function toApiVehicle(v: VehicleInput): Omit<VehicleInput, "asking_price_aed"> {
-  const { asking_price_aed: _omit, ...rest } = v;
-  return rest;
+const VEHICLE_ATTRIBUTE_KEYS = [
+  "make", "model", "year", "kilometers", "bodyType", "transmissionType",
+  "fuelType", "regionalSpecs", "noOfCylinders", "city", "sellerType",
+] as const satisfies readonly (keyof VehicleAttributes)[];
+
+/**
+ * Build the wire payload: vehicle attributes + the derived on-device condition + photo
+ * provenance. Never includes photo bytes, data URLs, object URLs, or filenames.
+ *
+ * `asking_price_aed` stays out for the original reason: sending it would let the valuation
+ * anchor to the seller's number — the exact bias the product exists to counter — and would
+ * persist a private figure into saved and shared reports for no benefit.
+ */
+export function toBackendRequest(v: VehicleInput): BackendValuationRequest {
+  const out = {} as Record<string, unknown>;
+  for (const k of VEHICLE_ATTRIBUTE_KEYS) {
+    if (v[k] !== undefined) out[k] = v[k];
+  }
+  const req = out as unknown as BackendValuationRequest;
+
+  req.photo_count = v.photos?.length ?? 0;
+  // The condition already carries the hash of the set it was computed from; reusing it
+  // keeps the two from disagreeing. With no scan there is no set to identify.
+  req.photo_set_hash = v.client_condition?.photo_set_hash ?? EMPTY_PHOTO_SET_HASH;
+  if (v.client_condition) req.client_condition = v.client_condition;
+  return req;
 }
 
 /**
@@ -115,7 +145,7 @@ export async function streamValuation(
     const res = await fetch(`${API}/valuate/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(toApiVehicle(input)),
+      body: JSON.stringify(toBackendRequest(input)),
       signal: ctrl.signal,
     });
     if (!res.ok || !res.body) throw new Error(`API ${res.status}`);
@@ -167,7 +197,7 @@ export async function estimateValuation(
     const res = await fetch(`${API}/estimate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(toApiVehicle(input)),
+      body: JSON.stringify(toBackendRequest(input)),
       signal: signal ?? AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;
@@ -192,7 +222,7 @@ export async function estimateBatch(
     const res = await fetch(`${API}/estimate/batch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vehicles: inputs.map(toApiVehicle) }),
+      body: JSON.stringify({ vehicles: inputs.map(toBackendRequest) }),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;
@@ -278,7 +308,9 @@ export async function apiInfo(): Promise<{ online: boolean; llm: boolean; cv: bo
     // short timeout so a cold/asleep backend never hangs the page
     const res = await fetch(`${API}/`, { cache: "no-store", signal: AbortSignal.timeout(6000) });
     const j = await res.json();
-    return { online: true, llm: !!j.llm_provider_configured, cv: !!j.cv_service_configured };
+    // `cv` = the SERVER-side detector. It is not what users get: the production scan runs
+    // on-device, so this can be false while damage assessment works perfectly.
+    return { online: true, llm: !!j.llm_provider_configured, cv: !!j.cv_server_side_enabled };
   } catch {
     return { online: false, llm: false, cv: false };
   }

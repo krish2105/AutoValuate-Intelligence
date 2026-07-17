@@ -35,7 +35,7 @@ Three AI systems work together, and the final report cites every claim back to t
 
 | System | What it is | How it's honest |
 |---|---|---|
-| **👁 Damage detection** | YOLOv8-small fine-tuned on ~18k images (CarDD + VehiDE), 8 damage classes | Runs **in the browser** via ONNX — photos never leave your device; mAP@0.5 = **0.732**, reported not rounded |
+| **👁 Damage detection** | YOLOv8-small fine-tuned on 15,621 images (CarDD + VehiDE), 8 damage classes | Runs **in the browser** via ONNX — photos never leave your device (enforced by test, not convention). mAP@0.5 = **0.732** on a **validation subset, not a held-out test set**, covering only 6 of the 8 classes — see [`docs/CV_FINDINGS.md`](docs/CV_FINDINGS.md) |
 | **📈 Explainable pricing** | XGBoost quantile regression on log-price, with **SHAP** attribution | **Split-conformal** confidence interval calibrated on held-out data (80.0% coverage) — no false precision |
 | **🔍 Comparable retrieval** | Hybrid RAG: sentence embeddings + BM25 + structured similarity over real Dubizzle listings | Same-make preference; retriever proven at its data-limited ceiling (see [research](docs/RESEARCH.md)) |
 | **🧾 Report + assistant** | LLM writes the report and answers questions (Gemini → Groq → deterministic fallback) | A **Verifier** rejects any number that doesn't trace to a computed value — faithfulness **1.000** |

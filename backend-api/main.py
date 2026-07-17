@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 import api_keys
-from agents import chat_agent
+from agents import chat_agent, cv_local
 from graph import orchestrator
 
 # ---- limits / config ----
@@ -189,7 +189,11 @@ def root() -> dict:
         "service": "AutoValuate Intelligence API",
         "status": "ok",
         "llm_provider_configured": orchestrator._LLM.has_live_provider,
-        "cv_service_configured": bool(os.environ.get("CV_SERVICE_URL", "").strip()),
+        # Whether the SERVER-side detector can run. Production scans happen in the browser,
+        # so this being false says nothing about whether users get a damage assessment.
+        # (Replaces `cv_service_configured`, which reported an env var pointing at a remote
+        # Space that has been removed — see cv-service/README.md.)
+        "cv_server_side_enabled": cv_local.available(),
         "endpoints": ["/health", "/ready", "/valuate", "/valuate/stream", "/estimate",
                       "/estimate/batch", "/chat", "/v1/*  (stable aliases)"],
     }

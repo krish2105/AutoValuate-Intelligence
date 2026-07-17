@@ -79,7 +79,7 @@ And on the right — we don't pretend to be more certain than we are. That range
 
 This is the part I'm most proud of. The damage detector.
 
-It's a YOLOv8 model, fine-tuned on about eighteen thousand real images across two datasets, detecting eight types of damage — dents, scratches, cracked glass, broken lamps, and so on. On our held-out test set it scores an mAP of **0.732**. I want to be clear that's a real number that we're reporting honestly — not rounded up, not cherry-picked.
+It's a YOLOv8 model, fine-tuned on just over fifteen thousand real images across two datasets, detecting eight types of damage — dents, scratches, cracked glass, broken lamps, and so on. It scores an mAP of **0.732** — and I want to be precise about what that number is, because it's easy to overclaim. It's measured on a **validation** subset, not a clean held-out test set: that same data chose when to stop training, so it flatters the model slightly. It also covers six of our eight classes — two rare ones had too few instances to score. So: a real number, honestly reported, but a validation number, not a benchmark result.
 
 But here's the design decision I really want you to notice. We exported the model to a format called ONNX and we run it **in the browser**, using onnxruntime-web. *(Let that land.)* That means your photos never get uploaded anywhere — the scan happens on your own phone. That's a genuine privacy guarantee, not a privacy policy.
 

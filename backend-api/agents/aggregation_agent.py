@@ -1,20 +1,25 @@
 """
 Aggregation agent (Phase 6): turn per-photo CV detections into one Condition Report.
 
-Calls the CV inference Space (Hugging Face) per photo when `CV_SERVICE_URL` is set,
-merges detections across photos into per-damage-class findings, computes a 0–100
-Condition Score, and derives a price-adjustment factor the valuation step applies.
+Runs the in-process detector (agents/cv_local.py) over each photo, merges detections
+across photos into per-damage-class findings, computes a 0–100 Condition Score, and
+derives a price-adjustment factor the valuation step applies.
 
-When the CV service is not configured/reachable (e.g. before Phase 3 is deployed),
-it returns an honest `cv_available: False` report — the confidence-disclosure contract
-then tells the user the visual assessment was skipped, rather than faking damage data.
+In production the scan runs in the BROWSER and this path is skipped entirely (see
+graph/orchestrator.n_aggregate); it exists for server-side callers that post photos.
+cv_local is the only server-side detector — the remote CV Space route was removed because
+it was a silently divergent second implementation. See docs/CV_INFERENCE_SPEC.md.
+
+When no detector is available or no photos are given, it returns an honest
+`cv_available: False` report — the confidence-disclosure contract then tells the user the
+visual assessment was skipped, rather than faking damage data.
 """
 from __future__ import annotations
 
-import os
+import logging
 from typing import Any
 
-import httpx
+log = logging.getLogger(__name__)
 
 # Base cosmetic severity per class — value fraction a *reference-sized* (~4% of frame)
 # instance costs. Extent (bbox area) + confidence scale this per detection below. Keep in
@@ -102,24 +107,28 @@ def _assessment_band(score: int) -> str:
     return "Severe — major / likely structural damage"
 
 
-def _call_cv(url: str, photo: str, timeout: float) -> list[dict]:
-    """POST one image to the CV Space; expects {detections:[{label,confidence,box}]}."""
-    payload = {"image": photo}  # base64 or URL; the Space accepts either (Phase 3)
-    r = httpx.post(url.rstrip("/") + "/detect", json=payload, timeout=timeout)
-    r.raise_for_status()
-    return r.json().get("detections", [])
-
-
 def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
+    """
+    Server-side CV aggregation. Only ever runs when a request supplies photos AND no
+    browser-produced client_condition (see graph/orchestrator.n_aggregate).
+
+    The remote CV Space route was REMOVED here. It was a third, silently different
+    definition of "the detector": cv-service/app.py had no tiling, no Weighted Box Fusion,
+    no pixel-severity head, no TILE_EXCLUDE and no GLASS_CONF gate, so the same photo could
+    yield a different condition — and therefore a different price — depending on an env var.
+    It was already unreachable in the shipped configuration (it required CV_SERVICE_URL set,
+    ENABLE_LOCAL_CV unset, no client_condition, and photos present; compose.yaml never
+    defined the service). There is now exactly one server-side detector: cv_local.
+    See docs/CV_INFERENCE_SPEC.md.
+    """
     from . import cv_local
-    url = os.environ.get("CV_SERVICE_URL", "").strip()
     photos = vehicle.get("photos", []) or []
     use_local = cv_local.available()
 
-    if (not url and not use_local) or not photos:
+    if not use_local or not photos:
         return {
             "cv_available": False,
-            "reason": ("no photos provided" if (url or use_local) else "no CV service configured"),
+            "reason": ("no photos provided" if use_local else "no CV service configured"),
             "condition_score": None,
             "price_adjustment_factor": 1.0,
             "findings": [],
@@ -128,12 +137,19 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
 
     per_class: dict[str, dict] = {}
     assessed = 0
+    failures: list[str] = []
     for i, photo in enumerate(photos):
         try:
-            dets = cv_local.detect(photo) if use_local else _call_cv(url, photo, timeout)
+            dets = cv_local.detect(photo)
             assessed += 1
-        except Exception:
-            continue  # skip unreachable/failed image, keep going
+        except Exception as e:
+            # Recorded, not swallowed. This was a bare `except Exception: continue` with no
+            # logging, so a corrupt image, an ONNX failure and a timeout were
+            # indistinguishable — and 7 of 8 photos failing still reported a confident
+            # assessment based on the one that worked.
+            failures.append(f"photo {i}: {type(e).__name__}: {e}")
+            log.warning("CV failed on photo %d: %s", i, e)
+            continue
         for d in dets:
             label = d.get("label")
             conf = float(d.get("confidence", 0))
@@ -151,7 +167,8 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     if assessed == 0:
         return {
             "cv_available": False,
-            "reason": "CV service unreachable for all photos",
+            "reason": "the detector failed on every photo",
+            "errors": failures,
             "condition_score": None,
             "price_adjustment_factor": 1.0,
             "findings": [],
@@ -185,13 +202,24 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     deduction = min(MAX_TOTAL_DEDUCTION, deduction)
     # round-half-up (not Python's banker's rounding) so it matches the browser's Math.round
     condition_score = int(100 * (1 - deduction) + 0.5)
-    needs_inspection = condition_score < 70 or any(f["severity"] == "severe" for f in findings)
+    # A scan that could only read some of the photos is not a clean bill of health: the
+    # photos it failed on are precisely the ones it can say nothing about. Mirrors the
+    # browser's partial-scan handling (lib/cv/scan-job.ts).
+    partial = assessed < len(photos)
+    needs_inspection = (
+        condition_score < 70
+        or any(f["severity"] == "severe" for f in findings)
+        or partial
+    )
     return {
         "cv_available": True,
         "condition_score": condition_score,
         "price_adjustment_factor": round(1 - deduction, 4),
         "findings": findings,
         "photos_assessed": assessed,
+        "photos_submitted": len(photos),
+        "scan_status": "partial" if partial else "complete",
+        "errors": failures,
         "total_value_impact_pct": round(deduction * 100, 1),
         "assessment": _assessment_band(condition_score),
         "needs_inspection": needs_inspection,
