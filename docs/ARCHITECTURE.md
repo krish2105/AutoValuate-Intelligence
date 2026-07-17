@@ -8,14 +8,21 @@ Numbers here are **real and honestly reported** — held-out where applicable, n
 ## Data foundations (real, no synthetic data)
 
 ### Computer vision — CarDD + VehiDE, unified to one YOLO dataset
-Prepared by `notebooks/01_cv_data_prep.ipynb` on Kaggle. Verified counts from the successful run:
+Prepared by `notebooks/01_cv_data_prep.ipynb` on Kaggle.
+
+> Counts below are transcribed from `eval/cv_train_summary.json`. They are **not** verified
+> against files: the dataset is not in this repo, the manifest the notebook generates
+> (`dataset_report.json`) was never committed, and no notebook has stored outputs. The
+> earlier wording "verified counts from the successful run" overstated this — no run
+> artifact exists.
 
 | | value |
 |---|---|
 | Train images | 14,437 |
 | Val images | 1,184 |
-| Unified classes | 8 — `dent, scratch, crack, glass_shatter, lamp_broken, tire_flat, punctured, missing_part` |
-| Sources | CarDD (YOLO, 6 classes) + VehiDE (VIA polygons, 7 classes) merged, nothing dropped |
+| **Total** | **15,621** — note the README and presentation scripts say "~18k", which is ~15% overstated and unsupported by any artifact |
+| Unified classes | 8 — `dent, scratch, crack, glass_shatter, lamp_broken, tire_flat, punctured, missing_part` (**only 6 are ever evaluated** — see below) |
+| Sources | CarDD (YOLO, 6 classes) + VehiDE (VIA polygons, 7 classes) merged, nothing dropped (fail-loud on unmapped classes) |
 
 ### Tabular valuation — real Dubizzle UAE listings
 Scraped July 2026 (Apify `agenscrape/dubizzle-uae-scraper`); cleaned by `data/prepare_tabular.py`.
@@ -87,12 +94,15 @@ The model priced on sound economics, not spurious correlations.
 
 ---
 
-## CV detector (YOLOv8-small) — trained, evaluated
+## CV detector (YOLOv8-small) — trained, evaluated **on validation data**
 
-Fine-tuned on Kaggle P100 (`notebooks/02`) and evaluated on a **strictly held-out** split
-(`notebooks/03`, 607 images the model never trained on). Results: `eval/cv_eval_report.json`.
+> **Read `docs/CV_FINDINGS.md` §4 before quoting any number here.** The claims in this
+> section were audited and several did not survive. Corrected below.
 
-| metric | held-out value |
+Fine-tuned on Kaggle P100 (`notebooks/02`) and evaluated by `notebooks/03` on a
+deterministic half (607 images) of the **validation** set. Results: `eval/cv_eval_report.json`.
+
+| metric | value — **validation subset, not a test set** |
 |---|---|
 | **mAP@0.5** | **0.732** |
 | mAP@0.5:0.95 | 0.579 |
@@ -100,11 +110,28 @@ Fine-tuned on Kaggle P100 (`notebooks/02`) and evaluated on a **strictly held-ou
 | Mean recall | 0.690 |
 
 Per-class mAP@0.5: `glass_shatter` **0.98**, `lamp_broken`/`tire_flat` strong, `dent` 0.58,
-`scratch` 0.57, `crack` 0.43 (honestly the hardest — thin, low-contrast). Held-out (0.732) matches
-training (0.732), so the detector **generalises cleanly, no overfitting**. Exported to ONNX
-(`cv-service/model/best.onnx`); runs in-process (onnxruntime, no torch) via `agents/cv_local.py`
-when `ENABLE_LOCAL_CV=1`, or on the HF Docker Space. Verified end-to-end: a real CarDD photo →
-`tire_flat` @0.85 → condition score → price adjustment.
+`scratch` 0.57, `crack` 0.43 (honestly the hardest — thin, low-contrast).
+
+**What these numbers are not:**
+
+- **Not a held-out test score.** That 607-image half was carved out of the same val set used
+  for early stopping and checkpoint selection (`patience=10` → `best.pt`). The images were
+  never trained on, but they *selected the model*. CarDD's own genuine test split was folded
+  into val by `notebooks/01` and discarded.
+- **Not evidence of no overfitting.** The previous claim here — "held-out (0.732) matches
+  training (0.732), so it generalises cleanly" — was a tautology: 0.7322 is full-val and
+  0.7323 is half of that same val. Two views of one population agreeing proves nothing.
+- **Not eight classes.** Only **six** are evaluated. `punctured` and `missing_part` have no
+  measured precision or recall at all, yet carry the largest price deductions in the product.
+- **Not measured on the shipped model.** `notebooks/03` evaluates `best.pt`; the product runs
+  the exported ONNX. The `onnx_parity` block asserts nothing.
+
+Exported to ONNX (`cv-service/model/best.onnx`, byte-identical to
+`frontend/public/models/best.onnx`). Production inference runs **in the browser**
+(`frontend/lib/cv-browser.ts`); `agents/cv_local.py` serves callers that POST photos when
+`ENABLE_LOCAL_CV=1`. The remote HF Space was removed — it was a silently divergent third
+implementation (`cv-service/README.md`). The two remaining paths are **not** bit-identical;
+see `docs/CV_INFERENCE_SPEC.md` §6.
 
 ---
 
