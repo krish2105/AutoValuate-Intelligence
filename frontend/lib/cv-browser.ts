@@ -38,9 +38,10 @@ export const ORT_VERSION = buildVersion.ortVersion;
 // therefore a different number of borderline detections (a scratch flickering in/out) → a
 // different score on each scan. See docs/CV_INFERENCE_SPEC.md §6 #4.
 export const PREPROCESSING_VERSION = "1.1.0";
-// 1.1.0: adds damage-EXTENT escalation to the aggregation (see EXTENT_KNEE below) so a large-area
-// collision is no longer scored as "minor cosmetic". A scoring/aggregation change = a config change.
-export const INFERENCE_CONFIG_VERSION = "1.1.0";
+// 1.1.0: damage-EXTENT escalation (EXTENT_KNEE) so a large-area collision isn't "minor cosmetic".
+// 1.2.0: STRUCT_*_FLOOR + finding-aware band — a detected moderate/severe crack (etc.) can't leave
+// the car reading "Excellent — minimal visible damage". A scoring change = a config change.
+export const INFERENCE_CONFIG_VERSION = "1.2.0";
 
 export const CV_CLASSES = [
   "dent", "scratch", "crack", "glass_shatter",
@@ -93,6 +94,13 @@ const EXTENT_KNEE = 0.10;       // damage covering >10% of the frame begins to e
 const EXTENT_ESC = 12.0;        // escalation strength above the knee
 const EXTENT_SEVERE_COV = 0.20; // at/above this coverage the worst finding reads "severe" (honesty)
 const COV_GRID = 48;            // grid resolution for the union-coverage estimate (parity w/ backend)
+// A STRUCTURAL finding (crack/glass/lamp/punctured/missing_part/tire_flat) that grades moderate+
+// implies real, possibly-hidden damage — a crack can mask impact damage behind the panel. Such a
+// finding must not leave the car looking "Excellent" just because the model drew a small box, so
+// its presence sets a floor on the total deduction (independent of box area). Minor structural
+// findings (a hairline) are exempt. Tuned so one moderate crack ⇒ ~85 (Good), one severe ⇒ ~72.
+const STRUCT_MOD_FLOOR = 0.15;  // ≥15% off when any structural finding is moderate
+const STRUCT_SEV_FLOOR = 0.28;  // ≥28% off when any structural finding is severe
 
 // Pixel-severity feature weights (kept in lock-step with cv_local.py). A detection's severity
 // (0..1) is graded from the crop's pixels — texture/gradient energy (crumple, cracks, scrapes),
@@ -389,10 +397,16 @@ export const SYNTHETIC_PROVENANCE = {
   status: "complete",
 } as const satisfies Partial<ClientCondition>;
 
-/** Overall condition band from the 0-100 score — honest, no false precision. */
-export function assessmentBand(score: number): string {
-  if (score >= 90) return "Excellent — minimal visible damage";
-  if (score >= 78) return "Good — minor cosmetic damage";
+/**
+ * Overall condition band from the 0-100 score — honest, no false precision. `hasModeratePlus`
+ * (any finding graded moderate/severe) forbids the "Excellent — minimal visible damage" wording:
+ * a scan that FOUND a real crack/dent cannot also call the car's damage "minimal". Without this a
+ * 90 with a moderate crack read as "Excellent", which contradicts its own findings list.
+ */
+export function assessmentBand(score: number, hasModeratePlus = false): string {
+  if (score >= 90 && !hasModeratePlus) return "Excellent — minimal visible damage";
+  if (score >= 78) return hasModeratePlus
+    ? "Good — visible damage; inspect the flagged area" : "Good — minor cosmetic damage";
   if (score >= 60) return "Fair — notable damage";
   if (score >= 45) return "Poor — significant damage";
   return "Severe — major / likely structural damage";
@@ -851,8 +865,19 @@ export function conditionFromDetections(
     findings[0].severity = "severe";
   }
 
+  // Structural-finding floor: a detected moderate/severe crack/impact can't leave the car looking
+  // "Excellent" just because its box was small. glass_shatter is excluded — it's genuinely cheap.
+  const structFindings = findings.filter(
+    (f) => STRUCTURAL.has(f.damage_type) && f.damage_type !== "glass_shatter");
+  if (structFindings.some((f) => f.severity === "severe")) deduction = Math.max(deduction, STRUCT_SEV_FLOOR);
+  else if (structFindings.some((f) => f.severity === "moderate")) deduction = Math.max(deduction, STRUCT_MOD_FLOOR);
+  deduction = Math.min(MAX_TOTAL_DEDUCTION, deduction);
+
   const score = Math.round(100 * (1 - deduction));
-  const needsInspection = score < 70 || findings.some((f) => f.severity === "severe");
+  const hasModeratePlus = findings.some((f) => f.severity !== "minor");
+  // Any structural finding warrants a physical check — a crack/impact can hide damage behind the
+  // panel — even if the numeric score is high.
+  const needsInspection = score < 70 || hasModeratePlus || structFindings.length > 0;
   return {
     cv_available: true,
     condition_score: score,
@@ -861,7 +886,7 @@ export function conditionFromDetections(
     photos_assessed: binding.photosAssessed,
     total_value_impact_pct: Math.round(deduction * 100 * 10) / 10,
     source: "browser",
-    assessment: assessmentBand(score),
+    assessment: assessmentBand(score, hasModeratePlus),
     // A partial scan always warrants inspection: the photos we couldn't read are exactly
     // the ones we can say nothing about, so we must not imply the car is clean.
     needs_inspection: needsInspection || binding.status === "partial",

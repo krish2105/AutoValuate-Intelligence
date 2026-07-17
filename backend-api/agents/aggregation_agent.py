@@ -57,6 +57,11 @@ EXTENT_KNEE = 0.10
 EXTENT_ESC = 12.0
 EXTENT_SEVERE_COV = 0.20   # coverage at/above which the worst finding reads "severe"
 COV_GRID = 48
+# A structural finding (crack/impact) graded moderate+ implies real, possibly-hidden damage, so it
+# floors the deduction — a detected crack can't leave the car reading "Excellent" on a small box.
+# Parity with frontend/lib/cv-browser.ts. glass_shatter is excluded (genuinely cheap to replace).
+STRUCT_MOD_FLOOR = 0.15
+STRUCT_SEV_FLOOR = 0.28
 # Fallback when a detection carries no pixel `sev` (e.g. the remote CV Space): estimate from area.
 _FALLBACK_PRIOR = {"glass_shatter": 0.15, "missing_part": 0.20, "punctured": 0.15, "crack": 0.10, "lamp_broken": 0.08}
 
@@ -123,11 +128,14 @@ def _severity_of(label: str, sev: float) -> str:
     return "minor"
 
 
-def _assessment_band(score: int) -> str:
-    if score >= 90:
+def _assessment_band(score: int, has_moderate_plus: bool = False) -> str:
+    # A scan that FOUND a moderate/severe issue cannot also call the damage "minimal" — parity
+    # with cv-browser.assessmentBand.
+    if score >= 90 and not has_moderate_plus:
         return "Excellent — minimal visible damage"
     if score >= 78:
-        return "Good — minor cosmetic damage"
+        return ("Good — visible damage; inspect the flagged area"
+                if has_moderate_plus else "Good — minor cosmetic damage")
     if score >= 60:
         return "Fair — notable damage"
     if score >= 45:
@@ -242,15 +250,29 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     if max_coverage >= EXTENT_SEVERE_COV and findings \
             and findings[0]["damage_type"] not in ("scratch", "glass_shatter"):
         findings[0]["severity"] = "severe"
+
+    # Structural-finding floor: a detected moderate/severe crack/impact can't leave the car looking
+    # "Excellent" on a small box. glass_shatter excluded (genuinely cheap). Parity with frontend.
+    _struct = [f for f in findings if f["damage_type"] in STRUCTURAL and f["damage_type"] != "glass_shatter"]
+    if any(f["severity"] == "severe" for f in _struct):
+        deduction = max(deduction, STRUCT_SEV_FLOOR)
+    elif any(f["severity"] == "moderate" for f in _struct):
+        deduction = max(deduction, STRUCT_MOD_FLOOR)
+    deduction = min(MAX_TOTAL_DEDUCTION, deduction)
+
     # round-half-up (not Python's banker's rounding) so it matches the browser's Math.round
     condition_score = int(100 * (1 - deduction) + 0.5)
     # A scan that could only read some of the photos is not a clean bill of health: the
     # photos it failed on are precisely the ones it can say nothing about. Mirrors the
     # browser's partial-scan handling (lib/cv/scan-job.ts).
     partial = assessed < len(photos)
+    has_moderate_plus = any(f["severity"] != "minor" for f in findings)
+    # Any structural finding warrants a physical check (it can hide damage behind the panel),
+    # even at a high score. Parity with cv-browser.conditionFromDetections.
     needs_inspection = (
         condition_score < 70
-        or any(f["severity"] == "severe" for f in findings)
+        or has_moderate_plus
+        or bool(_struct)
         or partial
     )
     return {
@@ -263,6 +285,6 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
         "scan_status": "partial" if partial else "complete",
         "errors": failures,
         "total_value_impact_pct": round(deduction * 100, 1),
-        "assessment": _assessment_band(condition_score),
+        "assessment": _assessment_band(condition_score, has_moderate_plus),
         "needs_inspection": needs_inspection,
     }

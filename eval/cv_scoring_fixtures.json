@@ -3,7 +3,9 @@
   "bands": {
     "clean": [95, 100],
     "small_ding": [88, 99],
-    "one_moderate": [80, 96],
+    "one_moderate": [78, 93],
+    "single_moderate_crack": [78, 88],
+    "single_severe_missing": [40, 72],
     "side_collision": [44, 60],
     "structural_wreck": [1, 50]
   },
@@ -14,6 +16,12 @@
     ],
     "one_moderate": [
       {"label": "dent", "confidence": 0.55, "box": [0.40, 0.45, 0.60, 0.62], "sev": 0.5}
+    ],
+    "single_moderate_crack": [
+      {"label": "crack", "confidence": 0.55, "box": [0.46, 0.55, 0.56, 0.66], "sev": 0.45}
+    ],
+    "single_severe_missing": [
+      {"label": "missing_part", "confidence": 0.6, "box": [0.5, 0.55, 0.62, 0.72], "sev": 0.7}
     ],
     "side_collision": [
       {"label": "dent", "confidence": 0.60, "box": [0.24, 0.55, 0.55, 0.78], "sev": 0.55},

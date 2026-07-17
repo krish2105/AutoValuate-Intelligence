@@ -166,6 +166,13 @@ summing past 100%. Two escalations then apply (config version 1.1.0):
    the fine label. At `coverage ≥ 0.20` the worst finding is reported as `severe`. Tuned in
    `scratch/tune_extent.py`; guarded by `eval/cv_scoring.py` (bands + browser/backend parity).
 
+Then a **structural-severity floor** (config version 1.2.0): a structural finding
+(`crack/lamp_broken/punctured/missing_part/tire_flat`, not `glass_shatter`) graded moderate floors
+`deduction ≥ 0.15`; severe floors `deduction ≥ 0.28`. A detected crack/impact implies real,
+possibly-hidden damage, so it can't leave the car reading "Excellent" just because the box was
+small. The band is also finding-aware: any moderate+ finding forbids "Excellent — minimal visible
+damage", and any structural finding sets `needs_inspection`.
+
 Cap at `MAX_TOTAL_DEDUCTION = 0.62`. `condition_score = round(100 · (1 − deduction))`.
 
 Only photos that actually decoded **and** completed inference are aggregated;

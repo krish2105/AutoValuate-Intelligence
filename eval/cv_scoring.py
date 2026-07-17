@@ -66,13 +66,23 @@ for name, dets in CASES.items():
     check(f"{name}: browser≈backend (|{jscore}-{bscore}|≤{SCORE_TOL})", abs(jscore - bscore) <= SCORE_TOL,
           f"browser {jscore} vs backend {bscore}")
 
-# The headline regression: the side collision must read as major damage, not "Good/minor".
+# Regression 1: the side collision must read as major damage, not "Good/minor".
 sc = backend_score(CASES["side_collision"])
 check("side_collision is NOT labelled Good/Excellent (the original bug)",
       sc["condition_score"] < 60, f"score {sc['condition_score']} band {sc.get('assessment','')}")
 check("side_collision worst finding reads 'severe' (honest)",
       any(f["severity"] == "severe" for f in sc["findings"]))
 check("side_collision flags needs_inspection", bool(sc.get("needs_inspection")))
+
+# Regression 2: a detected moderate crack must NOT read "Excellent — minimal visible damage".
+cr = backend_score(CASES["single_moderate_crack"])
+check("single crack is NOT called 'Excellent' (a found crack ≠ minimal damage)",
+      "Excellent" not in cr["assessment"], f"band {cr['assessment']} score {cr['condition_score']}")
+check("single crack floors the score (≤ 88, not 90+)", cr["condition_score"] <= 88,
+      f"score {cr['condition_score']}")
+check("single crack flags needs_inspection (can hide impact damage)", bool(cr.get("needs_inspection")))
+jcr = JS["single_moderate_crack"]
+check("browser agrees a crack isn't 'Excellent'", jcr["score"] <= 88, f"browser {jcr['score']}")
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
