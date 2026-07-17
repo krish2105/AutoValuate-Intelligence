@@ -41,12 +41,11 @@ MAKES = [
 
 def scrape_make(token: str, make: str, limit: int) -> list[dict]:
     url = f"{BASE}/acts/{ACTOR}/run-sync-get-dataset-items?token={token}"
+    # Only the two documented inputs. Apify validates input against the actor's schema —
+    # a well-meant extra key ("includeImages") 400'd every request of a whole run.
     payload = {
         "startUrl": f"https://dubai.dubizzle.com/motors/used-cars/{make}/",
         "maxResults": limit,
-        # Actors that gate media behind an input flag ignore unknown keys, so asking
-        # costs nothing and may be the difference between photos and none (WS 0.7).
-        "includeImages": True,
     }
     r = requests.post(url, json=payload, timeout=600)
     r.raise_for_status()
@@ -161,7 +160,14 @@ def main() -> int:
         try:
             items = scrape_make(token, make, args.per_make)
         except Exception as e:  # one bad make must never sink the whole run
-            print(f"  {make}: scrape failed ({type(e).__name__}) — skipping")
+            # Name the failure. A run once burned itself down printing 16 bare
+            # "HTTPError"s — status + body is the difference between a 60-second
+            # diagnosis (bad input schema / dead token / quota) and guessing.
+            detail = ""
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                detail = f" [{resp.status_code}] {resp.text[:200]!r}"
+            print(f"  {make}: scrape failed ({type(e).__name__}){detail} — skipping")
             continue
         added = with_photos = 0
         for raw in items:
