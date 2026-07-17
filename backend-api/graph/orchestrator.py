@@ -61,10 +61,22 @@ ACCEPTED_INFERENCE_CONFIG_VERSIONS = frozenset({"1.0.0"})
 
 @lru_cache(maxsize=1)
 def _server_model_version() -> str:
-    """SHA-256[:12] of the shipped ONNX — the model_version a genuine browser scan stamps.
-    Computed from the backend's own copy so it cannot drift from a hardcoded constant."""
+    """
+    SHA-256[:12] of the shipped ONNX — the model_version a genuine browser scan stamps.
+    Computed from the backend's own copy so it cannot drift from a hardcoded constant.
+
+    Returns "" if that copy is not present in the deployment (the model lives outside the
+    Render `rootDir` and server-side CV is off there, so it may legitimately be absent). In
+    that case the model_version check is skipped — never crashed — and the other provenance
+    checks (config versions, photo_set_hash, status/consent) still apply. A missing model file
+    must degrade enforcement, not 500 every valuation.
+    """
     from agents import cv_local
-    return hashlib.sha256(cv_local.MODEL_PATH.read_bytes()).hexdigest()[:12]
+    try:
+        return hashlib.sha256(cv_local.MODEL_PATH.read_bytes()).hexdigest()[:12]
+    except OSError:
+        log.warning("server ONNX unavailable (%s); model_version enforcement degraded", cv_local.MODEL_PATH)
+        return ""
 
 
 def _is_hex_hash(v, length: int = 64) -> bool:
@@ -86,7 +98,8 @@ def accept_client_condition(client: dict) -> tuple[bool, str]:
         # Pydantic 0.38 floor); flagged non-real downstream so it is never called an assessment.
         return True, "synthetic (what-if)"
     mv = client.get("model_version")
-    if mv != _server_model_version():
+    server_mv = _server_model_version()
+    if server_mv and mv != server_mv:  # skip only when the server has no model file to compare
         return False, f"unrecognised model_version {mv!r}"
     if client.get("preprocessing_version") not in ACCEPTED_PREPROCESSING_VERSIONS:
         return False, f"stale preprocessing_version {client.get('preprocessing_version')!r}"

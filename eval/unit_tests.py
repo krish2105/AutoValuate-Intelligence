@@ -266,6 +266,18 @@ check("a partial scan WITH explicit consent is accepted",
 check("a synthetic (what-if) condition is accepted even with model_version 'none'",
       _ok(_cond(source="synthetic", model_version="none", photo_set_hash="none")))
 
+# Degraded mode: if the server has no model file to compare (the model lives outside Render's
+# rootDir), the model_version check is SKIPPED — not crashed — but the other checks still apply.
+orchestrator._server_model_version.cache_clear()
+_orig = orchestrator._server_model_version
+orchestrator._server_model_version = lambda: ""   # simulate a deployment with no model file
+try:
+    check("no server model file: enforcement degrades (does not 500), still checks status",
+          _ok(_cond(model_version="anything")) and not _ok(_cond(status="partial")))
+finally:
+    orchestrator._server_model_version = _orig
+    orchestrator._server_model_version.cache_clear()
+
 # End-to-end: a forged condition must NOT deflate the /estimate price (falls back to 1.0).
 _forged = _cond(model_version="deadbeef0000", price_adjustment_factor=0.40)
 _est_forged = orchestrator.estimate({**_veh_payload, "client_condition": _forged})
