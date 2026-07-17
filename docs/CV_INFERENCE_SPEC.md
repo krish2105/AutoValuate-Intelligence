@@ -221,7 +221,7 @@ no post-processing can reconcile that.
 | 2 | Confidence gate | `>=`, after NMS | `>=`, after NMS | **closed** — decode-floor + gate after NMS |
 | 3 | Severity crop order | resize 48×48 then grayscale | resize 48×48 then grayscale | **closed** — backend order aligned |
 | 5 | Crop coordinate rounding | `Math.round` | round-half-up (`int(v+0.5)`) | **closed** — backend rounds, not truncates |
-| 4 | Resampler | canvas `drawImage` | `cv2.resize` / `PIL.resize` | **OPEN** — environmental; no shared native resampler |
+| 4 | Resampler | pure-JS area-average (deterministic) | `cv2.resize` / `PIL.resize` | **OPEN (browser now self-consistent)** — still no shared native resampler vs the backend, but the browser no longer uses `ctx.drawImage` smoothing (GPU, not bit-stable), so the same photo now scans to the same tensor and score every time. Preprocessing bumped to 1.1.0. |
 | 6 | Fused-box output rounding | unrounded | 4 dp | **OPEN (bounded)** — ≤ `5e-5`; the conformance tolerance |
 | 7 | EXIF orientation | browser auto-applies | PIL does not rotate | **OPEN** — environmental; needs an explicit EXIF step |
 

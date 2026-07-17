@@ -1,7 +1,7 @@
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScanSearch, Loader2, ShieldCheck, Cpu, AlertTriangle } from "lucide-react";
-import { classColor } from "@/lib/cv-browser";
+import { classColor, DAMAGE_INFO } from "@/lib/cv-browser";
 import { isTerminal, type ScanJob } from "@/lib/cv/scan-job";
 import { titleCase } from "@/lib/utils";
 import { Pill } from "./ui";
@@ -141,20 +141,42 @@ export function BrowserCV({ job }: { job: ScanJob }) {
         </div>
       )}
 
-      {/* per-class findings chips */}
+      {/* per-class findings — each with a plain-language explanation so a buyer or seller
+          understands what was found, what it means for the price, and how it's fixed. */}
       {cond && cond.findings.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {cond.findings.map((f) => (
-            <span key={f.damage_type}
-              className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-[11px]">
-              <span className="h-2 w-2 rounded-full" style={{ background: classColor(f.damage_type) }} />
-              <span className="font-medium">{titleCase(f.damage_type.replace("_", " "))}</span>
-              <span className={sevTone[f.severity] ?? "text-muted"}>{f.severity}</span>
-              <span className="text-muted">×{f.instances}</span>
-              <span className="text-bad tnum">−{f.value_impact_pct}%</span>
-            </span>
-          ))}
-        </div>
+        <ul className="mt-3 space-y-2">
+          {cond.findings.map((f) => {
+            const info = DAMAGE_INFO[f.damage_type];
+            return (
+              <li key={f.damage_type} className="rounded-xl border bg-surface/60 p-3">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: classColor(f.damage_type) }} />
+                  <span className="font-semibold">{titleCase(f.damage_type.replace("_", " "))}</span>
+                  <span className={`font-medium ${sevTone[f.severity] ?? "text-muted"}`}>{f.severity}</span>
+                  <span className="text-muted">×{f.instances} {f.instances === 1 ? "spot" : "spots"}</span>
+                  <span className="ml-auto flex items-center gap-1 text-muted">
+                    lowers value by <span className="tnum font-semibold text-bad">−{f.value_impact_pct}%</span>
+                  </span>
+                </div>
+                {info && (
+                  <div className="mt-1.5 space-y-1 text-[11px] leading-relaxed text-muted">
+                    <p><span className="text-fg/80">{info.what}</span> {info.note(f.severity)}</p>
+                    <p><span className="font-medium text-fg/70">What it means:</span> {info.impact}</p>
+                    <p><span className="font-medium text-fg/70">Typical fix:</span> {info.repair}</p>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {/* how to read the score — brief, honest framing for a non-expert */}
+      {cond && cond.findings.length > 0 && (
+        <p className="mt-2 text-[11px] text-muted">
+          The score starts at 100 and each issue lowers it by how much that damage typically
+          costs the car&apos;s value. It&apos;s a photo-based guide for negotiation — not a
+          substitute for a physical inspection.
+        </p>
       )}
       {/* Only a COMPLETE scan may claim a clean car. A partial or failed scan saying
           "no visible damage" would be asserting something it did not look at. */}

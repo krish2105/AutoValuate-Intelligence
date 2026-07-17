@@ -31,7 +31,13 @@ export const ORT_VERSION = buildVersion.ortVersion;
  * different config, so a stale condition must be detectable as stale. See
  * docs/CV_INFERENCE_SPEC.md — this constant and that document version together.
  */
-export const PREPROCESSING_VERSION = "1.0.0";
+// 1.1.0: preprocessing is now fully deterministic — the source is rasterized to a fixed CPU
+// pixel buffer once and every resize is a pure-JS area-average, replacing ctx.drawImage's
+// "high"-quality smoothing. That smoothing is GPU-accelerated and NOT bit-stable across calls
+// when shrinking a large photo, so the same image produced slightly different 640² tensors and
+// therefore a different number of borderline detections (a scratch flickering in/out) → a
+// different score on each scan. See docs/CV_INFERENCE_SPEC.md §6 #4.
+export const PREPROCESSING_VERSION = "1.1.0";
 export const INFERENCE_CONFIG_VERSION = "1.0.0";
 
 export const CV_CLASSES = [
@@ -86,6 +92,80 @@ const SEV_CLASS_PRIOR: Partial<Record<DamageClass, number>> = {
 };
 
 export type Severity = "minor" | "moderate" | "severe";
+
+/**
+ * Plain-language, buyer/seller-facing explanation of each damage class — so a non-expert reading
+ * a scan understands WHAT was found, what it means for the car's value, and roughly how it's
+ * fixed. Deliberately no fabricated dirham figures (the model can't cost a repair from a photo);
+ * guidance is qualitative and honest. `note(sev)` adds a severity-aware nuance.
+ */
+export interface DamageInfo {
+  what: string;
+  impact: string;
+  repair: string;
+  note: (sev: Severity) => string;
+}
+const sevNote = (minor: string, moderate: string, severe: string) =>
+  (s: Severity) => (s === "severe" ? severe : s === "moderate" ? moderate : minor);
+
+export const DAMAGE_INFO: Record<DamageClass, DamageInfo> = {
+  dent: {
+    what: "A pushed-in section of a body panel or door.",
+    impact: "Cosmetic — it lowers kerb appeal and resale, but doesn't change how the car drives.",
+    repair: "Small dents: paintless dent removal (low cost). Creased or painted-through dents: panel repair + respray.",
+    note: sevNote("A minor ding — an easy negotiation point.", "Noticeable — factor a panel repair into the price.",
+      "A large/creased dent — likely panel work and paint."),
+  },
+  scratch: {
+    what: "Paint scraped on the surface of a panel.",
+    impact: "Mostly cosmetic. Scratches deep enough to reach bare metal can rust if left, so they matter more.",
+    repair: "Light: machine polish. Deep/through-to-primer: a localised respray of the panel.",
+    note: sevNote("Surface-level — usually polishes out.", "Deeper marks — a localised respray may be needed.",
+      "Extensive scuffing — plan on repainting the affected panels."),
+  },
+  crack: {
+    what: "A split in a bumper, trim or plastic panel — sometimes the sign of a knock.",
+    impact: "Cosmetic to moderate. Check what's behind it: a cracked bumper can hide mounting or impact damage.",
+    repair: "Plastic weld + fill + paint, or replace the part if the crack is large.",
+    note: sevNote("A small crack — mostly cosmetic.", "A clear crack — inspect the area behind it.",
+      "A large crack — treat as possible impact damage and inspect underneath."),
+  },
+  glass_shatter: {
+    what: "Cracked or shattered glass, usually the windshield.",
+    impact: "Cheap to fix, but a safety and registration item — it must be sorted before a sale or RTA inspection.",
+    repair: "Chip repair if small; otherwise a full glass replacement (widely available and inexpensive).",
+    note: sevNote("A chip or small crack — often repairable.", "Cracked glass — plan a replacement before sale.",
+      "Shattered glass — replace before driving/registration."),
+  },
+  lamp_broken: {
+    what: "A cracked or broken head-lamp or tail-lamp.",
+    impact: "Small cost, but a failed light blocks RTA registration and is an easy point to negotiate on.",
+    repair: "Replace the lamp unit; genuine parts cost more than aftermarket equivalents.",
+    note: sevNote("A cracked lens — minor.", "A broken lamp — replace before registration.",
+      "Lamp destroyed — a replacement unit is required."),
+  },
+  tire_flat: {
+    what: "A flat, worn or damaged tyre.",
+    impact: "Low cost on its own, but check the rim and wheel alignment for hidden damage.",
+    repair: "Repair or replace the tyre; inspect the alloy for cracks or bends.",
+    note: sevNote("Low tyre — may just need air/repair.", "Damaged tyre — budget a replacement.",
+      "Tyre destroyed — replace and check the rim + suspension."),
+  },
+  punctured: {
+    what: "A panel or component pierced through — the metal is broken, not just dented.",
+    impact: "More serious than a dent: it implies a harder impact. Inspect the area underneath.",
+    repair: "Panel-section replacement or professional metal repair, then respray.",
+    note: sevNote("A small puncture — repairable.", "A clear puncture — implies a real knock; inspect behind it.",
+      "Significant puncture — likely collision damage; get it inspected."),
+  },
+  missing_part: {
+    what: "A body part is missing — bumper, mirror, grille or trim.",
+    impact: "Needs sourcing + fitting, and can be a sign of a previous collision, so the price impact is larger.",
+    repair: "Source the correct part (OEM or good used) and fit + paint to match.",
+    note: sevNote("A small missing trim piece.", "A missing part — source and refit before sale.",
+      "A major part missing — treat as possible collision history and inspect."),
+  },
+};
 
 /** Box area as a fraction of the image (box is normalized [x1,y1,x2,y2]). */
 function boxArea(box: readonly [number, number, number, number]): number {
@@ -144,18 +224,61 @@ export function severityFromGray(g: Float32Array, area: number): number {
   return Math.min(1, raw);
 }
 
-/** Draw the box crop of the source image to 48×48 gray and grade its severity (0..1). */
-function cropSeverity(source: CanvasImageSource, W: number, H: number, box: readonly [number, number, number, number], label: DamageClass): number {
-  const x1 = Math.round(box[0] * W), y1 = Math.round(box[1] * H);
-  const x2 = Math.max(x1 + 1, Math.round(box[2] * W)), y2 = Math.max(y1 + 1, Math.round(box[3] * H));
+/**
+ * A fixed snapshot of the source image's pixels. Producing this ONCE per scan (a 1:1 draw with
+ * no resampling, then getImageData) is the only GPU→CPU step; from here every resize is pure JS
+ * over this buffer, so the whole pipeline is deterministic. Type-compatible with ImageData.
+ */
+type Raster = { data: Uint8ClampedArray; width: number; height: number };
+
+/**
+ * Deterministic box (area-average) downscale of one output cell. Averages every source pixel
+ * whose centre-region overlaps [x0,x1)×[y0,y1); pure integer indexing over a fixed buffer, so
+ * the result depends only on the pixels — never on the GPU, the canvas, or timing. Guarantees at
+ * least one source pixel (nearest-neighbour when a crop is upscaled). Returns 0..255 RGB.
+ */
+function avgCell(src: Raster, x0: number, x1: number, y0: number, y1: number): [number, number, number] {
+  const W = src.width, H = src.height, d = src.data;
+  let ix0 = Math.max(0, Math.floor(x0)), ix1 = Math.min(W, Math.ceil(x1));
+  let iy0 = Math.max(0, Math.floor(y0)), iy1 = Math.min(H, Math.ceil(y1));
+  if (ix1 <= ix0) { ix0 = Math.min(Math.max(0, ix0), W - 1); ix1 = ix0 + 1; }
+  if (iy1 <= iy0) { iy0 = Math.min(Math.max(0, iy0), H - 1); iy1 = iy0 + 1; }
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let y = iy0; y < iy1; y++) {
+    const row = y * W * 4;
+    for (let x = ix0; x < ix1; x++) {
+      const i = row + x * 4;
+      r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+    }
+  }
+  return [r / n, g / n, b / n];
+}
+
+/** Snapshot a decoded image to a fixed CPU pixel buffer (1:1, no resample → exact + stable). */
+function rasterize(source: CanvasImageSource, W: number, H: number): Raster {
   const canvas = document.createElement("canvas");
-  canvas.width = 48; canvas.height = 48;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(source, x1, y1, x2 - x1, y2 - y1, 0, 0, 48, 48);
-  const { data } = ctx.getImageData(0, 0, 48, 48);
+  ctx.imageSmoothingEnabled = false; // 1:1 blit, so there is nothing to resample
+  ctx.drawImage(source, 0, 0);
+  return ctx.getImageData(0, 0, W, H);
+}
+
+/** Grade a box crop's severity (0..1) from a deterministic 48×48 grey area-average of the raster.
+ *  Exported for the determinism check (scripts/cv-determinism-run.mjs). */
+export function cropSeverity(src: Raster, box: readonly [number, number, number, number], label: DamageClass): number {
+  const W = src.width, H = src.height;
+  const x1 = box[0] * W, y1 = box[1] * H;
+  const x2 = Math.max(x1 + 1, box[2] * W), y2 = Math.max(y1 + 1, box[3] * H);
+  const cw = x2 - x1, ch = y2 - y1;
   const g = new Float32Array(48 * 48);
-  for (let i = 0; i < 48 * 48; i++) {
-    g[i] = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
+  for (let oy = 0; oy < 48; oy++) {
+    const gy0 = y1 + (oy * ch) / 48, gy1 = y1 + ((oy + 1) * ch) / 48;
+    for (let ox = 0; ox < 48; ox++) {
+      const gx0 = x1 + (ox * cw) / 48, gx1 = x1 + ((ox + 1) * cw) / 48;
+      const [r, gg, b] = avgCell(src, gx0, gx1, gy0, gy1);
+      g[oy * 48 + ox] = (0.299 * r + 0.587 * gg + 0.114 * b) / 255;
+    }
   }
   const sev = severityFromGray(g, boxArea(box)) + (SEV_CLASS_PRIOR[label] ?? 0);
   return Math.min(1, sev);
@@ -322,32 +445,28 @@ interface PreprocessResult {
  */
 interface Region { sx: number; sy: number; sw: number; sh: number; }
 
-function preprocess(source: CanvasImageSource, region: Region): PreprocessResult {
+/** Exported for the determinism check (scripts/cv-determinism-run.mjs). */
+export function preprocess(src: Raster, region: Region): PreprocessResult {
   const { sx, sy, sw, sh } = region;
   const ratio = IMGSZ / Math.max(sw, sh);
   const nw = Math.round(sw * ratio);
   const nh = Math.round(sh * ratio);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = IMGSZ;
-  canvas.height = IMGSZ;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-  // Pin the resample explicitly instead of relying on the browser default, so the same crop
-  // always downscales to the same pixels (determinism, and a fixed point vs the backend).
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.fillStyle = "rgb(114,114,114)"; // letterbox pad colour
-  ctx.fillRect(0, 0, IMGSZ, IMGSZ);
-  // Draw only the [sx,sy,sw,sh] crop of the source, letterboxed top-left (matches backend).
-  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, nw, nh);
-
-  const { data: rgba } = ctx.getImageData(0, 0, IMGSZ, IMGSZ);
   const area = IMGSZ * IMGSZ;
   const out = new Float32Array(3 * area); // NCHW
-  for (let i = 0; i < area; i++) {
-    out[i] = rgba[i * 4] / 255;               // R plane
-    out[area + i] = rgba[i * 4 + 1] / 255;    // G plane
-    out[2 * area + i] = rgba[i * 4 + 2] / 255; // B plane
+  out.fill(114 / 255); // letterbox pad colour everywhere; the image overwrites the top-left nw×nh
+  // Deterministic area-average downscale of the [sx,sy,sw,sh] crop into the top-left nw×nh.
+  // No canvas, no GPU resampler: identical pixels in ⇒ identical tensor out, every time.
+  for (let oy = 0; oy < nh; oy++) {
+    const gy0 = sy + (oy * sh) / nh, gy1 = sy + ((oy + 1) * sh) / nh;
+    for (let ox = 0; ox < nw; ox++) {
+      const gx0 = sx + (ox * sw) / nw, gx1 = sx + ((ox + 1) * sw) / nw;
+      const [r, g, b] = avgCell(src, gx0, gx1, gy0, gy1);
+      const p = oy * IMGSZ + ox;
+      out[p] = r / 255;             // R plane
+      out[area + p] = g / 255;      // G plane
+      out[2 * area + p] = b / 255;  // B plane
+    }
   }
   // origW/origH carry the CROP dimensions so decode() normalizes boxes to the crop.
   return { data: out, ratio, origW: sw, origH: sh };
@@ -462,12 +581,12 @@ const GLASS_CONF = 0.55;
 
 /** Run the model on one crop; returns detections normalized to the FULL image. */
 async function inferRegion(
-  session: InferenceSession, ort: OrtModule, img: CanvasImageSource,
+  session: InferenceSession, ort: OrtModule, raster: Raster,
   W: number, H: number, frac: [number, number, number, number], minConf: number,
 ): Promise<Detection[]> {
   const sx = frac[0] * W, sy = frac[1] * H;
   const sw = (frac[2] - frac[0]) * W, sh = (frac[3] - frac[1]) * H;
-  const meta = preprocess(img, { sx, sy, sw, sh });
+  const meta = preprocess(raster, { sx, sy, sw, sh });
   const input = new ort.Tensor("float32", meta.data, [1, 3, IMGSZ, IMGSZ]);
   const results = await session.run({ [session.inputNames[0]]: input });
   // decode() returns boxes normalized to the CROP; remap each to full-image coords.
@@ -562,17 +681,21 @@ export async function detectImage(img: HTMLImageElement | ImageBitmap): Promise<
   const H = "naturalHeight" in img ? img.naturalHeight || img.height : img.height;
   if (!W || !H) return [];
 
+  // Snapshot the pixels ONCE — every tile crop and severity crop reads this fixed buffer, so the
+  // scan is a pure function of the image bytes (no per-call GPU resample = no score drift).
+  const raster = rasterize(img, W, H);
+
   const all: Detection[] = [];
   for (let i = 0; i < TILE_REGIONS.length; i++) {
     const isFull = i === 0;
-    const dets = await inferRegion(session, ort, img, W, H, TILE_REGIONS[i], isFull ? CONF_THRES : TILE_CONF);
+    const dets = await inferRegion(session, ort, raster, W, H, TILE_REGIONS[i], isFull ? CONF_THRES : TILE_CONF);
     for (const d of dets) {
       if (!isFull && TILE_EXCLUDE.has(d.label)) continue;
       all.push(d);
     }
   }
   const fused = fuseDetections(all); // WBF → MIN_AREA → glass gate → canonical order (spec §3.7)
-  for (const d of fused) d.sev = cropSeverity(img, W, H, d.box, d.label);
+  for (const d of fused) d.sev = cropSeverity(raster, d.box, d.label);
   return fused;
 }
 

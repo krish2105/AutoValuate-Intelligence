@@ -257,6 +257,12 @@ check("a condition with no model_version is REJECTED",
       not _ok(_cond(model_version=None)))
 check("a stale preprocessing_version is REJECTED",
       not _ok(_cond(preprocessing_version="0.9.0")))
+# 1.1.0 = deterministic preprocessing; must be accepted alongside 1.0.0 so a rolling deploy
+# (old bundle still serving 1.0.0) is not rejected. Guards the ACCEPTED set change.
+check("the deterministic preprocessing_version 1.1.0 is ACCEPTED",
+      _ok(_cond(preprocessing_version="1.1.0")))
+check("the previous preprocessing_version 1.0.0 is still ACCEPTED (rolling deploy)",
+      _ok(_cond(preprocessing_version="1.0.0")))
 check("a malformed photo_set_hash is REJECTED",
       not _ok(_cond(photo_set_hash="not-a-hash")))
 check("a partial scan WITHOUT consent is REJECTED",

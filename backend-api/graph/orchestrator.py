@@ -55,7 +55,11 @@ def _clamp_condition_factor(factor: float) -> float:
 import hashlib
 from functools import lru_cache
 
-ACCEPTED_PREPROCESSING_VERSIONS = frozenset({"1.0.0"})
+# 1.1.0 = deterministic pure-JS area-average preprocessing (frontend cv-browser.ts). Both are
+# accepted so a browser still serving the older bundle during a rolling deploy is not rejected —
+# its scan is valid for the code that produced it. Neither ever bit-matched the server resampler
+# (spec §6 #4 is environmental), so this gate is about identity, not pixel parity.
+ACCEPTED_PREPROCESSING_VERSIONS = frozenset({"1.0.0", "1.1.0"})
 ACCEPTED_INFERENCE_CONFIG_VERSIONS = frozenset({"1.0.0"})
 
 
