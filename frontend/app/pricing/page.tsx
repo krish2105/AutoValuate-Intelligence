@@ -1,9 +1,11 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Check, ArrowLeft, Sparkles } from "lucide-react";
 import { Logo } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 
 /**
  * Phase J — plans.
@@ -11,11 +13,21 @@ import { cn } from "@/lib/utils";
  * Checkout runs against Stripe TEST mode via a payment link, so the full purchase flow is
  * demonstrable without processing a real payment and without leaving the free tier. If no
  * link is configured we say so plainly rather than pretending a button works.
+ *
+ * The link carries `?client_reference_id=<auth uid>` so the /billing/webhook can tell WHOSE
+ * tier to upgrade after payment. A signed-out user can't be credited a purchase, so we send
+ * them to sign in first rather than take money we can't attribute.
  */
 const LINKS: Record<string, string | undefined> = {
   pro: process.env.NEXT_PUBLIC_STRIPE_LINK_PRO,
   dealer: process.env.NEXT_PUBLIC_STRIPE_LINK_DEALER,
 };
+
+function withUser(link: string | undefined, uid: string | null): string | undefined {
+  if (!link || !uid) return link;
+  const sep = link.includes("?") ? "&" : "?";
+  return `${link}${sep}client_reference_id=${encodeURIComponent(uid)}`;
+}
 
 const PLANS = [
   {
@@ -68,6 +80,11 @@ const PLANS = [
 ];
 
 export default function PricingPage() {
+  const [uid, setUid] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null)).catch(() => {});
+  }, []);
+
   return (
     <div className="mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6">
       <header className="mb-10 flex items-center justify-between gap-3">
@@ -89,7 +106,7 @@ export default function PricingPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         {PLANS.map((p, i) => {
-          const link = LINKS[p.id];
+          const link = withUser(LINKS[p.id], uid);
           return (
             <motion.div
               key={p.id}

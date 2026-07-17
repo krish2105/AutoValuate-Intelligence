@@ -293,6 +293,19 @@ async def estimate_batch(req: BatchEstimateRequest) -> dict:
     return await run_in_threadpool(run_all)
 
 
+# ---- billing webhook (WS-J commercial readiness) -------------------------------------
+# Stripe calls this after a payment; it is the ONLY thing that grants a paid tier (the client
+# is never trusted to claim it paid). NOT rate-limited or key-metered (Stripe is the caller,
+# and it must read the RAW body to verify the signature). No-ops with 503 until configured.
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request):
+    import billing
+    raw = await request.body()
+    sig = request.headers.get("stripe-signature")
+    status, body = await run_in_threadpool(billing.handle_webhook, raw, sig)
+    return JSONResponse(status_code=status, content=body)
+
+
 # ---- market depreciation curve (WS E3 visual) ----------------------------------------
 # The corpus finally has enough rows (1306) to show price-vs-age per model instead of a
 # generic rule of thumb. Reads the already-loaded comparables index — no model, no LLM,

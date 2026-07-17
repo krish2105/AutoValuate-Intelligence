@@ -328,5 +328,71 @@ check("the cloud-metadata endpoint is denied", _load_raises("http://169.254.169.
 check("an arbitrary external URL is denied", _load_raises("https://evil.example/x.jpg"))
 check("a localhost URL is denied", _load_raises("http://127.0.0.1:8080/x"))
 
+# ---- Stripe billing webhook (WS-J): signed-event-only tier grant ----
+# These run with NO Stripe secret set — they exercise the gating + signature logic, not a live
+# charge. The webhook is the ONLY thing that may grant a paid tier, so its refusals matter most.
+print("\nbilling webhook (billing.handle_webhook):")
+import hmac as _hmac, hashlib as _hashlib, json as _json, time as _time  # noqa: E402
+import billing  # noqa: E402
+
+# 1) Unconfigured (the shipped default) → 503, and it never tries to write a tier.
+billing.STRIPE_WEBHOOK_SECRET = ""
+billing.SUPABASE_SERVICE_ROLE_KEY = ""
+_st, _body = billing.handle_webhook(b"{}", "t=1,v1=deadbeef")
+check("unconfigured billing returns 503 (app unaffected until secrets are set)",
+      _st == 503 and _body["ok"] is False)
+check("configured() is False with no secrets", billing.configured() is False)
+
+# Now pretend it's configured (secret only — we never actually reach the Supabase write in these).
+billing.STRIPE_WEBHOOK_SECRET = "whsec_test_dummy"
+billing.SUPABASE_SERVICE_ROLE_KEY = "service_dummy"
+check("configured() is True once both secrets are present", billing.configured() is True)
+
+
+def _signed(payload: bytes, secret="whsec_test_dummy", ts=None):
+    ts = ts if ts is not None else int(_time.time())
+    sig = _hmac.new(secret.encode(), f"{ts}.".encode() + payload, _hashlib.sha256).hexdigest()
+    return f"t={ts},v1={sig}"
+
+
+_evt = _json.dumps({
+    "type": "checkout.session.completed",
+    "data": {"object": {"client_reference_id": "uid-123", "metadata": {"tier": "pro"}}},
+}).encode()
+
+# 2) Missing / bad / stale signatures → 400 (a forged event can't grant a tier).
+check("a missing signature is rejected (400)", billing.handle_webhook(_evt, None)[0] == 400)
+check("a bogus signature is rejected (400)",
+      billing.handle_webhook(_evt, "t=1,v1=deadbeef")[0] == 400)
+check("a correctly-signed but STALE event is rejected (replay protection)",
+      billing.handle_webhook(_evt, _signed(_evt, ts=int(_time.time()) - 10_000))[0] == 400)
+check("a signature made with the WRONG secret is rejected",
+      billing.handle_webhook(_evt, _signed(_evt, secret="whsec_wrong"))[0] == 400)
+
+# 3) Correctly-signed non-checkout events are acknowledged and ignored (no tier change).
+_ping = b'{"type":"payment_intent.created","data":{"object":{}}}'
+_st, _body = billing.handle_webhook(_ping, _signed(_ping))
+check("a signed non-checkout event is acknowledged (200) and ignored", _st == 200 and _body.get("ignored"))
+
+# 4) Signed checkout with missing uid / invalid tier is acknowledged but grants nothing.
+_bad_tier = _json.dumps({"type": "checkout.session.completed",
+                         "data": {"object": {"client_reference_id": "uid-1", "metadata": {"tier": "admin"}}}}).encode()
+_st, _body = billing.handle_webhook(_bad_tier, _signed(_bad_tier))
+check("a signed checkout with an invalid tier grants nothing (no privilege escalation)",
+      _st == 200 and _body["ok"] is False)
+
+# 5) A valid signed checkout reaches the tier write — stub it so no network call is made.
+_captured = {}
+_orig_set = billing._set_tier
+billing._set_tier = lambda uid, tier, **kw: _captured.update(uid=uid, tier=tier) or True
+try:
+    _st, _body = billing.handle_webhook(_evt, _signed(_evt))
+    check("a valid signed checkout upgrades the right user to the right tier",
+          _st == 200 and _body["ok"] is True and _captured == {"uid": "uid-123", "tier": "pro"})
+finally:
+    billing._set_tier = _orig_set
+    billing.STRIPE_WEBHOOK_SECRET = ""
+    billing.SUPABASE_SERVICE_ROLE_KEY = ""
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
