@@ -231,6 +231,13 @@ export interface ClientCondition {
    * every photo failed to decode was indistinguishable from a scan that found no damage.
    */
   status: "complete" | "partial";
+  /**
+   * Explicit user consent to be valued on an incomplete (partial) scan. Set true only when
+   * the user ticks the "value it anyway" box. The server rejects a `status:"partial"`
+   * condition that arrives without this, so a partial scan can never silently deflate a
+   * price. Absent/false for complete and synthetic conditions.
+   */
+  partial_scan_consent?: boolean;
 }
 
 /**

@@ -149,6 +149,18 @@ class ClientCondition(BaseModel):
     source: str = Field(default="browser", max_length=20)
     assessment: str | None = Field(default=None, max_length=80)
     needs_inspection: bool = False
+    # Provenance (docs/CV_INFERENCE_SPEC.md §4). These were previously undeclared here, so
+    # Pydantic dropped them and the orchestrator saw None for all of them — the binding the
+    # browser stamps never reached the server. Declared so they survive to orchestrator
+    # enforcement (a forged condition with an unknown model_version is rejected there).
+    photo_set_hash: str | None = Field(default=None, max_length=128)
+    model_version: str | None = Field(default=None, max_length=64)
+    preprocessing_version: str | None = Field(default=None, max_length=32)
+    inference_config_version: str | None = Field(default=None, max_length=32)
+    status: str | None = Field(default=None, max_length=16)  # complete | partial
+    # Explicit consent to be valued on an incomplete (partial) scan. The browser sets this
+    # only after the user ticks the box; a partial condition without it is not priced.
+    partial_scan_consent: bool = False
 
 
 class ValuationRequest(BaseModel):
