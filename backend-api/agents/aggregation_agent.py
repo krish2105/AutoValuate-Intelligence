@@ -39,6 +39,23 @@ BASE_SEVERITY = {
 }
 STRUCTURAL = {"crack", "glass_shatter", "lamp_broken", "punctured", "missing_part", "tire_flat"}
 CONF_THRESHOLD = 0.33    # matches TILE_CONF — the lowest pass gate; detect() already gated
+
+# Held-out per-class (precision, recall) from eval/cv_eval_report.json. The condition score
+# is downstream of a detector that misses ~half of all dents (recall 0.53) and is wrong about
+# a third of the dents it reports (precision 0.67) — so a single point score overstates what
+# the model knows. The score BAND makes both failure modes explicit:
+#   best case  — findings below UNCERTAIN_CONF are treated as false alarms and dropped;
+#   worst case — every impact is inflated by precision/recall (expected true instances per
+#                observed one), capped so one class can't nuke the score on its own.
+# punctured/missing_part had no support in the eval split; they get conservative defaults.
+# Keep in lock-step with frontend/lib/cv-browser.ts CLASS_PR.
+CLASS_PR = {
+    "dent": (0.67, 0.53), "scratch": (0.60, 0.53), "crack": (0.54, 0.37),
+    "glass_shatter": (0.98, 0.99), "lamp_broken": (0.78, 0.86), "tire_flat": (0.98, 0.87),
+    "punctured": (0.60, 0.50), "missing_part": (0.60, 0.50),
+}
+UNCERTAIN_CONF = 0.50    # below this a finding is flagged "verify in person"
+MISS_FACTOR_CAP = 1.6    # crack's p/r would be 1.46; cap guards the defaults' worst case
 CONF_LO, CONF_HI = 0.20, 0.55
 CONF_FLOOR = 0.35
 SEV_MULT_LO, SEV_MULT_HI = 0.5, 2.5   # pixel severity 0..1 → impact multiplier 0.5..2.5
@@ -76,6 +93,26 @@ def _eff_weight(conf: float, sev: float) -> float:
 
 def _det_impact(label: str, sev: float, conf: float) -> float:
     return BASE_SEVERITY[label] * (SEV_MULT_LO + (SEV_MULT_HI - SEV_MULT_LO) * sev) * _eff_weight(conf, sev)
+
+
+def _deduction_from(dets: list[tuple[str, float, float]],
+                    min_conf: float | None = None, inflate: bool = False) -> float:
+    """Deduction over (label, conf, impact) detections — the same probabilistic union +
+    structural escalation as the headline score, under one of the band's two scenarios."""
+    kept, struct = 1.0, 0
+    for label, conf, imp in dets:
+        if min_conf is not None and conf < min_conf:
+            continue
+        if inflate:
+            p, r = CLASS_PR.get(label, (0.60, 0.50))
+            imp = min(0.95, imp * min(MISS_FACTOR_CAP, p / r))
+        kept *= 1 - imp
+        if label in STRUCTURAL:
+            struct += 1
+    ded = 1 - kept
+    if struct >= 2:
+        ded = 1 - (1 - ded) ** (1 + STRUCT_ESC * (struct - 1))
+    return min(MAX_TOTAL_DEDUCTION, ded)
 
 
 def _severity_of(label: str, sev: float) -> str:
@@ -127,6 +164,7 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
         }
 
     per_class: dict[str, dict] = {}
+    flat: list[tuple[str, float, float]] = []  # (label, conf, impact) for the score band
     assessed = 0
     for i, photo in enumerate(photos):
         try:
@@ -140,12 +178,14 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             if label not in BASE_SEVERITY or conf < CONF_THRESHOLD:
                 continue
             sev = _sev_of_det(d)
+            impact = _det_impact(label, sev, conf)
+            flat.append((label, conf, impact))
             slot = per_class.setdefault(
                 label, {"max_conf": 0.0, "photos": set(), "impacts": [], "worst_sev": 0.0}
             )
             slot["max_conf"] = max(slot["max_conf"], conf)
             slot["photos"].add(i)
-            slot["impacts"].append(_det_impact(label, sev, conf))
+            slot["impacts"].append(impact)
             slot["worst_sev"] = max(slot["worst_sev"], sev)
 
     if assessed == 0:
@@ -176,6 +216,9 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
             "photos_with_damage": sorted(s["photos"]),
             "value_impact_pct": round((1 - kept_class) * 100, 1),
             "severity": _severity_of(label, s["worst_sev"]),
+            # precision on this class is low enough that a weak detection may be nothing;
+            # the UI turns this into a "verify in person" badge instead of stating it as fact
+            "uncertain": s["max_conf"] < UNCERTAIN_CONF,
         })
 
     # Accident escalation: co-occurring structural findings signal a collision, so amplify.
@@ -185,10 +228,18 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     deduction = min(MAX_TOTAL_DEDUCTION, deduction)
     # round-half-up (not Python's banker's rounding) so it matches the browser's Math.round
     condition_score = int(100 * (1 - deduction) + 0.5)
+
+    # Score band (best/worst case under the detector's measured error) — the honest range
+    # around the point score. Clamped to contain the point so rounding can't invert it.
+    hi = int(100 * (1 - _deduction_from(flat, min_conf=UNCERTAIN_CONF)) + 0.5)
+    lo = int(100 * (1 - _deduction_from(flat, inflate=True)) + 0.5)
+    score_band = [min(lo, condition_score), max(hi, condition_score)]
+
     needs_inspection = condition_score < 70 or any(f["severity"] == "severe" for f in findings)
     return {
         "cv_available": True,
         "condition_score": condition_score,
+        "score_band": score_band,
         "price_adjustment_factor": round(1 - deduction, 4),
         "findings": findings,
         "photos_assessed": assessed,

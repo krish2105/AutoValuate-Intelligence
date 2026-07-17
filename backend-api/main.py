@@ -130,6 +130,8 @@ class ClientFinding(BaseModel):
     photos_with_damage: list[int] = Field(default_factory=list, max_length=MAX_PHOTOS)
     value_impact_pct: float = Field(ge=0.0, le=100.0)
     severity: str | None = Field(default=None, max_length=16)  # minor | moderate | severe
+    # Below the verify-in-person confidence threshold (see aggregation_agent.UNCERTAIN_CONF).
+    uncertain: bool | None = None
     # Guided walk-around capture angles this damage appeared in ("front", "rear-left", …).
     # A camera position, not a panel claim; absent for quick uploads (E2 damage map).
     angles_with_damage: list[str] | None = Field(default=None, max_length=MAX_PHOTOS)
@@ -150,6 +152,15 @@ class ClientCondition(BaseModel):
     """
     cv_available: bool = True
     condition_score: int = Field(ge=0, le=100)
+    # [worst, best] case score under the detector's measured error rates; must bracket sanely.
+    score_band: list[int] | None = Field(default=None, min_length=2, max_length=2)
+
+    @field_validator("score_band")
+    @classmethod
+    def _band_ordered(cls, v: list[int] | None) -> list[int] | None:
+        if v is not None and not (0 <= v[0] <= v[1] <= 100):
+            raise ValueError("score_band must be [lo, hi] within 0..100")
+        return v
     # Never boosts price; floored at 0.38 — a photo-only scan can't justify wiping out
     # >62% of value (mirrors aggregation_agent.MAX_TOTAL_DEDUCTION).
     price_adjustment_factor: float = Field(ge=0.38, le=1.0)

@@ -53,6 +53,18 @@ const SEV_MULT_HI = 2.5;
 const STRUCT_ESC = 0.4;       // co-occurrence exponent per extra structural finding
 const MAX_TOTAL_DEDUCTION = 0.62; // photos alone can't wipe out >62%; rest disclosed as uncertainty
 
+// Held-out per-class [precision, recall] from eval/cv_eval_report.json — mirror of
+// aggregation_agent.CLASS_PR, keep in lock-step. Powers the honest score BAND: best case
+// drops findings under UNCERTAIN_CONF (precision says some are false alarms); worst case
+// inflates each impact by precision/recall (recall says damage went unseen), capped.
+const CLASS_PR: Record<DamageClass, [number, number]> = {
+  dent: [0.67, 0.53], scratch: [0.60, 0.53], crack: [0.54, 0.37],
+  glass_shatter: [0.98, 0.99], lamp_broken: [0.78, 0.86], tire_flat: [0.98, 0.87],
+  punctured: [0.60, 0.50], missing_part: [0.60, 0.50], // no eval support — conservative
+};
+const UNCERTAIN_CONF = 0.50;  // below this a finding is flagged "verify in person"
+const MISS_FACTOR_CAP = 1.6;
+
 // Pixel-severity feature weights (kept in lock-step with cv_local.py). A detection's severity
 // (0..1) is graded from the crop's pixels — texture/gradient energy (crumple, cracks, scrapes),
 // dark fraction (deep dents, holes, voids), and extent — not just its box size.
@@ -171,12 +183,16 @@ export interface DamageFindingClient {
    * panel-level location the detector can't actually know. Absent for quick uploads.
    */
   angles_with_damage?: string[];
+  /** True when max confidence is under UNCERTAIN_CONF — "verify in person", not a fact. */
+  uncertain?: boolean;
 }
 
 /** Shape the backend expects for an optional client-side condition (see main.py ClientCondition). */
 export interface ClientCondition {
   cv_available: true;
   condition_score: number;
+  /** [worst, best] case score under the detector's held-out error rates (CLASS_PR). */
+  score_band?: [number, number];
   price_adjustment_factor: number;
   findings: DamageFindingClient[];
   photos_assessed: number;
@@ -509,6 +525,29 @@ function sevOfDet(d: Detection): number {
   return Math.min(1, 0.6 * Math.min(1, area / 0.14) + (SEV_CLASS_PRIOR[d.label] ?? 0));
 }
 
+/** Deduction over (label, conf, impact) triples under one band scenario — mirror of
+ *  aggregation_agent._deduction_from, keep in lock-step. */
+function deductionFrom(
+  dets: { label: DamageClass; conf: number; impact: number }[],
+  opts: { minConf?: number; inflate?: boolean } = {},
+): number {
+  let kept = 1;
+  let struct = 0;
+  for (const d of dets) {
+    if (opts.minConf !== undefined && d.conf < opts.minConf) continue;
+    let imp = d.impact;
+    if (opts.inflate) {
+      const [p, r] = CLASS_PR[d.label] ?? [0.6, 0.5];
+      imp = Math.min(0.95, imp * Math.min(MISS_FACTOR_CAP, p / r));
+    }
+    kept *= 1 - imp;
+    if (STRUCTURAL.has(d.label)) struct += 1;
+  }
+  let ded = 1 - kept;
+  if (struct >= 2) ded = 1 - Math.pow(1 - ded, 1 + STRUCT_ESC * (struct - 1));
+  return Math.min(MAX_TOTAL_DEDUCTION, ded);
+}
+
 export function conditionFromDetections(
   perPhoto: Detection[][],
   /** Capture angle id per photo (guided walk-around); undefined for quick uploads. */
@@ -523,14 +562,17 @@ export function conditionFromDetections(
     worstSev: number;
   }
   const perClass = new Map<DamageClass, Slot>();
+  const flat: { label: DamageClass; conf: number; impact: number }[] = []; // for the score band
   perPhoto.forEach((dets, photoIdx) => {
     for (const d of dets) {
       if (!(d.label in BASE_SEVERITY) || d.confidence < TILE_CONF) continue;
       const sev = sevOfDet(d);
+      const impact = detImpact(d.label, sev, d.confidence);
+      flat.push({ label: d.label, conf: d.confidence, impact });
       const slot = perClass.get(d.label) ?? { maxConf: 0, photos: new Set<number>(), dets: [], worstSev: 0 };
       slot.maxConf = Math.max(slot.maxConf, d.confidence);
       slot.photos.add(photoIdx);
-      slot.dets.push({ sev, conf: d.confidence, impact: detImpact(d.label, sev, d.confidence) });
+      slot.dets.push({ sev, conf: d.confidence, impact });
       slot.worstSev = Math.max(slot.worstSev, sev);
       perClass.set(d.label, slot);
     }
@@ -563,6 +605,7 @@ export function conditionFromDetections(
       value_impact_pct: Math.round(classImpact * 100 * 10) / 10,
       severity: severityOf(label, s.worstSev),
       ...(hitAngles && hitAngles.length ? { angles_with_damage: hitAngles } : {}),
+      uncertain: s.maxConf < UNCERTAIN_CONF,
     });
   }
 
@@ -572,10 +615,18 @@ export function conditionFromDetections(
   if (structHits >= 2) deduction = 1 - Math.pow(1 - deduction, 1 + STRUCT_ESC * (structHits - 1));
   deduction = Math.min(MAX_TOTAL_DEDUCTION, deduction);
   const score = Math.round(100 * (1 - deduction));
+
+  // Honest score band under the detector's measured error rates (see CLASS_PR). Clamped
+  // to contain the point score so independent rounding can't invert the interval.
+  const hi = Math.round(100 * (1 - deductionFrom(flat, { minConf: UNCERTAIN_CONF })));
+  const lo = Math.round(100 * (1 - deductionFrom(flat, { inflate: true })));
+  const scoreBand: [number, number] = [Math.min(lo, score), Math.max(hi, score)];
+
   const needsInspection = score < 70 || findings.some((f) => f.severity === "severe");
   return {
     cv_available: true,
     condition_score: score,
+    score_band: scoreBand,
     price_adjustment_factor: Math.round((1 - deduction) * 1e4) / 1e4,
     findings,
     photos_assessed: perPhoto.length,

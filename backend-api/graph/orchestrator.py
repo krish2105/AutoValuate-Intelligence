@@ -87,14 +87,17 @@ def _condition_from_client(client: dict) -> dict:
             # already validated by ClientFinding; dropping them here silently blanked the
             # severity chips (and would blank the E2 damage map) on every live-backend run
             **({"severity": f["severity"]} if f.get("severity") else {}),
+            **({"uncertain": bool(f["uncertain"])} if f.get("uncertain") is not None else {}),
             **({"angles_with_damage": list(f["angles_with_damage"])}
                if f.get("angles_with_damage") else {}),
         }
         for f in client.get("findings", [])
     ]
+    band = client.get("score_band")
     return {
         "cv_available": True,
         "condition_score": int(client.get("condition_score", 100)),
+        **({"score_band": [int(band[0]), int(band[1])]} if band else {}),
         "price_adjustment_factor": round(float(client.get("price_adjustment_factor", 1.0)), 4),
         "findings": findings,
         "photos_assessed": int(client.get("photos_assessed", 0)),

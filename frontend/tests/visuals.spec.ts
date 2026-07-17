@@ -165,6 +165,31 @@ test("E2: damage map plots findings at their capture angles, camera-position hon
   await expect(page.getByText(/not a claim about the exact panel/i)).toBeVisible();
 });
 
+test("honesty: condition score band + verify badge render with the explainer", async ({ page }) => {
+  const banded = {
+    ...VALUATION,
+    condition: {
+      ...VALUATION.condition,
+      cv_available: true,
+      condition_score: 80,
+      score_band: [74, 88],
+      findings: [
+        { damage_type: "dent", instances: 1, max_confidence: 0.78, photos_with_damage: [0],
+          value_impact_pct: 4, severity: "moderate", uncertain: false },
+        { damage_type: "scratch", instances: 1, max_confidence: 0.41, photos_with_damage: [0],
+          value_impact_pct: 1.5, severity: "minor", uncertain: true },
+      ],
+    },
+  };
+  await mockAndValue(page, undefined, depPayload("model"), banded);
+  await expect(page.getByText("74–88").first()).toBeVisible();
+  await expect(page.getByText(/41% · verify/)).toBeVisible();
+  await expect(page.getByText(/detector's measured error/i)).toBeVisible();
+  await expect(page.getByText(/check them in person/i)).toBeVisible();
+  // the confident finding keeps its plain confidence pill
+  await expect(page.getByText(/78% · verify/)).toHaveCount(0);
+});
+
 test("E2: damage map is absent when findings carry no capture angles", async ({ page }) => {
   await mockAndValue(page); // default fixture: quick-upload style findings, no angle data
   await expect(page.getByText(/comparable listings/i).first()).toBeVisible();

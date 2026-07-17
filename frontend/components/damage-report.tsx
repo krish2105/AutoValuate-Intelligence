@@ -59,6 +59,10 @@ function DamageReportBody({ c, valuation }: { c: Condition; valuation?: Valuatio
   const tone = scoreTone(live.score);
   const ring = tone === "good" ? "text-good" : tone === "warn" ? "text-warn" : "text-bad";
   const anyRepaired = repaired.size > 0;
+  // Show the band only against the as-scanned score — the repair what-if changes the point
+  // estimate, and pretending the band tracks it would be inventing numbers.
+  const band = !anyRepaired && c.score_band && c.score_band[0] !== c.score_band[1] ? c.score_band : null;
+  const anyUncertain = c.findings.some((f) => f.uncertain);
 
   const toggle = (t: string) =>
     setRepaired((prev) => {
@@ -88,6 +92,10 @@ function DamageReportBody({ c, valuation }: { c: Condition; valuation?: Valuatio
           <div className="absolute text-center">
             <motion.div key={live.score} initial={{ scale: 0.85, opacity: 0.6 }} animate={{ scale: 1, opacity: 1 }} className={`tnum text-2xl font-semibold ${ring}`}>{live.score}</motion.div>
             <div className="text-[10px] text-muted">/ 100</div>
+            {/* the honest range: detector error means the point score is an estimate */}
+            {band && (
+              <div className="tnum text-[9px] font-medium text-muted">{band[0]}–{band[1]}</div>
+            )}
           </div>
         </div>
         <div className="min-w-0 flex-1 space-y-2">
@@ -112,7 +120,9 @@ function DamageReportBody({ c, valuation }: { c: Condition; valuation?: Valuatio
                   <span className="text-xs text-muted">×{f.instances}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Pill tone="info">{Math.round(f.max_confidence * 100)}%</Pill>
+                  {f.uncertain
+                    ? <Pill tone="warn">{Math.round(f.max_confidence * 100)}% · verify</Pill>
+                    : <Pill tone="info">{Math.round(f.max_confidence * 100)}%</Pill>}
                   {cost != null
                     ? <span className={cn("tnum text-xs", isRepaired ? "text-good" : "text-bad")}>{isRepaired ? `+${aed(cost)}` : `−${aed(cost)}`}</span>
                     : <span className="tnum text-xs text-bad">−{f.value_impact_pct}%</span>}
@@ -148,6 +158,22 @@ function DamageReportBody({ c, valuation }: { c: Condition; valuation?: Valuatio
       )}
 
       {c.findings.length > 0 && <SeverityRadar c={c} />}
+
+      {(band || anyUncertain) && (
+        <p className="mt-3 text-[11px] text-muted">
+          {band && (
+            <>The <span className="tnum font-medium">{band[0]}–{band[1]}</span> range covers the
+            detector&apos;s measured error on held-out photos: the best case treats low-confidence
+            findings as false alarms, the worst case assumes damage was missed at the rate this
+            model typically misses it. </>
+          )}
+          {anyUncertain && (
+            <>Findings marked <span className="font-medium text-warn">verify</span> are below the
+            confidence where the detector is usually right — check them in person rather than
+            taking them as fact.</>
+          )}
+        </p>
+      )}
     </SectionCard>
   );
 }

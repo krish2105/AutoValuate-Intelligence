@@ -66,12 +66,16 @@ export interface DamageFinding {
   severity?: string;
   /** Capture angles ("front", "rear-left", …) this damage appeared in — guided scans only. */
   angles_with_damage?: string[];
+  /** Confidence below the verify threshold — show as "possible, verify in person". */
+  uncertain?: boolean;
 }
 
 export interface Condition {
   cv_available: boolean;
   reason?: string;
   condition_score: number | null;
+  /** [worst, best] case score under the detector's held-out per-class error rates. */
+  score_band?: [number, number];
   price_adjustment_factor: number;
   findings: DamageFinding[];
   photos_assessed: number;

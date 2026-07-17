@@ -44,11 +44,46 @@ def scrape_make(token: str, make: str, limit: int) -> list[dict]:
     payload = {
         "startUrl": f"https://dubai.dubizzle.com/motors/used-cars/{make}/",
         "maxResults": limit,
+        # Actors that gate media behind an input flag ignore unknown keys, so asking
+        # costs nothing and may be the difference between photos and none (WS 0.7).
+        "includeImages": True,
     }
     r = requests.post(url, json=payload, timeout=600)
     r.raise_for_status()
     items = r.json()
     return items if isinstance(items, list) else []
+
+
+_IMG_EXT = (".jpg", ".jpeg", ".png", ".webp", ".avif")
+
+
+def _harvest_image_urls(node, out: dict[str, None] | None = None, depth: int = 0) -> list[str]:
+    """
+    Collect every image URL anywhere in the raw Apify item, whatever the schema.
+
+    The first cron run proved why: 634 rows were scraped with the old fixed-key probe
+    (`images` / `photos` / `imageUrls` / …) and every single photo_urls came back empty —
+    the actor nests its media under keys we never guessed. Guessing key names loses to
+    walking the whole payload for things that LOOK like image URLs; a schema change can
+    hide a key, but it can't make an image URL stop being one.
+    """
+    if out is None:
+        out = {}
+    if depth > 6 or len(out) >= 24:  # listings carry ~5-15 photos; more is scraper noise
+        return list(out)
+    if isinstance(node, str):
+        u = node.strip()
+        if u.startswith("http"):
+            path = u.split("?", 1)[0].lower()
+            if path.endswith(_IMG_EXT) or "/image" in path or "img.dubizzle" in path:
+                out.setdefault(u)
+    elif isinstance(node, dict):
+        for v in node.values():
+            _harvest_image_urls(v, out, depth + 1)
+    elif isinstance(node, (list, tuple)):
+        for v in node:
+            _harvest_image_urls(v, out, depth + 1)
+    return list(out)
 
 
 def normalise(raw: dict, make_hint: str) -> dict | None:
@@ -72,15 +107,7 @@ def normalise(raw: dict, make_hint: str) -> dict | None:
 
     # Retain listing photo URLs (master plan WS 0.7): they cost nothing to keep and are
     # the prerequisite for the UAE-domain CV test set (A1) and photo-aware pricing (B2/D1).
-    photos = raw.get("images") or raw.get("photos") or raw.get("imageUrls") or raw.get("image_urls") or []
-    if isinstance(photos, str):
-        photos = [photos]
-    cover = raw.get("coverPhoto") or raw.get("image") or raw.get("photo")
-    if isinstance(cover, str) and cover:
-        photos = [cover, *photos]
-    photo_urls = "|".join(dict.fromkeys(
-        str(u) for u in photos if isinstance(u, str) and u.startswith("http")
-    ))[:2000]
+    photo_urls = "|".join(_harvest_image_urls(raw))[:2000]
 
     now = datetime.now(timezone.utc)
     age = max(0, now.year - year)
@@ -136,14 +163,17 @@ def main() -> int:
         except Exception as e:  # one bad make must never sink the whole run
             print(f"  {make}: scrape failed ({type(e).__name__}) — skipping")
             continue
-        added = 0
+        added = with_photos = 0
         for raw in items:
             row = normalise(raw, make)
             if row and row["listing_id"] not in known:
                 known.add(row["listing_id"])
                 fresh.append(row)
                 added += 1
-        print(f"  {make}: {len(items)} scraped, {added} new")
+                with_photos += bool(row["photo_urls"])
+        # photo retention must prove itself per run — it shipped once before and silently
+        # produced 0 photos across an entire cron run because nothing reported it
+        print(f"  {make}: {len(items)} scraped, {added} new, {with_photos} with photos")
         time.sleep(1)  # be polite to the free tier
 
     if not fresh:
@@ -162,7 +192,11 @@ def main() -> int:
     out = pd.concat([existing, df], ignore_index=True)
     out = out.drop_duplicates(subset=["listing_id"], keep="first")
     out.to_csv(CSV, index=False)
-    print(f"added {len(out) - len(existing)} new listings -> {len(out)} total")
+    n_photos = int((out["photo_urls"].fillna("").astype(str).str.len() > 0).sum())
+    print(f"added {len(out) - len(existing)} new listings -> {len(out)} total "
+          f"({n_photos} rows carry photo URLs)")
+    if not df["photo_urls"].astype(bool).any():
+        print("::warning::this run retained ZERO photos — check the actor's output schema")
     return 0
 
 
