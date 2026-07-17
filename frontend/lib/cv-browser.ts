@@ -12,6 +12,27 @@
  * a server scan produce the same condition score and price-adjustment factor.
  */
 import type { InferenceSession, Tensor } from "onnxruntime-web";
+import buildVersion from "./cv/model-version.json";
+
+/**
+ * Identity of the exact artifacts that produce a detection, generated at build time from
+ * the model bytes (scripts/cv-version.mjs). A ClientCondition carries these so a result
+ * can be traced back to the weights + runtime that produced it, and so a condition made by
+ * an unrecognised model can be rejected rather than silently priced.
+ */
+export const MODEL_VERSION = buildVersion.modelVersion;
+export const MODEL_SHA256 = buildVersion.modelSha256;
+export const ORT_VERSION = buildVersion.ortVersion;
+
+/**
+ * Bump when ANY preprocessing or post-processing behaviour changes (sizes, letterbox,
+ * normalization, thresholds, NMS/WBF, severity, aggregation). It is part of the condition's
+ * identity: the same photo and the same weights can yield a different result under a
+ * different config, so a stale condition must be detectable as stale. See
+ * docs/CV_INFERENCE_SPEC.md — this constant and that document version together.
+ */
+export const PREPROCESSING_VERSION = "1.0.0";
+export const INFERENCE_CONFIG_VERSION = "1.0.0";
 
 export const CV_CLASSES = [
   "dent", "scratch", "crack", "glass_shatter",
@@ -23,7 +44,9 @@ const IMGSZ = 640;
 const CONF_THRES = 0.35;   // full-frame pass gate (matches cv_local.py CONF_THRES)
 const DECODE_FLOOR = 0.20; // decode keeps everything above this; the per-pass gate is applied later
 const IOU_THRES = 0.45;  // matches cv_local.py IOU_THRES
-const MODEL_URL = "/models/best.onnx";
+// Content-addressed (`?v=<sha256[:12]>`) so a redeployed model is a cache miss rather than
+// being served forever from the SW/HTTP caches. Generated — never hardcode this.
+const MODEL_URL = buildVersion.modelUrl;
 
 // Base cosmetic severity per class — the value fraction a *reference-sized* (~4% of the
 // frame) instance costs. Extent (bbox area) and confidence scale this per detection below.
@@ -52,18 +75,6 @@ const SEV_MULT_LO = 0.5;      // pixel severity 0..1 → impact multiplier 0.5..
 const SEV_MULT_HI = 2.5;
 const STRUCT_ESC = 0.4;       // co-occurrence exponent per extra structural finding
 const MAX_TOTAL_DEDUCTION = 0.62; // photos alone can't wipe out >62%; rest disclosed as uncertainty
-
-// Held-out per-class [precision, recall] from eval/cv_eval_report.json — mirror of
-// aggregation_agent.CLASS_PR, keep in lock-step. Powers the honest score BAND: best case
-// drops findings under UNCERTAIN_CONF (precision says some are false alarms); worst case
-// inflates each impact by precision/recall (recall says damage went unseen), capped.
-const CLASS_PR: Record<DamageClass, [number, number]> = {
-  dent: [0.67, 0.53], scratch: [0.60, 0.53], crack: [0.54, 0.37],
-  glass_shatter: [0.98, 0.99], lamp_broken: [0.78, 0.86], tire_flat: [0.98, 0.87],
-  punctured: [0.60, 0.50], missing_part: [0.60, 0.50], // no eval support — conservative
-};
-const UNCERTAIN_CONF = 0.50;  // below this a finding is flagged "verify in person"
-const MISS_FACTOR_CAP = 1.6;
 
 // Pixel-severity feature weights (kept in lock-step with cv_local.py). A detection's severity
 // (0..1) is graded from the crop's pixels — texture/gradient energy (crumple, cracks, scrapes),
@@ -177,32 +188,64 @@ export interface DamageFindingClient {
   value_impact_pct: number;
   /** Worst severity band seen for this damage class across all photos. */
   severity: Severity;
-  /**
-   * Guided walk-around only: the capture angles ("front", "rear-left", …) of the photos
-   * this damage appeared in. Says which PHOTO caught it — the camera position — never a
-   * panel-level location the detector can't actually know. Absent for quick uploads.
-   */
-  angles_with_damage?: string[];
-  /** True when max confidence is under UNCERTAIN_CONF — "verify in person", not a fact. */
-  uncertain?: boolean;
 }
 
 /** Shape the backend expects for an optional client-side condition (see main.py ClientCondition). */
 export interface ClientCondition {
   cv_available: true;
   condition_score: number;
-  /** [worst, best] case score under the detector's held-out error rates (CLASS_PR). */
-  score_band?: [number, number];
   price_adjustment_factor: number;
   findings: DamageFindingClient[];
   photos_assessed: number;
   total_value_impact_pct: number;
-  source: "browser";
+  /**
+   * "browser"   — produced by a real on-device scan of real photos.
+   * "synthetic" — fabricated from UI inputs with no detector involved: the what-if sliders
+   *               and the demo-garage fixtures. These MUST NOT claim to be scans; labelling
+   *               a slider result "browser" makes a hypothetical indistinguishable from
+   *               evidence, both to the backend and to anyone auditing where a price came from.
+   */
+  source: "browser" | "synthetic";
   /** Overall plain-language condition band derived from the score. */
   assessment: string;
   /** True when damage is significant/structural — the UI should advise a physical inspection. */
   needs_inspection: boolean;
+
+  // ---- Provenance. Everything below binds this condition to the exact inputs that
+  // produced it. Without these a condition is an anonymous number that reduces a price by
+  // up to 62%, with no way to tell whether it came from these photos, other photos, an
+  // older model, or a hand-written POST. They are what makes a damage finding traceable
+  // back to a specific image + model + detection output.
+
+  /** SHA-256 over the ordered per-photo byte hashes (lib/cv/hashes.photoSetHash). */
+  photo_set_hash: string;
+  /** SHA-256[:12] of the .onnx that produced the detections. */
+  model_version: string;
+  preprocessing_version: string;
+  inference_config_version: string;
+  /**
+   * "complete" — every photo decoded and scanned.
+   * "partial"  — at least one photo failed; the score covers only `photos_assessed` of them.
+   * A partial scan is NOT a clean bill of health, and must never be submitted without the
+   * user explicitly accepting it. This distinction did not previously exist: a scan where
+   * every photo failed to decode was indistinguishable from a scan that found no damage.
+   */
+  status: "complete" | "partial";
 }
+
+/**
+ * Provenance fields for a condition that no detector produced (what-if sliders,
+ * demo-garage fixtures). Spread into such a condition so it is self-describing rather
+ * than masquerading as a scan result.
+ */
+export const SYNTHETIC_PROVENANCE = {
+  source: "synthetic",
+  photo_set_hash: "none",
+  model_version: "none",
+  preprocessing_version: "none",
+  inference_config_version: "none",
+  status: "complete",
+} as const satisfies Partial<ClientCondition>;
 
 /** Overall condition band from the 0-100 score — honest, no false precision. */
 export function assessmentBand(score: number): string {
@@ -224,11 +267,12 @@ async function getOrt(): Promise<OrtModule> {
   // Terser can't minify ORT's import.meta.url wasm glue, so we never let it try.
   // The specifier is a variable (not a literal) so TypeScript doesn't try to resolve
   // the /public path at compile time. The .mjs + .wasm come from scripts/copy-ort.mjs.
-  const ortUrl = "/ort/ort.wasm.bundle.min.mjs";
+  const ortUrl = `${buildVersion.ortDir}ort.wasm.bundle.min.mjs`;
   const mod: any = await import(/* webpackIgnore: true */ ortUrl);
   const ort: OrtModule = mod.default ?? mod;
-  // Serve wasm binaries from our own origin (copied by scripts/copy-ort.mjs).
-  ort.env.wasm.wasmPaths = "/ort/";
+  // Serve wasm binaries from our own origin, under the version-scoped directory that
+  // scripts/copy-ort.mjs wrote — see MODEL_VERSION above for why the path carries a version.
+  ort.env.wasm.wasmPaths = buildVersion.ortDir;
   // Single-threaded: avoids the COOP/COEP cross-origin-isolation headers threads need.
   ort.env.wasm.numThreads = 1;
   ort.env.wasm.proxy = false;
@@ -525,33 +569,22 @@ function sevOfDet(d: Detection): number {
   return Math.min(1, 0.6 * Math.min(1, area / 0.14) + (SEV_CLASS_PRIOR[d.label] ?? 0));
 }
 
-/** Deduction over (label, conf, impact) triples under one band scenario — mirror of
- *  aggregation_agent._deduction_from, keep in lock-step. */
-function deductionFrom(
-  dets: { label: DamageClass; conf: number; impact: number }[],
-  opts: { minConf?: number; inflate?: boolean } = {},
-): number {
-  let kept = 1;
-  let struct = 0;
-  for (const d of dets) {
-    if (opts.minConf !== undefined && d.conf < opts.minConf) continue;
-    let imp = d.impact;
-    if (opts.inflate) {
-      const [p, r] = CLASS_PR[d.label] ?? [0.6, 0.5];
-      imp = Math.min(0.95, imp * Math.min(MISS_FACTOR_CAP, p / r));
-    }
-    kept *= 1 - imp;
-    if (STRUCTURAL.has(d.label)) struct += 1;
-  }
-  let ded = 1 - kept;
-  if (struct >= 2) ded = 1 - Math.pow(1 - ded, 1 + STRUCT_ESC * (struct - 1));
-  return Math.min(MAX_TOTAL_DEDUCTION, ded);
+/** Provenance the aggregator cannot derive from detections alone — supplied by the caller. */
+export interface ConditionBinding {
+  /** lib/cv/hashes.photoSetHash of the exact set these detections came from. */
+  photoSetHash: string;
+  /**
+   * Photos that decoded AND completed inference. Deliberately not `perPhoto.length`:
+   * a photo that threw contributes an empty detection array, so counting the array would
+   * report a failed scan as a clean one.
+   */
+  photosAssessed: number;
+  status: "complete" | "partial";
 }
 
 export function conditionFromDetections(
   perPhoto: Detection[][],
-  /** Capture angle id per photo (guided walk-around); undefined for quick uploads. */
-  angles?: (string | undefined)[],
+  binding: ConditionBinding,
 ): ClientCondition {
   // Aggregate per class, tracking each detection's pixel-graded severity + impact, so the score
   // reflects how bad the damage actually is — not merely how many boxes fired or how big they are.
@@ -562,17 +595,14 @@ export function conditionFromDetections(
     worstSev: number;
   }
   const perClass = new Map<DamageClass, Slot>();
-  const flat: { label: DamageClass; conf: number; impact: number }[] = []; // for the score band
   perPhoto.forEach((dets, photoIdx) => {
     for (const d of dets) {
       if (!(d.label in BASE_SEVERITY) || d.confidence < TILE_CONF) continue;
       const sev = sevOfDet(d);
-      const impact = detImpact(d.label, sev, d.confidence);
-      flat.push({ label: d.label, conf: d.confidence, impact });
       const slot = perClass.get(d.label) ?? { maxConf: 0, photos: new Set<number>(), dets: [], worstSev: 0 };
       slot.maxConf = Math.max(slot.maxConf, d.confidence);
       slot.photos.add(photoIdx);
-      slot.dets.push({ sev, conf: d.confidence, impact });
+      slot.dets.push({ sev, conf: d.confidence, impact: detImpact(d.label, sev, d.confidence) });
       slot.worstSev = Math.max(slot.worstSev, sev);
       perClass.set(d.label, slot);
     }
@@ -593,19 +623,13 @@ export function conditionFromDetections(
     for (const d of s.dets) { keptClass *= 1 - d.impact; keptAll *= 1 - d.impact; }
     if (STRUCTURAL.has(label)) structHits += s.dets.length;
     const classImpact = 1 - keptClass;
-    const photoIdx = [...s.photos].sort((a, b) => a - b);
-    const hitAngles = angles
-      ? [...new Set(photoIdx.map((i) => angles[i]).filter((a): a is string => !!a))]
-      : undefined;
     findings.push({
       damage_type: label,
       instances: s.dets.length,
       max_confidence: Math.round(s.maxConf * 1e3) / 1e3,
-      photos_with_damage: photoIdx,
+      photos_with_damage: [...s.photos].sort((a, b) => a - b),
       value_impact_pct: Math.round(classImpact * 100 * 10) / 10,
       severity: severityOf(label, s.worstSev),
-      ...(hitAngles && hitAngles.length ? { angles_with_damage: hitAngles } : {}),
-      uncertain: s.maxConf < UNCERTAIN_CONF,
     });
   }
 
@@ -615,25 +639,24 @@ export function conditionFromDetections(
   if (structHits >= 2) deduction = 1 - Math.pow(1 - deduction, 1 + STRUCT_ESC * (structHits - 1));
   deduction = Math.min(MAX_TOTAL_DEDUCTION, deduction);
   const score = Math.round(100 * (1 - deduction));
-
-  // Honest score band under the detector's measured error rates (see CLASS_PR). Clamped
-  // to contain the point score so independent rounding can't invert the interval.
-  const hi = Math.round(100 * (1 - deductionFrom(flat, { minConf: UNCERTAIN_CONF })));
-  const lo = Math.round(100 * (1 - deductionFrom(flat, { inflate: true })));
-  const scoreBand: [number, number] = [Math.min(lo, score), Math.max(hi, score)];
-
   const needsInspection = score < 70 || findings.some((f) => f.severity === "severe");
   return {
     cv_available: true,
     condition_score: score,
-    score_band: scoreBand,
     price_adjustment_factor: Math.round((1 - deduction) * 1e4) / 1e4,
     findings,
-    photos_assessed: perPhoto.length,
+    photos_assessed: binding.photosAssessed,
     total_value_impact_pct: Math.round(deduction * 100 * 10) / 10,
     source: "browser",
     assessment: assessmentBand(score),
-    needs_inspection: needsInspection,
+    // A partial scan always warrants inspection: the photos we couldn't read are exactly
+    // the ones we can say nothing about, so we must not imply the car is clean.
+    needs_inspection: needsInspection || binding.status === "partial",
+    photo_set_hash: binding.photoSetHash,
+    model_version: MODEL_VERSION,
+    preprocessing_version: PREPROCESSING_VERSION,
+    inference_config_version: INFERENCE_CONFIG_VERSION,
+    status: binding.status,
   };
 }
 

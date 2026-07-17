@@ -16,7 +16,6 @@ import { ValuationDashboard } from "@/components/valuation-dashboard";
 import { WhatIf } from "@/components/what-if";
 import { DealScore } from "@/components/deal-score";
 import { DamageReport } from "@/components/damage-report";
-import { DamageMap } from "@/components/damage-map";
 import { Comparables } from "@/components/comparables";
 import { MarketAnalytics } from "@/components/market-analytics";
 import { Depreciation } from "@/components/depreciation";
@@ -233,7 +232,6 @@ export default function Home() {
                 <CardBoundary name="deal score"><DealScore result={result} asking={asking} /></CardBoundary>
                 <CardBoundary name="what-if explorer"><WhatIf result={result} online={online} /></CardBoundary>
                 <CardBoundary name="damage assessment"><DamageReport c={result.condition} valuation={result.valuation} /></CardBoundary>
-                <CardBoundary name="damage map"><DamageMap result={result} /></CardBoundary>
                 <CardBoundary name="repair estimate"><RepairEstimateCard result={result} /></CardBoundary>
                 <CardBoundary name="market analytics"><MarketAnalytics result={result} /></CardBoundary>
                 <CardBoundary name="depreciation"><Depreciation result={result} /></CardBoundary>

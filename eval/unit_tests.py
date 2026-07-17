@@ -102,8 +102,36 @@ print("\nCV detector (in-process ONNX):")
 import glob as _glob, base64 as _b64
 os.environ["ENABLE_LOCAL_CV"] = "1"
 from agents import cv_local
-_imgs = sorted(_glob.glob(str(Path(__file__).resolve().parents[1] / "backend-api" / "models" / "*.nonexist")))  # placeholder
 check("best.onnx present + model loads", cv_local.MODEL_PATH.exists() and cv_local.available())
+
+# The class list is asserted against the MODEL, not against another copy of our own
+# constant — the ONNX metadata is the authority on what index means what. A silent
+# reordering here would remap every detection (a dent priced as a missing part) while
+# every threshold and test still looked fine.
+import re as _re, onnxruntime as _ort  # noqa: E402
+_meta = _ort.InferenceSession(str(cv_local.MODEL_PATH), providers=["CPUExecutionProvider"]).get_modelmeta()
+_names = _re.findall(r"(\d+)\s*:\s*'([^']*)'", _meta.custom_metadata_map.get("names", ""))
+_model_classes = [n for _, n in sorted(_names, key=lambda p: int(p[0]))]
+check("code class order matches the ONNX metadata's class order",
+      _model_classes == list(cv_local.CLASSES), f"model={_model_classes} code={list(cv_local.CLASSES)}")
+
+# ---- repair pricing must not key off detector confidence ----
+# Regression for a real defect: _severity returned "severe" at max_confidence >= 0.75, so a
+# 1.6x cost multiplier was driven by how SURE the model was rather than how bad the damage
+# was — and it overrode the pixel-graded severity the CV pipeline had already computed
+# (which deliberately caps scratch/glass_shatter at "moderate"). A crisply-photographed
+# trivial scratch was billed 2.7x a faint one.
+print("\nRepair pricing severity:")
+from agents import repair_cost as _rc  # noqa: E402
+
+check("a high-confidence scratch graded 'minor' by pixels prices as minor",
+      _rc._severity({"max_confidence": 0.92, "value_impact_pct": 1.0, "severity": "minor"}) == "minor")
+check("a low-confidence finding graded 'severe' by pixels still prices as severe",
+      _rc._severity({"max_confidence": 0.31, "value_impact_pct": 1.0, "severity": "severe"}) == "severe")
+check("with no pixel grade, the fallback uses extent and ignores confidence",
+      _rc._severity({"max_confidence": 0.99, "value_impact_pct": 0.5}) == "minor")
+check("an unrecognised severity string falls back rather than being trusted",
+      _rc._severity({"max_confidence": 0.1, "value_impact_pct": 4.5, "severity": "catastrophic"}) == "severe")
 
 # ---- train/serve skew: does inference actually SEE the features it was trained on? ----
 # This caught a real, shipped bug: the trainer lowercased its categoricals while _encode did

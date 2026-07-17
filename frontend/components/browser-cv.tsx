@@ -1,86 +1,34 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScanSearch, Loader2, ShieldCheck, Cpu, AlertTriangle } from "lucide-react";
-import {
-  detectImage, loadImageEl, conditionFromDetections, classColor,
-  type Detection, type ClientCondition,
-} from "@/lib/cv-browser";
+import { classColor } from "@/lib/cv-browser";
+import { isTerminal, type ScanJob } from "@/lib/cv/scan-job";
 import { titleCase } from "@/lib/utils";
 import { Pill } from "./ui";
 
-type Status = "idle" | "loading" | "scanning" | "done" | "error";
-
 /**
- * On-device (WASM) damage scan. Runs the trained YOLOv8 in the browser as soon as
- * photos are added, overlays boxes, and reports a condition score. Photos never
- * leave the device. Emits a ClientCondition upward so the valuation is condition-
- * adjusted (see lib/cv-browser.conditionFromDetections + backend client_condition).
+ * Presentational view of an on-device scan. All state lives in the ScanJob
+ * (lib/cv/scan-job.ts), owned by the form — the component that gates submit must be able
+ * to see whether a scan is finished, which it could not when this status was local here.
+ *
+ * Photos never leave the device: the scan runs in this tab and only the derived
+ * ClientCondition is sent (see lib/api.toBackendRequest).
  */
-export function BrowserCV({
-  photos, angles, onCondition,
-}: {
-  photos: string[];
-  /** Capture angle per photo (guided walk-around) — lets findings say which angle caught them. */
-  angles?: string[];
-  onCondition: (c: ClientCondition | null) => void;
-}) {
-  const [status, setStatus] = useState<Status>("idle");
-  const [dets, setDets] = useState<Detection[][]>([]);
-  const [cond, setCond] = useState<ClientCondition | null>(null);
-  const [errMsg, setErrMsg] = useState<string>("");
-  const runId = useRef(0);
-
-  useEffect(() => {
-    if (photos.length === 0) {
-      setStatus("idle"); setDets([]); setCond(null); onCondition(null);
-      return;
-    }
-    const myRun = ++runId.current;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        setStatus("loading");
-        const perPhoto: Detection[][] = [];
-        setStatus("scanning");
-        for (const src of photos) {
-          if (cancelled || myRun !== runId.current) return;
-          try {
-            const img = await loadImageEl(src);
-            const d = await detectImage(img);
-            perPhoto.push(d);
-          } catch {
-            perPhoto.push([]); // a single bad image shouldn't kill the batch
-          }
-          if (cancelled || myRun !== runId.current) return;
-          setDets([...perPhoto]);
-          // yield to the event loop so the UI stays responsive between images
-          await new Promise((r) => setTimeout(r, 0));
-        }
-        if (cancelled || myRun !== runId.current) return;
-        const c = conditionFromDetections(perPhoto, angles);
-        setCond(c);
-        onCondition(c);
-        setStatus("done");
-      } catch (e: any) {
-        if (cancelled || myRun !== runId.current) return;
-        setErrMsg(e?.message || "the on-device model failed to load");
-        setStatus("error");
-        onCondition(null);
-      }
-    })();
-
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photos]);
-
+export function BrowserCV({ job }: { job: ScanJob }) {
+  const { status, photos, detections, condition: cond, errors } = job;
   if (photos.length === 0) return null;
 
+  const busy = !isTerminal(status);
   const totalFindings = cond?.findings.length ?? 0;
   const score = cond?.condition_score ?? null;
   const scoreTone = score == null ? "muted" : score >= 78 ? "good" : score >= 60 ? "warn" : "bad";
   const sevTone: Record<string, string> = { minor: "text-muted", moderate: "text-warn", severe: "text-bad" };
+
+  const busyLabel =
+    status === "hashing" ? "reading photos…"
+      : status === "loading-model" ? "loading model…"
+        : status === "decoding" ? "decoding…"
+          : "scanning…";
 
   return (
     <motion.div
@@ -95,52 +43,78 @@ export function BrowserCV({
           <div>
             <p className="text-xs font-semibold">On-device damage scan</p>
             <p className="text-[10px] text-muted flex items-center gap-1">
-              <Cpu className="h-2.5 w-2.5" /> runs in your browser · photos never uploaded for scanning
+              <Cpu className="h-2.5 w-2.5" /> runs in your browser · photos never uploaded
             </p>
           </div>
         </div>
-        {status === "scanning" || status === "loading" ? (
-          <Pill tone="info"><Loader2 className="h-3 w-3 animate-spin" /> scanning…</Pill>
-        ) : status === "done" ? (
+        {busy ? (
+          <Pill tone="info" aria-live="polite"><Loader2 className="h-3 w-3 animate-spin" /> {busyLabel}</Pill>
+        ) : status === "complete" ? (
           <Pill tone={scoreTone as any}>
             {score != null && score >= 78 ? <ShieldCheck className="h-3 w-3" /> : null}
             {score}/100 · {totalFindings} issue{totalFindings === 1 ? "" : "s"}
           </Pill>
-        ) : status === "error" ? (
+        ) : status === "partial" ? (
+          <Pill tone="warn"><AlertTriangle className="h-3 w-3" /> partial scan</Pill>
+        ) : status === "failed" ? (
           <Pill tone="warn"><AlertTriangle className="h-3 w-3" /> scan unavailable</Pill>
         ) : null}
       </div>
 
-      {status === "error" && (
+      {/* Failures are surfaced, never swallowed — a photo we couldn't read is not a clean photo. */}
+      {status === "failed" && (
         <p className="mb-2 text-[11px] text-muted">
-          {errMsg}. The valuation will proceed assuming market-typical condition.
+          {errors[0]?.message || "the on-device scan failed"}. No visual assessment is available —
+          continue only if you accept a valuation that assumes market-typical condition.
+        </p>
+      )}
+      {status === "partial" && (
+        <p className="mb-2 text-[11px] text-warn">
+          {errors.length} of {photos.length} photo{photos.length === 1 ? "" : "s"} could not be scanned.
+          The score below covers only the {cond?.photos_assessed} that were.
         </p>
       )}
 
       {/* photo thumbnails with detection overlays */}
       <div className="flex flex-wrap gap-2">
-        {photos.map((src, i) => (
-          <div key={i} className="relative h-24 w-24 overflow-hidden rounded-xl border bg-black/20">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={`scan ${i + 1}`} className="h-full w-full object-cover" />
-            <AnimatePresence>
-              {(dets[i] ?? []).map((d, j) => (
-                <motion.div
-                  key={j} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                  title={`${titleCase(d.label.replace("_", " "))} · ${Math.round(d.confidence * 100)}%`}
-                  className="absolute rounded-[3px]"
-                  style={{
-                    left: `${d.box[0] * 100}%`, top: `${d.box[1] * 100}%`,
-                    width: `${(d.box[2] - d.box[0]) * 100}%`, height: `${(d.box[3] - d.box[1]) * 100}%`,
-                    border: `2px solid ${classColor(d.label)}`,
-                    boxShadow: `0 0 0 1px hsl(var(--bg) / 0.5) inset`,
-                  }}
-                />
-              ))}
-            </AnimatePresence>
-            {(status === "scanning") && !dets[i] && (
+        {photos.map((p, i) => (
+          // Keyed by content hash, not index: with index keys, removing photo 0 renumbers
+          // every photo and React reuses the old node — old boxes over a different car.
+          <div key={`${p.hash || "pending"}-${i}`} className="relative grid h-24 w-24 place-items-center overflow-hidden rounded-xl border bg-black/20">
+            {/*
+              This inner wrapper shrink-wraps the rendered image, so the overlay's
+              percentages are percentages OF THE IMAGE. Previously the boxes were
+              positioned against the square container while the img used `object-cover`,
+              which centre-crops — so every box was offset and mis-scaled for any photo
+              that wasn't exactly 1:1 (i.e. essentially every phone photo).
+            */}
+            <div className="relative inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p.src} alt={`scan ${i + 1}`} className="block max-h-24 max-w-24 object-contain" />
+              <AnimatePresence>
+                {(detections[i] ?? []).map((d, j) => (
+                  <motion.div
+                    key={j} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    title={`${titleCase(d.label.replace("_", " "))} · ${Math.round(d.confidence * 100)}%`}
+                    className="absolute rounded-[3px]"
+                    style={{
+                      left: `${d.box[0] * 100}%`, top: `${d.box[1] * 100}%`,
+                      width: `${(d.box[2] - d.box[0]) * 100}%`, height: `${(d.box[3] - d.box[1]) * 100}%`,
+                      border: `2px solid ${classColor(d.label)}`,
+                      boxShadow: `0 0 0 1px hsl(var(--bg) / 0.5) inset`,
+                    }}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+            {busy && !p.assessed && (
               <div className="absolute inset-0 grid place-items-center bg-black/25">
                 <Loader2 className="h-4 w-4 animate-spin text-white" />
+              </div>
+            )}
+            {isTerminal(status) && !p.assessed && (
+              <div className="absolute inset-0 grid place-items-center bg-black/45" title="could not be scanned">
+                <AlertTriangle className="h-4 w-4 text-warn" />
               </div>
             )}
           </div>
@@ -178,7 +152,9 @@ export function BrowserCV({
           ))}
         </div>
       )}
-      {cond && cond.findings.length === 0 && status === "done" && (
+      {/* Only a COMPLETE scan may claim a clean car. A partial or failed scan saying
+          "no visible damage" would be asserting something it did not look at. */}
+      {cond && cond.findings.length === 0 && status === "complete" && (
         <p className="mt-3 text-[11px] text-good">
           No visible damage detected in these photos — condition looks clean.
           <span className="text-muted"> A photo scan can’t assess frame, mechanical or service history.</span>

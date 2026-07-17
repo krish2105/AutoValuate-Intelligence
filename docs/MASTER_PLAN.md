@@ -51,9 +51,8 @@ exact blocker. Commits are on `feat/hero-scan-loop`.
 | — | Hero: ambient appraisal-loop animation (scan → findings → price) + micro-life, reduced-motion safe | Playwright-verified |
 | B1 (2026-07-16) | Retrained on the cron-grown corpus (671→1302 rows): MAE 33.8k→26.2k AED (−22%), MAPE 24.3→21.9%, calibration error 0.006 — data, not tuning, moved it | `eval/valuation_metrics.json` |
 | E3 visual (2026-07-16) | Depreciation curve: `GET /market/depreciation` (corpus price-vs-age, honest model→make scope fallback) + card with median line and the user's car plotted | 30/30 API + 34/34 E2E |
-| E2 visual (2026-07-16) | Damage map: capture angles now survive guided-capture → findings → backend; top-view dial plots findings per camera position (never claims panels); fixed severity being dropped server-side | 34/34 E2E |
-| CV honesty band (2026-07-17) | Condition score now ships a [worst, best] band from the detector's held-out per-class precision/recall + "verify in person" badges on sub-0.5-conf findings — both CV paths in lock-step, band round-trips validated | 33/33 API, 35/35 E2E |
 | 0.7 fix + A1/A2/A6 pipeline (2026-07-17) | Photo retention rewritten (recursive URL harvester — the fixed-key probe retained ZERO photos across a whole cron run) + `build_uae_cv_set.py` (pseudo-labels + review queue) + Kaggle notebook 08 (UAE fine-tune, dual eval). Workflow pipeline validated green end-to-end; also fixed the missing-pandera install that would have killed Monday's cron | dispatch run logs |
+| Reconcile w/ CV-integrity merge (2026-07-17) | A large CV-audit PR merged to `main` in parallel (one detector, photo-privacy fix, deterministic scan-job, severity-drop fix). Merged it into this branch, took its audited CV architecture, kept B1/E3/UAE pipeline. See retirements below. | 30/30 API, 39/39 E2E, backend suites green |
 
 **⛔ New blocker (2026-07-17):** Apify free tier returns `403 Monthly usage hard limit
 exceeded` — the corpus cannot grow (and photo retention cannot be proven live) until the
@@ -62,6 +61,18 @@ status+body per failure, so the next run diagnoses itself.
 
 **🪦 Retired by evidence (formal):**
 
+- **CV condition score band is retired** (was shipped 2026-07-17, removed same day). It computed
+  a [worst, best] band from `cv_eval_report.json`'s per-class precision/recall — but the merged
+  CV audit (`docs/CV_FINDINGS.md` §4) establishes those numbers are a leaked *val* split measured
+  on `best.pt` not the shipped ONNX, that `glass_shatter`'s reported 0.98 precision is contradicted
+  by the deployment down-weighting, and that `punctured`/`missing_part` have **no** measured
+  precision/recall at all. A user-facing "honesty band" built on numbers the repo documents as
+  deployment-invalid is false precision — the honest move is to not ship it. Reopen only after
+  CV is re-measured on a genuinely held-out test split (audit recommendation #1).
+- **E2 damage map (capture-angle) is retired**: the merged work made the scan an immutable job
+  *derived purely from photo bytes* (`frontend/lib/cv/scan-job.ts`); capture angles are external
+  metadata that can't be threaded through it without breaking that invariant. Low value (a
+  visual) vs high cost (fighting the audited architecture) → dropped.
 - **Workstream C (RAG tuning) is retired**, not deferred: `RESEARCH.md` (D5 follow-up) proves the
   retriever already sits at the mathematical ceiling the corpus permits (same-make P@5 = 0.780,
   the exact data-bound maximum; 23/37 makes have <5 listings). C2–C4/C6 cannot move that number.

@@ -33,17 +33,37 @@ SEVERITY: dict[str, float] = {"minor": 0.6, "moderate": 1.0, "severe": 1.6}
 MAX_INSTANCES_PRICED = 4   # beyond this it's a bodyshop job, not a per-item repair
 
 
+VALID_SEVERITIES = ("minor", "moderate", "severe")
+
+
 def _severity(finding: dict) -> str:
     """
-    Infer severity from the detector's own signals. Confidence is a proxy for how
-    unambiguous (and usually how large) the damage is, and the aggregation agent's
-    value_impact_pct already encodes area/instances. No extra model needed.
+    Severity of a finding, for pricing.
+
+    Uses the severity the detector pipeline already graded from the crop's PIXELS
+    (gradient energy, dark fraction, extent — see cv-browser.severityFromGray /
+    cv_local._pixel_severity). Falls back to value_impact_pct, which encodes area and
+    instance count.
+
+    Confidence is deliberately NOT consulted. It answers "how sure is the model that this
+    is a scratch?", not "how bad is this scratch?" — a crisp, well-lit, trivial scratch
+    scores high confidence and a faint but deep gouge scores low. The previous version
+    returned "severe" at conf >= 0.75, so a 1.6x repair multiplier keyed off model
+    certainty rather than damage. It also overrode the pixel severity that had already
+    been computed: the pipeline deliberately caps scratch/glass_shatter at "moderate"
+    (windshields are cheap; reflections are the FP-prone class), and this silently
+    re-escalated exactly those to "severe". Two definitions of severity disagreeing, with
+    the worse one deciding the money.
     """
-    conf = float(finding.get("max_confidence", 0) or 0)
+    graded = str(finding.get("severity", "") or "").lower()
+    if graded in VALID_SEVERITIES:
+        return graded
+
+    # No pixel grade available (e.g. an older client). Fall back to extent only.
     impact = float(finding.get("value_impact_pct", 0) or 0)
-    if conf >= 0.75 or impact >= 4.0:
+    if impact >= 4.0:
         return "severe"
-    if conf >= 0.5 or impact >= 2.0:
+    if impact >= 2.0:
         return "moderate"
     return "minor"
 

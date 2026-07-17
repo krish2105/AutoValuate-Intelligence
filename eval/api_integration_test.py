@@ -56,33 +56,19 @@ check("5 comparables", len(body["comparables"]) == 5)
 bad = client.post("/valuate", json={"make": "toyota"})
 check("POST /valuate rejects incomplete body (422)", bad.status_code == 422)
 
-# client condition round-trip (WS E2): severity + capture angles must survive into the
-# result — the orchestrator used to silently drop severity, blanking the UI's chips.
-cc = {"cv_available": True, "condition_score": 88, "score_band": [82, 93],
+# client condition round-trip: severity must survive into the result — the orchestrator
+# used to silently drop it, blanking the UI's chips (fixed on main's CV-integrity work).
+cc = {"cv_available": True, "condition_score": 88,
       "price_adjustment_factor": 0.95,
       "photos_assessed": 3, "total_value_impact_pct": 5.0, "source": "browser",
       "findings": [{"damage_type": "dent", "instances": 2, "max_confidence": 0.8,
                     "photos_with_damage": [0, 1], "value_impact_pct": 4.0,
-                    "severity": "moderate", "uncertain": False,
-                    "angles_with_damage": ["rear-left", "left"]},
-                   {"damage_type": "scratch", "instances": 1, "max_confidence": 0.41,
-                    "photos_with_damage": [0], "value_impact_pct": 1.5,
-                    "severity": "minor", "uncertain": True}]}
+                    "severity": "moderate"}]}
 r = client.post("/valuate", json={**VEHICLE, "client_condition": cc})
 check("POST /valuate with client_condition 200", r.status_code == 200)
 cond = r.json().get("condition") or {}
 f0 = cond.get("findings", [{}])[0]
 check("finding severity survives the round-trip", f0.get("severity") == "moderate")
-check("finding capture angles survive the round-trip",
-      f0.get("angles_with_damage") == ["rear-left", "left"])
-check("score band survives the round-trip", cond.get("score_band") == [82, 93])
-check("uncertain flag survives the round-trip",
-      [f.get("uncertain") for f in cond.get("findings", [])] == [False, True])
-bad_cc = {**cc, "findings": [{**cc["findings"][0], "angles_with_damage": ["x" * 30]}]}
-check("oversize angle id rejected (422)",
-      client.post("/valuate", json={**VEHICLE, "client_condition": bad_cc}).status_code == 422)
-check("inverted score band rejected (422)",
-      client.post("/valuate", json={**VEHICLE, "client_condition": {**cc, "score_band": [93, 82]}}).status_code == 422)
 
 # depreciation curve (WS E3): corpus points + median, honest scope fallback
 dep = client.get("/market/depreciation", params={"make": "nissan", "model": "patrol"}).json()

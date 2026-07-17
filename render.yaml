@@ -21,5 +21,3 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      - key: CV_SERVICE_URL
-        sync: false

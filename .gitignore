@@ -32,6 +32,11 @@ yarn-error.log*
 # frontend/public/models/best.onnx IS committed deliberately — see REMAINING_IMPLEMENTATION_PLAN Phase A.)
 frontend/public/ort/
 
+# Derived from the model bytes by scripts/cv-version.mjs on postinstall/predev/prebuild.
+# Deliberately NOT committed: a checked-in copy could disagree with the .onnx actually
+# present, which is precisely the untraceable model-identity problem it exists to solve.
+frontend/lib/cv/model-version.json
+
 # ---- Data (large, downloaded, not versioned) ----
 data/raw/
 # The comparables corpus IS versioned: the Phase-E cron appends to it and commits, so it

@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 import api_keys
-from agents import chat_agent
+from agents import chat_agent, cv_local
 from graph import orchestrator
 
 # ---- limits / config ----
@@ -130,18 +130,6 @@ class ClientFinding(BaseModel):
     photos_with_damage: list[int] = Field(default_factory=list, max_length=MAX_PHOTOS)
     value_impact_pct: float = Field(ge=0.0, le=100.0)
     severity: str | None = Field(default=None, max_length=16)  # minor | moderate | severe
-    # Below the verify-in-person confidence threshold (see aggregation_agent.UNCERTAIN_CONF).
-    uncertain: bool | None = None
-    # Guided walk-around capture angles this damage appeared in ("front", "rear-left", …).
-    # A camera position, not a panel claim; absent for quick uploads (E2 damage map).
-    angles_with_damage: list[str] | None = Field(default=None, max_length=MAX_PHOTOS)
-
-    @field_validator("angles_with_damage")
-    @classmethod
-    def _cap_angle_len(cls, v: list[str] | None) -> list[str] | None:
-        if v and any(len(a) > 16 for a in v):
-            raise ValueError("an angle id exceeds the length limit")
-        return v
 
 
 class ClientCondition(BaseModel):
@@ -152,15 +140,6 @@ class ClientCondition(BaseModel):
     """
     cv_available: bool = True
     condition_score: int = Field(ge=0, le=100)
-    # [worst, best] case score under the detector's measured error rates; must bracket sanely.
-    score_band: list[int] | None = Field(default=None, min_length=2, max_length=2)
-
-    @field_validator("score_band")
-    @classmethod
-    def _band_ordered(cls, v: list[int] | None) -> list[int] | None:
-        if v is not None and not (0 <= v[0] <= v[1] <= 100):
-            raise ValueError("score_band must be [lo, hi] within 0..100")
-        return v
     # Never boosts price; floored at 0.38 — a photo-only scan can't justify wiping out
     # >62% of value (mirrors aggregation_agent.MAX_TOTAL_DEDUCTION).
     price_adjustment_factor: float = Field(ge=0.38, le=1.0)
@@ -210,7 +189,11 @@ def root() -> dict:
         "service": "AutoValuate Intelligence API",
         "status": "ok",
         "llm_provider_configured": orchestrator._LLM.has_live_provider,
-        "cv_service_configured": bool(os.environ.get("CV_SERVICE_URL", "").strip()),
+        # Whether the SERVER-side detector can run. Production scans happen in the browser,
+        # so this being false says nothing about whether users get a damage assessment.
+        # (Replaces `cv_service_configured`, which reported an env var pointing at a remote
+        # Space that has been removed — see cv-service/README.md.)
+        "cv_server_side_enabled": cv_local.available(),
         "endpoints": ["/health", "/ready", "/valuate", "/valuate/stream", "/estimate",
                       "/estimate/batch", "/chat", "/market/depreciation",
                       "/v1/*  (stable aliases)"],

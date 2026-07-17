@@ -53,8 +53,7 @@ function AngleDial({ deg, done }: { deg: number; done: boolean }) {
 export function GuidedCapture({
   onPhotos, max = 8,
 }: {
-  /** `angles[i]` is the ANGLES id the photo at `photos[i]` was captured from. */
-  onPhotos: (photos: string[], angles: string[]) => void;
+  onPhotos: (photos: string[]) => void;
   max?: number;
 }) {
   const [slots, setSlots] = useState<(string | null)[]>(() => ANGLES.map(() => null));
@@ -66,10 +65,7 @@ export function GuidedCapture({
 
   function push(next: (string | null)[]) {
     setSlots(next);
-    // Keep the photo→angle pairing intact past the empty-slot compaction — the damage
-    // map (E2) can only say "the rear-left photo caught a dent" if this survives.
-    const pairs = next.flatMap((src, i) => (src ? [{ src, angle: ANGLES[i].id }] : [])).slice(0, max);
-    onPhotos(pairs.map((p) => p.src), pairs.map((p) => p.angle));
+    onPhotos(next.filter(Boolean).slice(0, max) as string[]);
   }
 
   function pick(i: number) {

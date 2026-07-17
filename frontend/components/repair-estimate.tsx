@@ -13,9 +13,25 @@ const BASE: Record<string, [number, number]> = {
 };
 const SEV: Record<string, number> = { minor: 0.6, moderate: 1.0, severe: 1.6 };
 
-function severity(conf: number, impact: number): "minor" | "moderate" | "severe" {
-  if (conf >= 0.75 || impact >= 4) return "severe";
-  if (conf >= 0.5 || impact >= 2) return "moderate";
+const SEVERITIES = ["minor", "moderate", "severe"] as const;
+type Sev = (typeof SEVERITIES)[number];
+
+/**
+ * Mirror of backend-api/agents/repair_cost._severity — keep the two in lock-step.
+ *
+ * Prefers the pixel-graded severity the scan already computed; falls back to extent.
+ * Confidence is deliberately not consulted: it measures the model's certainty that a
+ * class is present, not how bad the damage is. This previously read
+ * `conf >= 0.75 -> severe`, so repair prices keyed off model certainty — and it silently
+ * overrode the pixel severity the CV pipeline had computed (which caps scratch and
+ * glass_shatter at "moderate" on purpose).
+ */
+function severity(f: { severity?: string; value_impact_pct?: number }): Sev {
+  const graded = String(f.severity ?? "").toLowerCase();
+  if ((SEVERITIES as readonly string[]).includes(graded)) return graded as Sev;
+  const impact = f.value_impact_pct || 0;
+  if (impact >= 4) return "severe";
+  if (impact >= 2) return "moderate";
   return "minor";
 }
 
@@ -27,7 +43,7 @@ function deriveRepair(result: ValuationResult) {
     const band = BASE[String(f.damage_type).toLowerCase()];
     if (!band) return null;
     const n = Math.max(1, Math.min(f.instances || 1, 4));
-    const sev = severity(f.max_confidence || 0, f.value_impact_pct || 0);
+    const sev = severity(f);
     const l = Math.round(band[0] * SEV[sev] * n), h = Math.round(band[1] * SEV[sev] * n);
     lo += l; hi += h;
     return { damage_type: f.damage_type, instances: n, severity: sev, low_aed: l, high_aed: h };

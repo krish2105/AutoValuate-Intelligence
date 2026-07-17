@@ -84,25 +84,30 @@ def _condition_from_client(client: dict) -> dict:
             "max_confidence": round(float(f.get("max_confidence", 0.0)), 3),
             "photos_with_damage": list(f.get("photos_with_damage", [])),
             "value_impact_pct": round(float(f.get("value_impact_pct", 0.0)), 1),
-            # already validated by ClientFinding; dropping them here silently blanked the
-            # severity chips (and would blank the E2 damage map) on every live-backend run
-            **({"severity": f["severity"]} if f.get("severity") else {}),
-            **({"uncertain": bool(f["uncertain"])} if f.get("uncertain") is not None else {}),
-            **({"angles_with_damage": list(f["angles_with_damage"])}
-               if f.get("angles_with_damage") else {}),
+            # Carried through, not dropped. The browser graded this from the crop's actual
+            # pixels (gradient energy, dark fraction, extent). Dropping it here left
+            # repair_cost with nothing to price on but detector confidence — so a scratch
+            # the model was merely *sure* about got billed as severe. See repair_cost._severity.
+            "severity": f.get("severity"),
         }
         for f in client.get("findings", [])
     ]
-    band = client.get("score_band")
     return {
         "cv_available": True,
         "condition_score": int(client.get("condition_score", 100)),
-        **({"score_band": [int(band[0]), int(band[1])]} if band else {}),
         "price_adjustment_factor": round(float(client.get("price_adjustment_factor", 1.0)), 4),
         "findings": findings,
         "photos_assessed": int(client.get("photos_assessed", 0)),
         "total_value_impact_pct": round(float(client.get("total_value_impact_pct", 0.0)), 1),
         "source": "browser",
+        # Provenance: which photos, which weights, which config produced this. Lets a
+        # damage finding (and the price it moved) be traced back to a specific image +
+        # model + detection output instead of being an anonymous multiplier.
+        "photo_set_hash": client.get("photo_set_hash"),
+        "model_version": client.get("model_version"),
+        "preprocessing_version": client.get("preprocessing_version"),
+        "inference_config_version": client.get("inference_config_version"),
+        "scan_status": client.get("status"),
     }
 
 
