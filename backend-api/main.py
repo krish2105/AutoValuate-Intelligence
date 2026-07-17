@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import time
 from collections import defaultdict, deque
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -219,7 +219,8 @@ def root() -> dict:
         # Space that has been removed — see cv-service/README.md.)
         "cv_server_side_enabled": cv_local.available(),
         "endpoints": ["/health", "/ready", "/valuate", "/valuate/stream", "/estimate",
-                      "/estimate/batch", "/chat", "/v1/*  (stable aliases)"],
+                      "/estimate/batch", "/chat", "/market/depreciation",
+                      "/v1/*  (stable aliases)"],
     }
 
 
@@ -290,6 +291,64 @@ async def estimate_batch(req: BatchEstimateRequest) -> dict:
                 results.append({"ok": False, "error": "estimate failed for this vehicle"})
         return {"ok": True, "count": len(results), "results": results}
     return await run_in_threadpool(run_all)
+
+
+# ---- market depreciation curve (WS E3 visual) ----------------------------------------
+# The corpus finally has enough rows (1306) to show price-vs-age per model instead of a
+# generic rule of thumb. Reads the already-loaded comparables index — no model, no LLM,
+# no extra RAM — so this endpoint is cheap enough to leave un-rate-limited like /health.
+DEPRECIATION_MIN_POINTS = 8    # below this, model scope is too sparse — widen to the make
+DEPRECIATION_MAX_POINTS = 300  # payload cap: evenly thinned for display, median unaffected
+
+
+@app.get("/market/depreciation")
+def market_depreciation(
+    make: str = Query(min_length=1, max_length=60),
+    model: str = Query(default="", max_length=60),
+) -> dict:
+    """
+    Price-vs-age points from the live corpus for one make/model, plus a median-by-age
+    line. Scope degrades honestly: exact model if it has enough listings, else the whole
+    make — the response names which, and the UI must say so. Prices are asking prices of
+    current listings, never sale prices; that caveat belongs in the UI too.
+    """
+    from statistics import median as _median
+
+    from models import valuation_model as _vm
+    ref_year = _vm._load().get("reference_year", 2026)
+    mk, md = make.strip().lower(), model.strip().lower()
+
+    def usable(r: dict) -> bool:
+        p, y = r.get("price"), r.get("year")
+        # same sanity bounds the training pipeline applies (train_valuation.load)
+        return bool(p and 1000 < p < 2_000_000 and y and 1980 <= int(y) <= ref_year)
+
+    rows = orchestrator._COMPARABLES.store.records
+    same_make = [r for r in rows if usable(r) and str(r.get("make", "")).lower() == mk]
+    same_model = [r for r in same_make if str(r.get("model", "")).lower() == md] if md else []
+    scope, pool = (("model", same_model) if len(same_model) >= DEPRECIATION_MIN_POINTS
+                   else ("make", same_make))
+
+    pts = sorted(
+        ({"age": max(0, ref_year - int(r["year"])), "price": float(r["price"]),
+          "km": float(r.get("kilometers") or 0), "year": int(r["year"])} for r in pool),
+        key=lambda p: (p["age"], p["price"]),
+    )
+
+    # median per age from the FULL pool (display thinning must not move the statistics);
+    # single-listing ages are dropped — one asking price is an anecdote, not a median.
+    by_age: dict[int, list[float]] = defaultdict(list)
+    for p in pts:
+        by_age[p["age"]].append(p["price"])
+    med = [{"age": a, "price": round(_median(v), 0), "n": len(v)}
+           for a, v in sorted(by_age.items()) if len(v) >= 2]
+
+    if len(pts) > DEPRECIATION_MAX_POINTS:
+        step = len(pts) / DEPRECIATION_MAX_POINTS
+        pts = [pts[int(i * step)] for i in range(DEPRECIATION_MAX_POINTS)]
+
+    return {"ok": True, "scope": scope, "make": mk, "model": md, "n": len(pool),
+            "reference_year": ref_year, "points": pts, "median": med}
 
 
 class ChatMessage(BaseModel):
@@ -380,5 +439,6 @@ for _path, _fn, _methods in (
     ("/estimate", estimate, ["POST"]),
     ("/estimate/batch", estimate_batch, ["POST"]),
     ("/chat", chat, ["POST"]),
+    ("/market/depreciation", market_depreciation, ["GET"]),
 ):
     app.add_api_route(f"/v1{_path}", _fn, methods=_methods)

@@ -78,6 +78,18 @@ never served.
 { "question": "Is AED 120,000 a good deal?", "context": { "valuation": { ... } }, "history": [] }
 ```
 
+### `GET /v1/market/depreciation?make=<make>&model=<model>`
+Price-vs-age points from the live corpus for one make/model, plus a median-by-age line
+(ages with a single listing get no median point). Scopes to the exact model when it has
+enough listings and widens to the whole make otherwise — `scope` says which. Prices are
+asking prices of live listings, never sale prices. Unmetered (no model inference runs).
+
+```json
+{ "ok": true, "scope": "model", "n": 38, "reference_year": 2026,
+  "points": [{ "age": 2, "price": 189000, "km": 41000, "year": 2024 }],
+  "median": [{ "age": 2, "price": 185000, "n": 6 }] }
+```
+
 ## Errors
 
 `422` invalid request (field-level detail) · `429` rate/quota exceeded · `500`

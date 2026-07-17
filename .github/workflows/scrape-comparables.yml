@@ -26,7 +26,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install deps
-        run: pip install --quiet pandas numpy requests joblib scikit-learn fastembed rank-bm25
+        # pandera: validate_corpus.py imports it (WS A4) — its absence broke a whole run
+        run: pip install --quiet pandas numpy requests joblib scikit-learn fastembed rank-bm25 pandera
 
       - name: Scrape fresh listings
         env:

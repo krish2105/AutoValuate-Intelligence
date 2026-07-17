@@ -86,6 +86,13 @@ jobs:
       - name: Cross-language post-processing conformance
         run: python eval/cv_conformance.py
 
+      # playwright.config's webServer runs `next start`, which needs a production build —
+      # without this the CV e2e fails at "Could not find a production build in '.next'"
+      # before a single test runs (frontend-ci's build-and-test builds; this gate didn't).
+      - name: Build frontend (prebuild stages the ORT wasm the scan loads)
+        working-directory: frontend
+        run: npm run build
+
       - name: Install Playwright browser
         working-directory: frontend
         run: npx playwright install --with-deps chromium

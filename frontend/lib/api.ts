@@ -235,6 +235,41 @@ export async function estimateBatch(
   }
 }
 
+export interface DepreciationPoint { age: number; price: number; km: number; year: number }
+export interface DepreciationData {
+  scope: "model" | "make";
+  make: string;
+  model: string;
+  n: number;
+  reference_year: number;
+  points: DepreciationPoint[];
+  median: { age: number; price: number; n: number }[];
+}
+
+/**
+ * Corpus price-vs-age points for the depreciation curve (WS E3). The backend scopes to
+ * the exact model when it has enough listings and widens to the make otherwise — the
+ * `scope` field says which, and the card must surface it. Returns null on any failure
+ * (cold backend, older deployed API) so the card simply doesn't render.
+ */
+export async function fetchDepreciation(
+  make: string,
+  model: string,
+  timeoutMs = 15_000,
+): Promise<DepreciationData | null> {
+  try {
+    const qs = `make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`;
+    const res = await fetch(`${API}/market/depreciation?${qs}`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.ok && Array.isArray(j.points) ? (j as DepreciationData) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface AssistantReply {
   answer: string;
   provider: string;
