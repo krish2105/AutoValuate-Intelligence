@@ -50,6 +50,11 @@ export function Depreciation({ result }: { result: ValuationResult }) {
   const scopeLabel = data.scope === "model"
     ? `${cap(data.make)} ${cap(data.model)}`
     : `${cap(data.make)} (all models)`;
+  // The backend caps the plotted points (DEPRECIATION_MAX_POINTS); when the pool is larger
+  // than that, the dots are an evenly-thinned sample. The median line is still over the full
+  // pool, so say "sampled" honestly rather than implying every listing is drawn.
+  const shown = data.points.length;
+  const thinned = data.n > shown;
 
   return (
     <SectionCard
@@ -59,12 +64,14 @@ export function Depreciation({ result }: { result: ValuationResult }) {
       right={<Pill tone="info">{data.n} live listings</Pill>}
     >
       <p className="mb-1 text-xs font-medium text-muted">
-        Price vs age — each dot is a live listing, the line is the median, your car in{" "}
+        Price vs age — {thinned ? `each dot is one of ${shown} sampled listings` : "each dot is a live listing"},
+        the line is the median over all {data.n}, your car in{" "}
         <span className="text-accent">amber</span>
       </p>
       <p className="sr-only">
-        Scatter chart of {data.n} live {scopeLabel} listings by price and age, with a median-by-age
-        line. Your {userAge}-year-old car is plotted at its estimated value of {aed(mid)}.
+        Scatter chart of {thinned ? `${shown} listings sampled from ${data.n}` : `${data.n}`} live {scopeLabel} listings
+        by price and age, with a median-by-age line over the full set. Your {userAge}-year-old car is
+        plotted at its estimated value of {aed(mid)}.
       </p>
       <div className="h-60 w-full" aria-hidden>
         <ResponsiveContainer width="100%" height="100%">

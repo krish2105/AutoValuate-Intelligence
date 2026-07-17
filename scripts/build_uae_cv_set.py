@@ -75,7 +75,11 @@ def main() -> int:
         return 1
 
     df = pd.read_csv(CSV)
-    df["photo_urls"] = df.get("photo_urls", "").fillna("").astype(str)
+    # df.get() returns a bare "" (not a Series) when the column is absent, and "".fillna
+    # would then crash — so materialise the column first for a corpus predating photo retention.
+    if "photo_urls" not in df.columns:
+        df["photo_urls"] = ""
+    df["photo_urls"] = df["photo_urls"].fillna("").astype(str)
     rows = df[df["photo_urls"].str.len() > 0]
     if rows.empty:
         print("corpus has no photo_urls yet — run the scrape cron (fixed harvester) first; "

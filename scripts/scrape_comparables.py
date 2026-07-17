@@ -201,7 +201,10 @@ def main() -> int:
     n_photos = int((out["photo_urls"].fillna("").astype(str).str.len() > 0).sum())
     print(f"added {len(out) - len(existing)} new listings -> {len(out)} total "
           f"({n_photos} rows carry photo URLs)")
-    if not df["photo_urls"].astype(bool).any():
+    # length-based, matching the n_photos check above: astype(bool) treats a stray NaN as
+    # truthy, which would silently suppress this "zero photos" warning — the exact failure
+    # this warning exists to catch.
+    if not (df["photo_urls"].fillna("").astype(str).str.len() > 0).any():
         print("::warning::this run retained ZERO photos — check the actor's output schema")
     return 0
 

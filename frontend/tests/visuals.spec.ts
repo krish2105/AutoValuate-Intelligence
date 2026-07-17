@@ -138,6 +138,16 @@ test("E3: a thin model widens to the make and says so instead of pretending", as
   await expect(page.getByText(/too few corolla listings for a model-level curve/i)).toBeVisible();
 });
 
+test("E3: when the backend thins the points, the caption says 'sampled' not 'every listing'", async ({ page }) => {
+  // n (900) far exceeds the plotted points (24): the dots are a sample, and the copy must say so.
+  const dep = { ...depPayload("model"), n: 900 };
+  await mockAndValue(page, undefined, dep);
+  await expect(page.getByText(/900 live listings/)).toBeVisible();               // pill = full pool
+  await expect(page.getByText(/each dot is one of 24 sampled listings/i)).toBeVisible();
+  await expect(page.getByText(/median over all 900/i)).toBeVisible();
+  await expect(page.getByText(/24 listings sampled from 900/i)).toBeAttached();  // sr-only
+});
+
 test("E3: card is simply absent when the endpoint is unavailable", async ({ page }) => {
   await mockAndValue(page, undefined, null);
   await expect(page.getByText(/comparable listings/i).first()).toBeVisible();
