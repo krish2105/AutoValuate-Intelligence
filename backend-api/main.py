@@ -116,10 +116,12 @@ async def _rate_limit(request: Request, call_next):
     return await call_next(request)
 
 
-DAMAGE_CLASSES = {
-    "dent", "scratch", "crack", "glass_shatter",
-    "lamp_broken", "tire_flat", "punctured", "missing_part",
-}
+# The one damage-class list, sourced from the detector — not a second hand-copied constant.
+# cv_local.CLASSES is asserted equal to the ONNX model's own metadata by eval/unit_tests.py
+# ("code class order matches the ONNX metadata's class order"), which runs in CI, so this can
+# never silently drift from the artifact. (Reading the metadata directly here would mean loading
+# the 44 MB ONNX into the API process, which the Render free tier cannot afford.)
+DAMAGE_CLASSES = frozenset(cv_local.CLASSES)
 
 
 class ClientFinding(BaseModel):
@@ -130,6 +132,16 @@ class ClientFinding(BaseModel):
     photos_with_damage: list[int] = Field(default_factory=list, max_length=MAX_PHOTOS)
     value_impact_pct: float = Field(ge=0.0, le=100.0)
     severity: str | None = Field(default=None, max_length=16)  # minor | moderate | severe
+
+    @field_validator("damage_type")
+    @classmethod
+    def _known_class(cls, v: str) -> str:
+        # Was free text (max_length=40) validated nowhere; an unknown class was then silently
+        # dropped in pricing. Reject it at the boundary instead — a finding for a class this
+        # model cannot produce is a malformed request, not a zero-impact one.
+        if v not in DAMAGE_CLASSES:
+            raise ValueError(f"unknown damage_type {v!r}; must be one of {sorted(DAMAGE_CLASSES)}")
+        return v
 
 
 class ClientCondition(BaseModel):

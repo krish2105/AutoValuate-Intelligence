@@ -46,9 +46,36 @@ def _session():
     return ort.InferenceSession(str(MODEL_PATH), providers=["CPUExecutionProvider"])
 
 
+# SSRF guard: a "photo" is client-supplied, so fetching an arbitrary http(s) URL here would let
+# a caller make the server request internal/cloud-metadata endpoints (169.254.169.254, etc.).
+# The production path sends base64/data URIs (photos never leave the browser), so URL fetching
+# is default-DENIED; set CV_IMAGE_HOST_ALLOWLIST (comma-separated hostnames) to opt specific
+# hosts back in. Private, loopback, link-local and reserved IPs are never allowed.
+def _url_host_allowed(url: str) -> bool:
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+    allow = {h.strip().lower() for h in os.environ.get("CV_IMAGE_HOST_ALLOWLIST", "").split(",") if h.strip()}
+    if not allow:
+        return False
+    host = (urlparse(url).hostname or "").lower()
+    if host not in allow:
+        return False
+    try:  # the allow-listed name must not resolve to a private/reserved address
+        for info in socket.getaddrinfo(host, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+    except (socket.gaierror, ValueError):
+        return False
+    return True
+
+
 def _load_image(spec: str) -> np.ndarray:
     from PIL import Image
     if spec.startswith("http://") or spec.startswith("https://"):
+        if not _url_host_allowed(spec):
+            raise ValueError("image URLs are not permitted (SSRF guard); send base64/data URI")
         import httpx
         data = httpx.get(spec, timeout=20).content
     else:

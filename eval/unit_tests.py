@@ -276,5 +276,45 @@ check("a genuine condition DOES still deflate the price",
       orchestrator.estimate({**_veh_payload, "client_condition": _cond()})["valuation"]["price_mid_aed"]
       < _est_clean["valuation"]["price_mid_aed"])
 
+# ---- damage_type validated against the model's class list (P2) ----
+print("\ndamage_type validation:")
+import main as api_main  # noqa: E402
+from agents import cv_local  # noqa: E402
+
+
+def _finding_ok(dtype) -> bool:
+    try:
+        api_main.ClientFinding(damage_type=dtype, instances=1, max_confidence=0.5, value_impact_pct=1.0)
+        return True
+    except Exception:
+        return False
+
+
+check("the API class list is the detector's list, not a second hand-copied constant",
+      api_main.DAMAGE_CLASSES == frozenset(cv_local.CLASSES))
+check("a valid damage_type ('dent') is accepted", _finding_ok("dent"))
+check("an unknown damage_type ('frame_bent') is REJECTED, not silently zero-impacted",
+      not _finding_ok("frame_bent"))
+check("a garbage damage_type is REJECTED", not _finding_ok("'; DROP TABLE"))
+
+# ---- SSRF guard on server-side image loading (P2) ----
+print("\nSSRF guard (cv_local._load_image):")
+os.environ.pop("CV_IMAGE_HOST_ALLOWLIST", None)
+
+
+def _load_raises(spec) -> bool:
+    try:
+        cv_local._load_image(spec)
+        return False
+    except Exception:
+        return True
+
+
+check("an http(s) image URL is denied by default (no allowlist)",
+      cv_local._url_host_allowed("http://example.com/x.jpg") is False)
+check("the cloud-metadata endpoint is denied", _load_raises("http://169.254.169.254/latest/meta-data/"))
+check("an arbitrary external URL is denied", _load_raises("https://evil.example/x.jpg"))
+check("a localhost URL is denied", _load_raises("http://127.0.0.1:8080/x"))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
