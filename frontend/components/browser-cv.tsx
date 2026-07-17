@@ -80,7 +80,7 @@ export function BrowserCV({ job }: { job: ScanJob }) {
         {photos.map((p, i) => (
           // Keyed by content hash, not index: with index keys, removing photo 0 renumbers
           // every photo and React reuses the old node — old boxes over a different car.
-          <div key={`${p.hash || "pending"}-${i}`} className="relative grid h-24 w-24 place-items-center overflow-hidden rounded-xl border bg-black/20">
+          <div key={`${p.hash || "pending"}-${i}`} className="relative inline-flex min-h-24 min-w-24 overflow-hidden rounded-xl border bg-black/20">
             {/*
               This inner wrapper shrink-wraps the rendered image, so the overlay's
               percentages are percentages OF THE IMAGE. Previously the boxes were
@@ -90,7 +90,11 @@ export function BrowserCV({ job }: { job: ScanJob }) {
             */}
             <div className="relative inline-block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.src} alt={`scan ${i + 1}`} className="block max-h-24 max-w-24 object-contain" />
+              {/* Large enough that the detection overlays are actually legible. Height-capped and
+                  width-auto so the box hugs the photo's real aspect ratio (no grey letterboxing);
+                  max-w-full keeps a very wide panorama inside the card. The overlays below are
+                  percentages OF THIS IMAGE, so they scale exactly as the image grows. */}
+              <img src={p.src} alt={`scan ${i + 1}`} className="block h-auto max-h-56 w-auto max-w-full object-contain sm:max-h-72" />
               <AnimatePresence>
                 {(detections[i] ?? []).map((d, j) => (
                   <motion.div
