@@ -52,6 +52,13 @@ exact blocker. Commits are on `feat/hero-scan-loop`.
 | B1 (2026-07-16) | Retrained on the cron-grown corpus (671→1302 rows): MAE 33.8k→26.2k AED (−22%), MAPE 24.3→21.9%, calibration error 0.006 — data, not tuning, moved it | `eval/valuation_metrics.json` |
 | E3 visual (2026-07-16) | Depreciation curve: `GET /market/depreciation` (corpus price-vs-age, honest model→make scope fallback) + card with median line and the user's car plotted | 30/30 API + 34/34 E2E |
 | E2 visual (2026-07-16) | Damage map: capture angles now survive guided-capture → findings → backend; top-view dial plots findings per camera position (never claims panels); fixed severity being dropped server-side | 34/34 E2E |
+| CV honesty band (2026-07-17) | Condition score now ships a [worst, best] band from the detector's held-out per-class precision/recall + "verify in person" badges on sub-0.5-conf findings — both CV paths in lock-step, band round-trips validated | 33/33 API, 35/35 E2E |
+| 0.7 fix + A1/A2/A6 pipeline (2026-07-17) | Photo retention rewritten (recursive URL harvester — the fixed-key probe retained ZERO photos across a whole cron run) + `build_uae_cv_set.py` (pseudo-labels + review queue) + Kaggle notebook 08 (UAE fine-tune, dual eval). Workflow pipeline validated green end-to-end; also fixed the missing-pandera install that would have killed Monday's cron | dispatch run logs |
+
+**⛔ New blocker (2026-07-17):** Apify free tier returns `403 Monthly usage hard limit
+exceeded` — the corpus cannot grow (and photo retention cannot be proven live) until the
+monthly quota resets (~Aug 1) or the token/plan changes. The scrape workflow now logs
+status+body per failure, so the next run diagnoses itself.
 
 **🪦 Retired by evidence (formal):**
 
