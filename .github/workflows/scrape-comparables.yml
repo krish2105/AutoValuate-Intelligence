@@ -47,11 +47,14 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- data/processed/comparables.csv backend-api/models/comparables_index.joblib; then
-            echo "no new listings — nothing to commit"
+          # price_history.csv accrues on EVERY successful scrape (re-sightings), even when no
+          # new listings joined the corpus — so it is part of both the diff check and the add.
+          git add -N data/processed/price_history.csv 2>/dev/null || true
+          if git diff --quiet -- data/processed/comparables.csv backend-api/models/comparables_index.joblib data/processed/price_history.csv; then
+            echo "no new listings and no new sightings — nothing to commit"
             exit 0
           fi
           rows=$(($(wc -l < data/processed/comparables.csv) - 1))
-          git add data/processed/comparables.csv backend-api/models/comparables_index.joblib eval/comparables_eval.json
+          git add data/processed/comparables.csv data/processed/price_history.csv backend-api/models/comparables_index.joblib eval/comparables_eval.json
           git commit -m "data: grow comparables corpus to ${rows} listings (automated)"
           git push
