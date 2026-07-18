@@ -143,6 +143,12 @@ def _assessment_band(score: int, has_moderate_plus: bool = False) -> str:
     return "Severe — major / likely structural damage"
 
 
+# Public name: the human-graded benchmark (eval/condition_benchmark.py) maps human 0-100
+# grades onto the same bands users see. Naming the dependency publicly keeps the benchmark
+# from breaking on an internal refactor — and keeps it honest: one band function, not two.
+assessment_band = _assessment_band
+
+
 def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     """
     Server-side CV aggregation. Only ever runs when a request supplies photos AND no

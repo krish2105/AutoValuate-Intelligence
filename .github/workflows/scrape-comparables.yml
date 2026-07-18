@@ -56,5 +56,11 @@ jobs:
           fi
           rows=$(($(wc -l < data/processed/comparables.csv) - 1))
           git add data/processed/comparables.csv data/processed/price_history.csv backend-api/models/comparables_index.joblib eval/comparables_eval.json
-          git commit -m "data: grow comparables corpus to ${rows} listings (automated)"
+          # honest history: a snapshots-only run must not claim the corpus grew
+          if git diff --cached --quiet -- data/processed/comparables.csv; then
+            snaps=$(($(wc -l < data/processed/price_history.csv) - 1))
+            git commit -m "data: accrue price snapshots to ${snaps} sightings, corpus unchanged at ${rows} (automated)"
+          else
+            git commit -m "data: grow comparables corpus to ${rows} listings (automated)"
+          fi
           git push

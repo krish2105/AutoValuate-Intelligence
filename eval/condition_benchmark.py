@@ -113,7 +113,7 @@ def main() -> int:
             "id": cid,
             "human_grade": float(c["human_grade"]),
             "model_score": int(cond["condition_score"]),
-            "human_band": aggregation_agent._assessment_band(int(round(float(c["human_grade"])))),
+            "human_band": aggregation_agent.assessment_band(int(round(float(c["human_grade"])))),
             "model_band": cond.get("assessment", ""),
             "findings": [f["damage_type"] for f in cond.get("findings", [])],
             "photos": len(photos),

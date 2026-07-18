@@ -155,10 +155,16 @@ def append_price_history(sightings: list[dict], corpus: pd.DataFrame) -> tuple[i
         # Seed: the corpus row is each listing's earliest known sighting. Rows predating the
         # scraped_at column fall back to createdAt; both empty -> unknown start, still seeded
         # so a later disappearance ("sold-proxy") is detectable.
+        def col(name: str) -> pd.Series:
+            # df.get() with a Series default returns an EMPTY, index-misaligned Series when
+            # the column is absent — materialise one on the corpus's own index instead.
+            s = corpus[name] if name in corpus.columns else pd.Series("", index=corpus.index)
+            return s.fillna("").astype(str)
+
+        scraped, created = col("scraped_at"), col("createdAt")
         hist = pd.DataFrame({
             "listing_id": corpus["listing_id"].astype(str),
-            "scraped_at": corpus.get("scraped_at", pd.Series(dtype=str)).fillna("")
-                          .replace("", pd.NA).fillna(corpus.get("createdAt", pd.Series(dtype=str)).fillna("")),
+            "scraped_at": scraped.where(scraped.str.len() > 0, created),
             "price": corpus["price"],
         })
         print(f"seeded price history with {len(hist)} baseline snapshots from the corpus")
