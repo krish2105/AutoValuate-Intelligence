@@ -1,0 +1,18 @@
+{
+  "_instructions": [
+    "Grade each car 0-100 (the scale the product shows) BEFORE seeing the model's score.",
+    "Photos live in data/raw/condition_bench/<id>/ (gitignored). 3-8 photos per car,",
+    "phone-quality, walk-around style \u2014 the distribution real users produce.",
+    "human_grade anchors: 95+ showroom-clean \u00b7 80s minor cosmetic \u00b7 60s notable damage",
+    "\u00b7 40s significant damage \u00b7 below 40 severe/structural.",
+    "At least 10 cars before quoting the agreement as a result."
+  ],
+  "cases": [
+    {
+      "id": "example-01",
+      "human_grade": 85,
+      "grader": "your-name",
+      "notes": "one door ding, otherwise clean \u2014 replace with a real car and delete this"
+    }
+  ]
+}
