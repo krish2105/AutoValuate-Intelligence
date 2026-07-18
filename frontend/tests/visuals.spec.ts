@@ -154,6 +154,39 @@ test("E3: card is simply absent when the endpoint is unavailable", async ({ page
   await expect(page.getByText(/depreciation curve/i)).toHaveCount(0);
 });
 
+test("listing pack: clean-rounded ask at the top of the fair range, honest no-scan line", async ({ page }) => {
+  await mockAndValue(page);
+  const { price_mid_aed: mid, price_high_aed: high } = VALUATION.valuation;
+  // same formula as the component: floor(high/500)*500, never below mid
+  const ask = Math.max(Math.round(mid), Math.floor(high / 500) * 500);
+  await expect(page.getByText(/listing pack/i).first()).toBeVisible();
+  await expect(page.getByText(/recommended listing price/i)).toBeVisible();
+  await expect(page.getByText(`AED ${ask.toLocaleString("en-AE")}`).first()).toBeVisible();
+  // fixture has no scan — the listing must say so rather than imply an inspection
+  await expect(page.getByText(/no photo scan run — viewing and inspection welcome/i)).toBeVisible();
+  await expect(page.getByText(/not a certified appraisal/i).first()).toBeVisible();
+});
+
+test("listing pack: scan damage is disclosed in the listing text, not hidden", async ({ page }) => {
+  const withDamage = {
+    ...VALUATION,
+    condition: {
+      ...VALUATION.condition,
+      cv_available: true,
+      condition_score: 78,
+      findings: [
+        { damage_type: "dent", instances: 2, max_confidence: 0.8, photos_with_damage: [0],
+          value_impact_pct: 4, severity: "moderate" },
+        { damage_type: "scratch", instances: 1, max_confidence: 0.6, photos_with_damage: [0],
+          value_impact_pct: 1.5, severity: "minor" },
+      ],
+    },
+  };
+  await mockAndValue(page, undefined, depPayload("model"), withDamage);
+  await expect(page.getByText(/disclosed up front: dent \(moderate\), scratch \(minor\)/i)).toBeVisible();
+  await expect(page.getByText(/78\/100 on an AI photo scan/i)).toBeVisible();
+});
+
 test("E7: beeswarm renders one dot per sampled car for every ranked feature", async ({ page }) => {
   await page.goto("/model");
   const swarm = page.getByRole("img", { name: /shap beeswarm/i });
