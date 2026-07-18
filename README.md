@@ -207,6 +207,15 @@ data/            processed comparables corpus
 
 ---
 
+## Licensing status
+
+The damage-detection weights derive from Ultralytics YOLOv8 (**AGPL-3.0**), and this repo has
+no LICENSE file of its own — so the project's terms are **unresolved and disclosed, not
+decided**. Payments stay in Stripe **test mode** and no commercial use is offered until that
+decision is made. Details and options: [`docs/LICENSING.md`](docs/LICENSING.md).
+
+---
+
 <div align="center">
 
 *An automated estimate — not a certified appraisal. Every figure traces back to a computed value.*

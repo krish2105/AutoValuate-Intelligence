@@ -31,6 +31,12 @@ import requests
 ACTOR = "agenscrape~dubizzle-uae-scraper"      # '/' becomes '~' in the Apify REST path
 BASE = "https://api.apify.com/v2"
 CSV = Path("data/processed/comparables.csv")
+# Every sighting of every listing, append-only: (listing_id, scraped_at, price). The corpus
+# dedupes by listing_id, which is right for retrieval but silently threw away the market's
+# time dimension — a listing re-scraped at a lower price was dropped, so "price snapshots
+# accumulate" was a design note the code never honoured. Time-on-market and price-drop
+# analytics read THIS file; the corpus stays the retrieval view.
+HISTORY = Path("data/processed/price_history.csv")
 
 # Diversity beats depth: a spread of makes retrieves better than 600 rows of one model.
 MAKES = [
@@ -137,6 +143,47 @@ def normalise(raw: dict, make_hint: str) -> dict | None:
     }
 
 
+def append_price_history(sightings: list[dict], corpus: pd.DataFrame) -> tuple[int, int]:
+    """
+    Append this run's sightings to the price-history file; seed it from the corpus on first
+    run (one baseline snapshot per existing listing, so time-on-market has a start point).
+    Returns (snapshots_appended, price_changes_observed).
+    """
+    if HISTORY.exists():
+        hist = pd.read_csv(HISTORY, dtype={"listing_id": str})
+    else:
+        # Seed: the corpus row is each listing's earliest known sighting. Rows predating the
+        # scraped_at column fall back to createdAt; both empty -> unknown start, still seeded
+        # so a later disappearance ("sold-proxy") is detectable.
+        def col(name: str) -> pd.Series:
+            # df.get() with a Series default returns an EMPTY, index-misaligned Series when
+            # the column is absent — materialise one on the corpus's own index instead.
+            s = corpus[name] if name in corpus.columns else pd.Series("", index=corpus.index)
+            return s.fillna("").astype(str)
+
+        scraped, created = col("scraped_at"), col("createdAt")
+        hist = pd.DataFrame({
+            "listing_id": corpus["listing_id"].astype(str),
+            "scraped_at": scraped.where(scraped.str.len() > 0, created),
+            "price": corpus["price"],
+        })
+        print(f"seeded price history with {len(hist)} baseline snapshots from the corpus")
+
+    new = pd.DataFrame(sightings, columns=["listing_id", "scraped_at", "price"])
+    new["listing_id"] = new["listing_id"].astype(str)
+    # price changes: sightings whose price differs from the listing's latest recorded one
+    latest = hist.sort_values("scraped_at").groupby("listing_id")["price"].last()
+    changed = int(sum(
+        lid in latest.index and float(latest[lid]) != float(p)
+        for lid, p in zip(new["listing_id"], new["price"])
+    ))
+    out = pd.concat([hist, new], ignore_index=True)
+    # one snapshot per listing per run: exact (listing_id, scraped_at) duplicates are noise
+    out = out.drop_duplicates(subset=["listing_id", "scraped_at"], keep="first")
+    out.to_csv(HISTORY, index=False)
+    return len(out) - len(hist), changed
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-make", type=int, default=40)
@@ -155,7 +202,9 @@ def main() -> int:
     known = set(existing["listing_id"].astype(str))
     print(f"corpus: {len(existing)} rows, {len(known)} unique ids")
 
+    run_at = datetime.now(timezone.utc).isoformat()
     fresh: list[dict] = []
+    sightings: list[dict] = []  # EVERY normalised row, new or re-seen — the time dimension
     for make in MAKES:
         try:
             items = scrape_make(token, make, args.per_make)
@@ -169,18 +218,32 @@ def main() -> int:
                 detail = f" [{resp.status_code}] {resp.text[:200]!r}"
             print(f"  {make}: scrape failed ({type(e).__name__}){detail} — skipping")
             continue
-        added = with_photos = 0
+        added = seen_again = with_photos = 0
         for raw in items:
             row = normalise(raw, make)
-            if row and row["listing_id"] not in known:
+            if not row:
+                continue
+            sightings.append({"listing_id": row["listing_id"], "scraped_at": run_at,
+                              "price": row["price"]})
+            if row["listing_id"] in known:
+                seen_again += 1  # re-seen: still on the market — that's the ToM signal
+            else:
                 known.add(row["listing_id"])
                 fresh.append(row)
                 added += 1
                 with_photos += bool(row["photo_urls"])
         # photo retention must prove itself per run — it shipped once before and silently
         # produced 0 photos across an entire cron run because nothing reported it
-        print(f"  {make}: {len(items)} scraped, {added} new, {with_photos} with photos")
+        print(f"  {make}: {len(items)} scraped, {added} new, {seen_again} re-seen, "
+              f"{with_photos} with photos")
         time.sleep(1)  # be polite to the free tier
+
+    # History accrues even on a run with zero NEW listings — re-sightings are the whole
+    # point (still-listed = unsold; a lower price = a drop; absence later = sold-proxy).
+    if sightings:
+        n_snap, n_changed = append_price_history(sightings, existing)
+        print(f"price history: +{n_snap} snapshots ({n_changed} price changes observed) "
+              f"-> {HISTORY}")
 
     if not fresh:
         print("no new listings — corpus unchanged.")
@@ -189,7 +252,7 @@ def main() -> int:
     import numpy as np
     df = pd.DataFrame(fresh)
     df["log_price"] = np.log(df["price"])
-    df["scraped_at"] = datetime.now(timezone.utc).isoformat()
+    df["scraped_at"] = run_at  # same timestamp as the history snapshots from this run
 
     for backfill in ("scraped_at", "photo_urls"):
         if backfill not in existing.columns:

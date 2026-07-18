@@ -23,6 +23,7 @@ import { RepairEstimateCard } from "@/components/repair-estimate";
 import { Forecast } from "@/components/forecast";
 import { SellerReport } from "@/components/seller-report";
 import { Negotiation } from "@/components/negotiation";
+import { ListingPack } from "@/components/listing-pack";
 import { Assistant } from "@/components/assistant";
 import { ConfidencePanel } from "@/components/confidence-panel";
 import { HistoryDrawer } from "@/components/history-drawer";
@@ -240,6 +241,7 @@ export default function Home() {
                 <CardBoundary name="seller report"><SellerReport result={result} /></CardBoundary>
                 <CardBoundary name="assistant"><Assistant result={result} /></CardBoundary>
                 <CardBoundary name="negotiation coach"><Negotiation result={result} /></CardBoundary>
+                <CardBoundary name="listing pack"><ListingPack result={result} /></CardBoundary>
               </motion.div>
             )}
         </div>

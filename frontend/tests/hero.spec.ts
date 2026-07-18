@@ -41,6 +41,14 @@ test("reduced motion: findings rest visible, no scanner, no loop", async ({ page
 });
 
 test("landing page has no accessibility violations", async ({ page }) => {
+  // The landing page pings the live backend on load (wakeBackend's /health fetch carries a
+  // 120s timeout); against a cold Render dyno "networkidle" is unreachable and this test
+  // times out — CI must not depend on a third-party dyno's sleep state. Mock the pings,
+  // like every other spec does, so idle is reached deterministically.
+  await page.route("**/health", (r) =>
+    r.fulfill({ status: 200, contentType: "application/json", body: '{"status":"healthy"}' }));
+  await page.route("https://autovaluate-api.onrender.com/", (r) =>
+    r.fulfill({ status: 200, contentType: "application/json", body: '{"status":"ok"}' }));
   // reduced motion stops the HeroCar loop; the wait lets the hero's entrance fades
   // (kicker/headline/ticker — not reduced-motion gated) reach full opacity, so axe
   // measures final rendered contrast rather than a mid-fade frame.
