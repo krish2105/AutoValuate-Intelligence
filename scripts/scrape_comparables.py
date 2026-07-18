@@ -38,11 +38,68 @@ CSV = Path("data/processed/comparables.csv")
 # analytics read THIS file; the corpus stays the retrieval view.
 HISTORY = Path("data/processed/price_history.csv")
 
-# Diversity beats depth: a spread of makes retrieves better than 600 rows of one model.
-MAKES = [
-    "toyota", "nissan", "honda", "mitsubishi", "hyundai", "kia", "ford", "chevrolet",
-    "bmw", "mercedes-benz", "audi", "lexus", "mazda", "volkswagen", "jeep", "land-rover",
-]
+# --- Cost model (confirmed live from the Apify API for agenscrape/dubizzle-uae-scraper,
+# account userTier=FREE): PAY_PER_EVENT at $0.003 per returned result and $0.00005 per
+# actor start. RESULTS are ~99.8% of the bill; starts are rounding error, so adding MAKES
+# is nearly free and only the ITEM TOTAL matters.
+#
+# This is why the quota kept running out: the previous flat 16 makes x 40 = 640 items/run
+# cost $1.92/run = $7.68/mo over four Mondays and $9.60 over five — against a $5/mo free
+# credit. The cron was structurally 54-92% over budget, so it died mid-month and the corpus
+# stopped growing. A smaller sustainable run beats a larger one that halts.
+PRICE_PER_RESULT_USD = 0.003
+FREE_CREDIT_USD_PER_MONTH = 5.00
+# Billing is on RESULTS RETURNED, not results requested, and the actor has been observed
+# returning a little more than maxResults. Quote costs with headroom so the forecast is an
+# upper bound rather than a best case.
+OVER_DELIVERY_FACTOR = 1.20
+# Mirror of the price Check in scripts/corpus_schema.py. Enforced at normalise() time so a
+# single out-of-range listing is dropped instead of failing validation for the whole run.
+PRICE_SANITY_MIN, PRICE_SANITY_MAX = 1_000.0, 5_000_000.0
+# 240 items/run = $0.72/run = $3.60/mo across five Mondays — ~28% headroom under the credit.
+MAX_ITEMS_PER_RUN = 240
+
+# Per-make item allocation. Luxury is deliberately over-weighted: the pricing model's
+# luxury conformal band is its weakest segment, and 96% of luxury rows come from just four
+# makes (mercedes-benz, bmw, lexus, audi) while porsche/tesla sit at ZERO rows. Luxury also
+# carries ~2x the price dispersion of mass, so it needs more rows per unit of accuracy.
+# Mass makes already hold 100+ rows each and are kept at a maintenance trickle — enough to
+# preserve retrieval diversity, not enough to buy depth we already have.
+#
+# INVARIANT: sum(ALLOCATION) must stay <= MAX_ITEMS_PER_RUN. main() enforces it before any
+# HTTP call, scaling proportionally rather than overspending.
+ALLOCATION = {
+    # --- luxury, starved: zero/near-zero rows but real Dubai inventory (biggest gain) ---
+    "porsche":       20,   # 0 rows
+    "tesla":         20,   # 0 rows
+    "gmc":           20,   # 2 rows
+    "infiniti":      18,   # 3 rows
+    "cadillac":      15,   # 2 rows
+    "land-rover":    15,   # 64 rows (stored as "land rover" — see models/brand_tier.py)
+    "jaguar":         8,   # 1 row, genuinely thin inventory
+    # --- luxury, the existing calibration base: keep its centre from going stale ---
+    "mercedes-benz": 10,
+    "bmw":           10,
+    "audi":           7,
+    "lexus":          7,
+    # --- mass: maintenance only (all already 54-132 rows) ---
+    "toyota":        12,
+    "nissan":        12,
+    "ford":          10,
+    "honda":         10,
+    "hyundai":       10,
+    "chevrolet":      8,
+    "kia":            8,
+    "mazda":          6,
+    "mitsubishi":     5,
+    "volkswagen":     5,
+    "jeep":           4,
+}
+# bentley / rolls-royce / maserati are deliberately EXCLUDED: UAE inventory is scarce and
+# bespoke-spec, so the spend buys a handful of high-variance rows that cannot calibrate.
+# Those makes need an honest wider-band / low-confidence path, not a scraping push.
+
+MAKES = list(ALLOCATION)  # kept as a name for readability; order drives the scrape loop
 
 
 def scrape_make(token: str, make: str, limit: int) -> list[dict]:
@@ -100,6 +157,12 @@ def normalise(raw: dict, make_hint: str) -> dict | None:
     except (TypeError, ValueError):
         return None
     if not lid or not price or price <= 0:
+        return None
+    # Drop listings the corpus schema would reject, HERE, where it costs one row — rather
+    # than letting them through to validate_corpus, which returns non-zero on any error and
+    # would abort the whole weekly run before the commit step (a red X and zero growth for
+    # one bad listing). Bounds mirror corpus_schema.py exactly; keep them in lock-step.
+    if not (PRICE_SANITY_MIN <= price <= PRICE_SANITY_MAX):
         return None
 
     year = raw.get("year")
@@ -186,8 +249,45 @@ def append_price_history(sightings: list[dict], corpus: pd.DataFrame) -> tuple[i
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--per-make", type=int, default=40)
+    ap.add_argument("--budget", type=int, default=MAX_ITEMS_PER_RUN,
+                    help="hard ceiling on items requested this run — the quota rail")
+    ap.add_argument("--scale", type=float, default=1.0,
+                    help="scale every per-make allocation (0.25 = a cheap smoke run)")
+    ap.add_argument("--per-make", type=int, default=None,
+                    help="legacy flat override: same limit for every make, still budget-capped")
     args = ap.parse_args()
+
+    # Build the plan, then fit it under the budget BEFORE spending a single API call.
+    if args.per_make is not None:  # legacy path — kept so old workflow inputs still work
+        plan = {m: args.per_make for m in ALLOCATION}
+    else:
+        plan = {m: max(1, int(round(n * args.scale))) for m, n in ALLOCATION.items()}
+
+    total = sum(plan.values())
+    if total > args.budget:
+        # Scale down proportionally rather than refuse: a capped run still grows the corpus
+        # and keeps the cron green. Then TRIM the remainder — rounding up per make (and the
+        # min-1 floor) can otherwise leave the plan above the budget, which made the earlier
+        # "can never exceed" claim false (--budget 24 produced 25 items).
+        factor = args.budget / total
+        plan = {m: max(1, int(n * factor)) for m, n in plan.items()}
+        # Drop one item at a time from the largest allocations until we genuinely fit. Makes
+        # already at 1 are left alone, so a budget below len(plan) is simply unsatisfiable.
+        while sum(plan.values()) > args.budget and any(v > 1 for v in plan.values()):
+            worst = max((m for m in plan if plan[m] > 1), key=lambda m: plan[m])
+            plan[worst] -= 1
+        print(f"::warning::plan requested {total} items > budget {args.budget} — "
+              f"scaled down by {factor:.2f} to fit")
+        total = sum(plan.values())
+        if total > args.budget:  # only reachable when budget < number of makes
+            print(f"::warning::budget {args.budget} is below the {len(plan)}-make floor; "
+                  f"requesting {total}. Trim ALLOCATION to go lower.")
+
+    # Apify bills RETURNED results, and the actor has been observed returning slightly more
+    # than maxResults, so quote the forecast with headroom rather than a best case.
+    est = total * PRICE_PER_RESULT_USD * OVER_DELIVERY_FACTOR
+    print(f"plan: {len(plan)} makes, {total} items, est. <=${est:.2f}/run "
+          f"(${est * 4.33:.2f}/mo weekly vs ${FREE_CREDIT_USD_PER_MONTH:.2f} free credit)")
 
     token = os.environ.get("APIFY_TOKEN", "").strip()
     if not token:
@@ -205,9 +305,9 @@ def main() -> int:
     run_at = datetime.now(timezone.utc).isoformat()
     fresh: list[dict] = []
     sightings: list[dict] = []  # EVERY normalised row, new or re-seen — the time dimension
-    for make in MAKES:
+    for make, limit in plan.items():
         try:
-            items = scrape_make(token, make, args.per_make)
+            items = scrape_make(token, make, limit)
         except Exception as e:  # one bad make must never sink the whole run
             # Name the failure. A run once burned itself down printing 16 bare
             # "HTTPError"s — status + body is the difference between a 60-second

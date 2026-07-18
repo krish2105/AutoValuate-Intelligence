@@ -83,8 +83,16 @@ PARAMS = dict(n_estimators=400, max_depth=5, learning_rate=0.05, subsample=0.9,
               objective="reg:squarederror", monotone_constraints=MONOTONE)
 
 # Brand tiers for the B5 per-segment coverage diagnostic (RESEARCH.md B5).
-LUXURY = {"mercedes-benz", "bmw", "audi", "lexus", "porsche", "land-rover", "jaguar",
-          "maserati", "bentley", "rolls-royce", "cadillac", "infiniti", "tesla", "gmc"}
+# Single source of truth in models/brand_tier.py — this was duplicated here, in
+# eval/model_improvement_study.py and (serialized) in the bundle, compared by EXACT string.
+# That tiered all 64 "land rover" rows as mass, because the set held the URL slug
+# "land-rover". Comparison is now spelling-insensitive; see models/brand_tier.py.
+# Works both ways: run as a script (python backend-api/models/train_valuation.py, the
+# documented path) and imported as a package member (from models import train_valuation).
+try:
+    from .brand_tier import LUXURY_KEYS as LUXURY, is_luxury
+except ImportError:  # executed as a top-level script — no parent package
+    from brand_tier import LUXURY_KEYS as LUXURY, is_luxury  # noqa: E402
 
 
 def load() -> pd.DataFrame:
@@ -97,7 +105,9 @@ def load() -> pd.DataFrame:
         df[c] = df[c].astype(str).str.strip().str.lower()
     for c in NUMS:
         df[c] = pd.to_numeric(df[c], errors="coerce")
-    df["brand_tier"] = np.where(df["make"].isin(LUXURY), "luxury", "mass")
+    # map(is_luxury), not isin(LUXURY): the corpus stores the actor's spelling ("land
+    # rover"), the set holds slugs ("land-rover") — isin() missed 64 luxury SUVs.
+    df["brand_tier"] = np.where(df["make"].map(is_luxury), "luxury", "mass")
     return df.dropna(subset=["log_price"]).reset_index(drop=True)
 
 

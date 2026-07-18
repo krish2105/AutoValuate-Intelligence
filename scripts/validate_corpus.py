@@ -15,7 +15,9 @@ Usage:  python scripts/validate_corpus.py [--min-rows 672]
 from __future__ import annotations
 
 import argparse
+import io
 import math
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,10 +28,29 @@ from corpus_schema import validate as schema_validate
 CSV = Path("data/processed/comparables.csv")
 
 
+def _committed_row_count() -> int | None:
+    """Row count of the corpus as committed at HEAD, or None if it can't be read.
+
+    Returning None (first run, shallow clone, not a git checkout) is not a failure — the
+    caller falls back to the --min-rows floor rather than blocking a legitimate run.
+    """
+    try:
+        blob = subprocess.run(["git", "show", f"HEAD:{CSV.as_posix()}"],
+                              capture_output=True, text=True, check=True, timeout=30).stdout
+        return len(pd.read_csv(io.StringIO(blob)))
+    except Exception:
+        return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--min-rows", type=int, default=672,
-                    help="corpus is append-only — it must never shrink below this")
+    # The corpus is append-only, so the honest invariant is "never fewer than last commit".
+    # A fixed 672 was set when the corpus WAS 672; at 1303 rows it silently permitted a 48%
+    # loss — a truncated scrape would validate, get baked into the retrieval index, and be
+    # committed with the message "grow comparables corpus to ...". The floor now tracks the
+    # committed row count, and --min-rows is only the fallback when git history is absent.
+    ap.add_argument("--min-rows", type=int, default=1290,
+                    help="fallback floor when the committed row count can't be read")
     args = ap.parse_args()
 
     if not CSV.exists():
@@ -39,8 +60,11 @@ def main() -> int:
     df = pd.read_csv(CSV)
     errors: list[str] = []
 
-    if len(df) < args.min_rows:
-        errors.append(f"corpus shrank: {len(df)} rows < required minimum {args.min_rows}")
+    committed = _committed_row_count()
+    floor = committed if committed is not None else args.min_rows
+    if len(df) < floor:
+        src = "last commit" if committed is not None else "--min-rows fallback"
+        errors.append(f"corpus shrank: {len(df)} rows < {floor} ({src}) — append-only violated")
 
     errors.extend(schema_validate(df))
 

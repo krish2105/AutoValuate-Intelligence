@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from models import valuation_model
+from models import brand_tier, valuation_model
 
 # Only fields the model actually consumes; a comparable record carries all of them.
 _FEATURES = ("make", "model", "year", "kilometers", "bodyType", "transmissionType",
@@ -35,8 +35,12 @@ def _floor_for(make: str, bundle: dict) -> float | None:
     floors = bundle.get("anomaly_resid_floor_by_tier")
     if not floors:
         return None
+    # Must use the SAME tier rule as valuation_model._tier_delta — an exact-string match
+    # here tiered "land rover" as mass while the price band tiered it luxury, so the two
+    # halves of one valuation disagreed and Land Rovers were checked against the wrong
+    # (more permissive) anomaly floor. See models/brand_tier.py.
     luxury = set(bundle.get("brand_tier_luxury", ()))
-    tier = "luxury" if str(make or "").strip().lower() in luxury else "mass"
+    tier = "luxury" if brand_tier.is_luxury(make, luxury) else "mass"
     return floors.get(tier)
 
 

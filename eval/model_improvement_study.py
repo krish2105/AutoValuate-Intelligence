@@ -29,6 +29,7 @@ Usage:  python eval/model_improvement_study.py  ->  eval/model_improvement_study
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -47,10 +48,11 @@ REFERENCE_YEAR = 2026
 CATS = ["make", "model", "bodyType", "transmissionType", "fuelType", "regionalSpecs", "sellerType", "city"]
 NUMS = ["age", "kilometers", "mileage_per_year", "noOfCylinders"]
 
-LUXURY = {
-    "mercedes-benz", "bmw", "audi", "lexus", "porsche", "land-rover", "jaguar",
-    "maserati", "bentley", "rolls-royce", "cadillac", "infiniti", "tesla", "gmc",
-}
+# Single source of truth — this set used to be duplicated here and in train_valuation.py
+# and compared with an EXACT string match, which tiered all 64 "land rover" rows (stored
+# with a space by the scraper) as mass, because the set held the slug "land-rover".
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend-api" / "models"))
+from brand_tier import LUXURY_KEYS as LUXURY, is_luxury  # noqa: E402
 
 
 def load() -> pd.DataFrame:
@@ -64,7 +66,7 @@ def load() -> pd.DataFrame:
     for c in NUMS:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df[NUMS] = df[NUMS].fillna(df[NUMS].median())
-    df["brand_tier"] = np.where(df["make"].isin(LUXURY), "luxury", "mass")
+    df["brand_tier"] = np.where(df["make"].map(is_luxury), "luxury", "mass")
     return df.dropna(subset=["log_price"])
 
 

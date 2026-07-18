@@ -17,6 +17,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from . import brand_tier
+
 _BUNDLE_PATH = Path(__file__).with_name("valuation_model.joblib")
 
 
@@ -84,8 +86,12 @@ def _tier_delta(vehicle: dict[str, Any], bundle: dict) -> tuple[str, float]:
     by_tier = bundle.get("conformal_delta_log_by_tier")
     if not by_tier:  # pre-Mondrian artifact
         return "global", float(bundle["conformal_delta_log"])
+    # Compare on a NORMALIZED key, not an exact string. The corpus stores the actor's own
+    # spelling ("land rover"), while the bundle's set carries URL slugs ("land-rover") — an
+    # exact match tiered every Land Rover as "mass" and handed a luxury-priced SUV the
+    # narrower mass band. See models/brand_tier.py.
     luxury = set(bundle.get("brand_tier_luxury", ()))
-    tier = "luxury" if str(vehicle.get("make", "")).strip().lower() in luxury else "mass"
+    tier = "luxury" if brand_tier.is_luxury(vehicle.get("make", ""), luxury) else "mass"
     return tier, float(by_tier.get(tier, bundle["conformal_delta_log"]))
 
 

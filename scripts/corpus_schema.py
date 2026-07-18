@@ -24,7 +24,10 @@ CorpusSchema = DataFrameSchema(
         "url": Column(str, nullable=True, coerce=True),
         "make": Column(str, Check.str_length(min_value=1), nullable=False, coerce=True),
         "model": Column(str, nullable=True, coerce=True),
-        "year": Column(int, Check.in_range(1980, CURRENT_YEAR + 1), nullable=False, coerce=True),
+        # +2, not +1: dealers list next-model-year stock early (70 rows are already at
+        # CURRENT_YEAR+0), and luxury makes list earliest of all. validate_corpus returns 1
+        # on ANY error, so a single early-listed model year would abort the whole weekly run.
+        "year": Column(int, Check.in_range(1980, CURRENT_YEAR + 2), nullable=False, coerce=True),
         "kilometers": Column(float, Check.in_range(0, 1_500_000), nullable=False, coerce=True),
         "bodyType": Column(str, nullable=True, coerce=True),
         "transmissionType": Column(str, nullable=True, coerce=True),
@@ -34,6 +37,13 @@ CorpusSchema = DataFrameSchema(
         "city": Column(str, nullable=True, coerce=True),
         "neighbourhood": Column(str, nullable=True, coerce=True),
         "sellerType": Column(str, nullable=True, coerce=True),
+        # Deliberately kept TIGHT at 5M (corpus max today: 2.17M). This is the only absolute
+        # price sanity guard in the ingest path, so it is what would catch a unit error — an
+        # actor change emitting fils instead of dirhams turns a 50k car into 5,000,000 and
+        # must fail. Loosening it to accommodate rare supercars would disarm that check for
+        # most of the corpus. Outlier listings are instead dropped upstream, by the
+        # PRICE_SANITY guard in scripts/scrape_comparables.normalise(), so one absurd
+        # listing can no longer abort the whole weekly run.
         "price": Column(float, Check.in_range(1_000, 5_000_000), nullable=False, coerce=True),
     },
     strict=False,  # extra columns (photo_urls, scraped_at, log_price, age, ...) are fine

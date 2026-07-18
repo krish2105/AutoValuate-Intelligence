@@ -43,6 +43,10 @@ data/raw/
 # must exist in a fresh checkout (a bare `data/processed/` dir-ignore silently broke that).
 data/processed/*
 !data/processed/comparables.csv
+# price_history.csv is versioned for the same reason: the Phase-E cron appends every
+# sighting and commits it. While it was ignored, the workflow's `git add` of it failed and
+# the commit step aborted — so a successful scrape never actually pushed.
+!data/processed/price_history.csv
 *.parquet
 *.csv.gz
 
