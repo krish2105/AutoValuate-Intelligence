@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, Target, ScanSearch, ShieldCheck, Search, Sparkles, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Target, ScanSearch, ShieldCheck, Search, Sparkles } from "lucide-react";
 import { Logo, SectionCard, Pill, Reveal } from "@/components/ui";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CalibrationPlot } from "@/components/calibration-plot";
@@ -196,19 +196,6 @@ export default function ModelCard() {
               it is the strongest lever in both directions — a young car is worth more for the same reason
               an old one is worth less, and only the swarm shows that.
             </p>
-          </SectionCard>
-        </Reveal>
-
-        {/* honest limitations */}
-        <Reveal>
-          <SectionCard title="Known limitations" subtitle="The parts we'd flag ourselves — honesty is the point" icon={<AlertTriangle className="h-4.5 w-4.5" />}
-            right={<Pill tone="warn">read this</Pill>}>
-            <ul className="space-y-2 text-sm text-fg/85">
-              <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span>Corpus is <span className="text-fg">{valuation.training_rows} listings</span> — thin for rarer makes; comparables can be sparse. Growing the corpus is the biggest lever.</span></li>
-              <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span>Median error is <span className="text-fg">{valuation.metrics.median_APE_pct.mean}%</span>. The published floor for used-car pricing is ~8% MAPE on corpora ~15x this size — the gap is <span className="text-fg">data, not tuning</span>. Anyone promising 99% on price is selling something.</span></li>
-              <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span><span className="text-fg">Luxury</span> is the weakest segment: {Math.round(valuation.conformal.coverage_by_tier.luxury.coverage * 100)}% coverage ± {Math.round(valuation.conformal.coverage_by_tier.luxury.std * 100)}pp, calibrated on only ~40 luxury rows per split. We widen the band rather than pretend.</span></li>
-              <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" /><span><span className="text-fg">Crack</span> detection recall is the weakest class ({(cvEval.per_class as any).crack.recall.toFixed(2)}); fine cracks are easily missed.</span></li>
-            </ul>
           </SectionCard>
         </Reveal>
 
