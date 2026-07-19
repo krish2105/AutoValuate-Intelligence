@@ -213,3 +213,56 @@ in fabricated numbers.
    unrecognised or whose `photo_set_hash` doesn't match the request.
 6. **Correct the false doc claims** (§4.5) — some are done; the presentation scripts still
    say "held-out test set" and "eighteen thousand".
+
+---
+
+## Framing instability — the dominant error source (measured 2026-07-19)
+
+**Symptom reported by a user:** "the score keeps changing for the same photo."
+
+**It is not non-determinism.** Identical bytes give an identical score: `scripts/cv-determinism-run.mjs`
+proves the pure-JS preprocessing path is byte-stable, and 10 repeat runs of the full detector on
+one file return one detection set and one score. That was a real bug (a GPU canvas resampler) and
+it is fixed.
+
+**It is the model.** Its detections depend heavily on how the car is framed. Same car, same
+damage, imperceptibly different photos (`scripts/stability_check.py`):
+
+| framing | score | classes reported |
+|---|---|---|
+| original | 38 | crack, missing_part |
+| crop 3% | **85** | crack |
+| crop 6% | 62 | crack |
+| crop 10% | 78 | missing_part |
+| stood back 10% | **85** | dent, lamp_broken |
+| resize 70% | **85** | lamp_broken |
+
+**Range: 47 points from a 3% crop.** Critically, the reported CLASS flips — `missing_part`
+(BASE_SEVERITY 0.28) becomes `lamp_broken` (0.07), a 4× severity difference. The score therefore
+inherits the model's confusion about *what* the damage is, not merely how confident it is. This
+dominates every other error source in the pipeline, including the thresholds and the scoring
+formula.
+
+### Four post-processing fixes were tried and all failed
+
+Do not re-attempt these without new evidence:
+
+1. **Multi-scale fusion** (extra zoom passes fused by WBF) — range 47 → 47, stdev 16.0 → **18.6
+   (worse)**. Fusing more unstable views adds noise rather than averaging it out.
+2. **Softening the confidence gate** (0.20 gate / 0.35 floor → 0.10 / 0.05) — range 47 → 47. The
+   cliff is not the mechanism.
+3. **Threshold tuning** — trades a false negative for a false positive; never fixes both (this is
+   how the wreck-reads-100 and clean-car-reads-38 bugs were originally created).
+4. **Scoring on coverage instead of class labels** — coverage is itself unstable, ranging
+   0.022–0.152 (7×) across the same variations.
+
+### Conclusion
+
+This is **not fixable downstream**. The detections themselves are unstable and everything after
+them inherits it. The fix is retraining on in-domain (UAE, whole-car) photos — the model was
+trained on CarDD/VehiDE close-up damage crops, which is exactly why its confidence collapses on
+the wide shots users actually upload.
+
+`scripts/stability_check.py` exists to **measure** that a retrained model is genuinely better,
+rather than trusting a single-photo demo. It exits non-zero above a 15-point range, so it can
+become a gate once a retrained model can pass it.
