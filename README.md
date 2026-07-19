@@ -44,20 +44,22 @@ Three AI systems work together, and the final report cites every claim back to t
 
 ## Features
 
-**For sellers (free, forever)**
+Everything below is **free** — there are no paid tiers, no accounts, no sign-up. (Paid plans were
+removed while the project's AGPL-3.0 licensing question is open; see [Licensing status](#licensing-status).)
+
+**Valuation & explanation**
 - Instant valuation with a **SHAP breakdown** of every price driver
-- **On-device damage scan** + a guided "walk-around" capture flow
+- **On-device damage scan** + a guided "walk-around" capture flow — photos never leave your device
 - **Repair-cost estimator** with a *worth-fixing?* verdict
 - **Sell-timing forecast** — this car aged forward through the real model
-- **Market analytics** — price-vs-mileage, market-position gauge, comparables (dark/light, responsive)
+- **Market analytics** — price-vs-mileage, market-position gauge, comparables (states its own limits when a model is too rare to chart)
 - **Grounded chat assistant** and a citation-checked written report
 - **PDF export**, **shareable public links** with social preview cards, an **appraisal certificate**
 - "**Describe your car**" plain-English intake · **installable PWA** (scanner works offline)
 
-**For businesses (paid tiers)**
+**Dealer & developer**
 - **Dealer fleet valuation** — bulk CSV in, valued CSV out (`/dealer`)
-- **Developer API** with keys + per-tier usage metering (`/developers`)
-- **Plans** Free / Pro / Dealer (`/pricing`, Stripe test-mode) · **white-label PDF** reports
+- **Open API** — no key, no account, rate-limited per IP (`/developers`)
 
 ---
 
@@ -72,7 +74,7 @@ flowchart LR
 
     subgraph API["⚙️ FastAPI on Render"]
         EP["/valuate · /estimate<br/>/chat · /valuate/stream"]
-        KEYS["API-key auth<br/>+ usage metering"]
+        RL["per-IP rate limit<br/>(open, no key)"]
     end
 
     subgraph Pipeline["🧠 LangGraph agent pipeline"]
@@ -85,13 +87,13 @@ flowchart LR
     end
 
     subgraph Data["🗄️ Supabase"]
-        DB["auth · pgvector<br/>shares · api keys"]
+        DB["pgvector<br/>public share links"]
     end
 
     CV -->|"client_condition"| EP
     UI --> EP
+    RL --> EP
     EP --> Pipeline
-    KEYS --> DB
     R -.->|comparables| DB
     W -.->|"Gemini → Groq → template"| LLM["LLM providers"]
 
@@ -99,7 +101,7 @@ flowchart LR
     GH["🔁 GitHub Actions<br/>CI · corpus cron · keep-alive"] -.-> API
 ```
 
-**Deep-learning & ML applied:** CNN object detection · transfer learning · IoU/NMS · mAP · ONNX quantization · gradient-boosted trees · quantile regression · **split-conformal prediction** · **SHAP** · sentence embeddings · BM25 · cross-encoder reranking · LangGraph agents · retrieval-augmented generation · deterministic verification.
+**Deep-learning & ML applied:** CNN object detection · transfer learning · IoU / NMS · Weighted Box Fusion · mAP · in-browser ONNX inference (WASM) · gradient-boosted trees · **split-conformal prediction** (Mondrian, per-tier) · **SHAP** · sentence embeddings · BM25 · structured-similarity retrieval · LangGraph agents · retrieval-augmented generation · deterministic verification.
 
 ---
 
@@ -120,7 +122,7 @@ flowchart LR
 </tr>
 <tr>
 <td><img src="docs/presentation/shots/09_dealer.png" alt="Dealer fleet valuation" /><br/><sub><b>Dealer fleet valuation</b> — bulk CSV in, valued CSV out</sub></td>
-<td><img src="docs/presentation/shots/12_pricing.png" alt="Plans & pricing" /><br/><sub><b>Plans & pricing</b> — Free / Pro / Dealer, metered API</sub></td>
+<td><img src="docs/presentation/shots/11_model_card.png" alt="Public model report card" /><br/><sub><b>Model report card</b> — every metric, published live at <code>/model</code></sub></td>
 </tr>
 </table>
 
@@ -128,13 +130,33 @@ flowchart LR
 
 ## Results & honest evaluation
 
+Every figure here is reproducible from a committed script + JSON — nothing is quoted from memory.
+
 | Metric | Value | Source |
 |---|---:|---|
-| CV detection — mAP@0.5 | **0.732** | `eval/cv_eval_report.json` |
+| Pricing — median APE | **15.65%** | `eval/valuation_metrics.json` |
+| Pricing — conformal coverage (target 80%) | **≈79%** | `eval/uncertainty_study.json` |
+| Pricing — improvement over make+model baseline | **+46%** | `eval/valuation_metrics.json` |
 | Report faithfulness | **1.000** | `eval/faithfulness_report.json` |
-| Conformal coverage (target 80%) | **80.0%** | `eval/uncertainty_study.json` |
-| Retrieval same-make P@5 (easy bench) | **1.000** | `eval/comparables_eval.json` |
+| Retrieval same-make P@5 (benchmark) | **1.000** | `eval/comparables_eval.json` |
+| CV detection — mAP@0.5 | **0.732** *(see caveat)* | `eval/cv_train_summary.json` |
 | Accessibility (axe-core, 6 pages) | **0** violations | WCAG 2.1 AA |
+| Scoring parity (browser == backend) | **56/56 cases** | `eval/cv_scoring.py` |
+
+### What we're honest about
+
+- **The damage scan is honest, not yet reliable.** The `0.732` mAP is on a **validation subset,
+  not a held-out test set**, and covers 6 of 8 classes. More importantly, the detector is
+  **unstable to framing**: on a real whole-car photo, a 3% crop can swing the condition score by
+  ~47 points, because it was trained on close-up damage crops, not the wide shots users upload.
+  The product handles this honestly — a scan that finds nothing reads *"unconfirmed, not clean"*
+  and always advises an inspection — but the underlying accuracy needs a retrain
+  ([`notebooks/09_yolo_framing_invariance_retrain.ipynb`](notebooks/09_yolo_framing_invariance_retrain.ipynb)).
+  The full diagnosis, with the four downstream fixes that were tried and rejected on measurement,
+  is in [`docs/CV_FINDINGS.md`](docs/CV_FINDINGS.md).
+- **The pricing floor is data, not tuning.** The learning curve (`eval/learning_curve.py`)
+  asymptotes near ~10% median APE with the current features and 1,302 rows — so no amount of
+  hyperparameter search reaches the ~8% published floor for larger corpora. The lever is data.
 
 Two research findings — both argued *against* the obvious design choice — are written up in **[docs/RESEARCH.md](docs/RESEARCH.md)**:
 - **Uncertainty (D3):** raw quantile regression promises 80% coverage but delivers **54.8%**; the "±25% rule of thumb" delivers **56.3%**. Only split-conformal keeps its promise.
@@ -165,12 +187,17 @@ Optional: set `GEMINI_API_KEY` or `GROQ_API_KEY` for LLM-written reports (a dete
 ## Tests & evaluation
 
 ```bash
-cd backend-api && USE_TF=0 python ../eval/faithfulness_eval.py     # grounding
-USE_TF=0 python ../eval/comparables_eval.py                        # retrieval
-python ../eval/uncertainty_study.py                                # D3
-USE_TF=0 python ../eval/retrieval_ablation.py                      # D5
-cd ../frontend && npm run build                                    # typecheck + build
+python eval/unit_tests.py            # 65 backend guardrail + contract tests
+python eval/cv_scoring.py            # scoring bands + browser==backend parity (56 cases)
+python eval/cv_conformance.py        # browser/backend post-processing parity
+python eval/faithfulness_eval.py     # report grounding (Verifier)
+python eval/spec_join_study.py       # the +2.4pp spec-join result, with a permutation control
+python scripts/stability_check.py <photo>   # framing-stability of the damage scan
+cd frontend && node scripts/cv-determinism-run.mjs && npm run build   # determinism + build
 ```
+
+The CV gate (`.github/workflows/cv-gate.yml`) runs the scoring, conformance, determinism and
+contract suites on every change that touches the detector.
 
 ---
 
@@ -184,11 +211,11 @@ Verified with a real headless browser: **zero horizontal overflow** at 320 / 375
 
 ```
 frontend/        Next.js 14 app — UI, on-device CV (lib/cv-browser.ts), charts, PWA
-backend-api/     FastAPI + LangGraph agents, XGBoost model, RAG, Verifier, API keys
+backend-api/     FastAPI + LangGraph agents, XGBoost model, RAG, Verifier
 cv-service/      trained YOLOv8 ONNX model (also served in-browser from frontend/public)
-eval/            evaluation + research scripts and reports
-docs/            ROADMAP · ARCHITECTURE · RESEARCH · DECISIONS · presentation (deck + script)
-notebooks/       CV training + valuation EDA notebooks
+eval/            evaluation + research scripts and reports (the source of every number above)
+docs/            ARCHITECTURE · RESEARCH · CV_INFERENCE_SPEC · CV_FINDINGS · LICENSING
+notebooks/       CV training/retraining + valuation EDA notebooks
 data/            processed comparables corpus
 ```
 
@@ -215,7 +242,8 @@ rather than a choice made for convenience — see [`docs/LICENSING.md`](docs/LIC
 
 AGPL permits charging money; it does not permit withholding source from network users. Closed-
 source commercial use would still require an Ultralytics Enterprise License or a permissively
-licensed replacement detector. Until that is decided, payments stay in Stripe **test mode**.
+licensed replacement detector. Until that is decided, the product ships **free, with no paid
+plans** — the pricing tiers and payment flow were removed rather than advertised.
 
 ---
 
