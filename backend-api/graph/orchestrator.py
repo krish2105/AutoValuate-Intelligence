@@ -211,6 +211,13 @@ def _condition_from_client(client: dict) -> dict:
         "preprocessing_version": client.get("preprocessing_version"),
         "inference_config_version": client.get("inference_config_version"),
         "scan_status": client.get("status"),
+        # The browser already decided whether this car warrants a physical look (structural
+        # finding, moderate+ severity, low score, or — crucially — a scan that found NOTHING,
+        # which is unconfirmed rather than clean). Both fields were declared on the wire and
+        # validated, then dropped here, so that judgement never reached any consumer and the
+        # confidence agent was free to conclude the opposite. Carry them through.
+        "needs_inspection": bool(client.get("needs_inspection", False)),
+        "assessment": client.get("assessment"),
     }
 
 
@@ -270,10 +277,20 @@ def n_confidence(state: State) -> State:
     else:
         reasons.append("few closely-comparable listings for this make/model")
     if cond.get("cv_available"):
-        score += 1
-        weak = [f["damage_type"] for f in cond["findings"] if f["max_confidence"] < 0.5]
-        if weak:
-            reasons.append(f"low detection confidence for: {', '.join(weak)}")
+        # A scan that found NOTHING must not score as positive evidence. It previously did:
+        # cv_available alone earned +1, and the only counterweight (weak findings) is empty when
+        # there are no findings at all — so a wrecked car the detector failed to read came out
+        # MORE confident than one where it found damage, and could reach "high", which switches
+        # the inspection recommendation OFF. That is the Civic failure propagating downstream.
+        # Detector recall is 0.690, so "found nothing" is unconfirmed, not clean.
+        if cond["findings"]:
+            score += 1
+            weak = [f["damage_type"] for f in cond["findings"] if f["max_confidence"] < 0.5]
+            if weak:
+                reasons.append(f"low detection confidence for: {', '.join(weak)}")
+        else:
+            reasons.append("the photo scan detected no damage, which is unconfirmed rather than "
+                           "clean — this detector finds roughly two-thirds of real damage")
     else:
         reasons.append("no visual damage assessment was performed")
     if width <= 90:
@@ -282,7 +299,10 @@ def n_confidence(state: State) -> State:
         reasons.append(f"wide price interval (±{width/2:.0f}% around mid)")
 
     level = "high" if score >= 3 else "medium" if score == 2 else "low"
-    recommend = level in ("low", "medium")
+    # The scanner's own judgement is authoritative and can only ADD caution: a structural
+    # finding at a high numeric score, or a zero-detection scan, still warrants a physical
+    # inspection no matter how confident the pricing side is.
+    recommend = level in ("low", "medium") or bool(cond.get("needs_inspection"))
     disclosure = {
         "level": level,
         "valuation_interval_pct": width,
