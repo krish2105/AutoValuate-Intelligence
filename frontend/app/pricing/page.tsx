@@ -1,92 +1,31 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Check, ArrowLeft, Sparkles } from "lucide-react";
+import { Check, ArrowLeft } from "lucide-react";
 import { Logo } from "@/components/ui";
-import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
 
 /**
- * Phase J — plans.
+ * Pricing — there is none.
  *
- * Checkout runs against Stripe TEST mode via a payment link, so the full purchase flow is
- * demonstrable without processing a real payment and without leaving the free tier. If no
- * link is configured we say so plainly rather than pretending a button works.
- *
- * The link carries `?client_reference_id=<auth uid>` so the /billing/webhook can tell WHOSE
- * tier to upgrade after payment. A signed-out user can't be credited a purchase, so we send
- * them to sign in first rather than take money we can't attribute.
+ * The three-tier (Free / Pro / Dealer) page and its Stripe checkout were removed. Paid plans
+ * cannot be advertised while the AGPL-3.0 licensing question is unresolved (docs/LICENSING.md) —
+ * charging for closed-source use of AGPL-derived weights is exactly the claim this project
+ * exists not to make. The route is kept, rather than deleted, so old links land somewhere honest
+ * instead of a 404.
  */
-const LINKS: Record<string, string | undefined> = {
-  pro: process.env.NEXT_PUBLIC_STRIPE_LINK_PRO,
-  dealer: process.env.NEXT_PUBLIC_STRIPE_LINK_DEALER,
-};
-
-function withUser(link: string | undefined, uid: string | null): string | undefined {
-  if (!link || !uid) return link;
-  const sep = link.includes("?") ? "&" : "?";
-  return `${link}${sep}client_reference_id=${encodeURIComponent(uid)}`;
-}
-
-const PLANS = [
-  {
-    id: "free",
-    name: "Free",
-    price: "AED 0",
-    cadence: "forever",
-    blurb: "Value your own car, with the full explanation.",
-    features: [
-      "Unlimited valuations in the browser",
-      "On-device damage scan (photos never leave your device)",
-      "SHAP explanation + comparable listings",
-      "Citation-grounded report & assistant",
-      "PDF export and share links",
-      "100 API calls / day",
-    ],
-    cta: "Start free",
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: "AED 49",
-    cadence: "per month",
-    blurb: "For people who sell cars regularly.",
-    features: [
-      "Everything in Free",
-      "1,000 API calls / day",
-      "Sell-timing forecast & repair-cost estimator",
-      "Valuation history synced across devices",
-      "Priority model queue",
-    ],
-    cta: "Upgrade to Pro",
-    featured: true,
-  },
-  {
-    id: "dealer",
-    name: "Dealer",
-    price: "AED 199",
-    cadence: "per month",
-    blurb: "For dealerships valuing inventory daily.",
-    features: [
-      "Everything in Pro",
-      "5,000 API calls / day",
-      "Bulk fleet valuation (CSV in, CSV out)",
-      "White-label PDF reports with your logo",
-      "Saved fleets",
-    ],
-    cta: "Upgrade to Dealer",
-  },
+const FREE = [
+  "Unlimited valuations in the browser",
+  "On-device damage scan — photos never leave your device",
+  "SHAP explanation of every price driver + comparable listings",
+  "Citation-grounded report and grounded assistant",
+  "Dealer bulk CSV valuation (CSV in, valued CSV out)",
+  "Open API — no key, no account (20 requests / minute)",
+  "PDF export and shareable public links",
 ];
 
 export default function PricingPage() {
-  const [uid, setUid] = useState<string | null>(null);
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null)).catch(() => {});
-  }, []);
-
   return (
-    <div className="mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6">
+    <div className="mx-auto max-w-3xl px-4 pb-24 pt-6 sm:px-6">
       <header className="mb-10 flex items-center justify-between gap-3">
         <Logo />
         <Link href="/" className="inline-flex items-center gap-1.5 rounded-full border bg-surface/70 px-3 py-2 text-xs font-medium text-muted transition hover:text-fg">
@@ -94,84 +33,48 @@ export default function PricingPage() {
         </Link>
       </header>
 
-      <div className="mb-10 text-center">
+      <div className="mb-8 text-center">
         <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-          Honest valuations, <span className="text-accent">honest pricing</span>
+          It&apos;s <span className="text-accent">free</span>.
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-pretty text-sm text-muted">
-          The core product is free and always will be — the damage scan runs on your own device, so it costs us
-          nothing to give away. You pay only when you need volume or the dealer workflow.
+          The whole product is free to use. The damage scan runs on your own device, so it costs
+          nothing to give away — and there are no paid tiers to upsell you to.
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {PLANS.map((p, i) => {
-          const link = withUser(LINKS[p.id], uid);
-          return (
-            <motion.div
-              key={p.id}
-              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
-              className={cn(
-                "card relative flex flex-col p-6",
-                p.featured && "border-accent/40 shadow-glow",
-              )}
-            >
-              {p.featured && (
-                <span className="absolute -top-2.5 left-6 inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-[10px] font-semibold text-accent-fg">
-                  <Sparkles className="h-3 w-3" /> Most popular
-                </span>
-              )}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+        className="card mx-auto max-w-md p-6"
+      >
+        <p className="text-sm font-semibold">Everything, at no cost</p>
+        <p className="mt-1 flex items-baseline gap-1.5">
+          <span className="tnum text-3xl font-semibold tracking-tight">AED 0</span>
+          <span className="text-xs text-muted">forever</span>
+        </p>
+        <ul className="mt-5 space-y-2">
+          {FREE.map((f) => (
+            <li key={f} className="flex items-start gap-2 text-sm">
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-good" />
+              <span className="text-fg/90">{f}</span>
+            </li>
+          ))}
+        </ul>
+        <Link href="/"
+          className="mt-6 block rounded-xl bg-accent py-2.5 text-center text-sm font-semibold text-accent-fg transition hover:brightness-105">
+          Value a car
+        </Link>
+      </motion.div>
 
-              <p className="text-sm font-semibold">{p.name}</p>
-              <p className="mt-2 flex items-baseline gap-1.5">
-                <span className="tnum text-3xl font-semibold tracking-tight">{p.price}</span>
-                <span className="text-xs text-muted">{p.cadence}</span>
-              </p>
-              <p className="mt-2 text-xs text-muted">{p.blurb}</p>
-
-              <ul className="mt-5 flex-1 space-y-2">
-                {p.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm">
-                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-good" />
-                    <span className="text-fg/90">{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              {p.id === "free" ? (
-                <Link href="/"
-                  className="mt-6 rounded-xl border py-2.5 text-center text-sm font-medium transition hover:border-accent/40 hover:text-accent">
-                  {p.cta}
-                </Link>
-              ) : link ? (
-                <a href={link} target="_blank" rel="noreferrer"
-                  className={cn(
-                    "mt-6 rounded-xl py-2.5 text-center text-sm font-semibold transition",
-                    p.featured
-                      ? "bg-accent text-accent-fg hover:brightness-105"
-                      : "border hover:border-accent/40 hover:text-accent",
-                  )}>
-                  {p.cta}
-                </a>
-              ) : (
-                <div className="mt-6">
-                  <button disabled
-                    className="w-full cursor-not-allowed rounded-xl border py-2.5 text-center text-sm font-medium text-muted opacity-70">
-                    {p.cta}
-                  </button>
-                  <p className="mt-1.5 text-center text-[11px] text-muted">
-                    Checkout isn&apos;t connected yet — set a Stripe test payment link to enable it.
-                  </p>
-                </div>
-              )}
-            </motion.div>
-          );
-        })}
-      </div>
-
-      <p className="mt-8 text-center text-xs text-muted">
-        Every plan runs the same model and the same Verifier. Paying more buys you volume and workflow — never a
-        different answer.
+      <p className="mx-auto mt-8 max-w-xl text-center text-xs text-muted">
+        There were Pro and Dealer plans here. They were removed while the project&apos;s AGPL-3.0
+        licensing is unresolved — see{" "}
+        <a href="https://github.com/krish2105/AutoValuate-Intelligence/blob/main/docs/LICENSING.md"
+          className="text-fg underline decoration-muted/40 underline-offset-2" target="_blank" rel="noreferrer">
+          docs/LICENSING.md
+        </a>
+        . The stack is open source; run your own instance if you need more than the anonymous
+        API limit.
       </p>
     </div>
   );

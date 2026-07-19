@@ -27,11 +27,10 @@ import { ListingPack } from "@/components/listing-pack";
 import { Assistant } from "@/components/assistant";
 import { ConfidencePanel } from "@/components/confidence-panel";
 import { HistoryDrawer } from "@/components/history-drawer";
-import { useAuth, AuthModal, UserButton } from "@/components/auth";
+import { MainNav } from "@/components/main-nav";
 import { CardBoundary } from "@/components/card-boundary";
 import { CommandPalette } from "@/components/command-palette";
 import { Onboarding } from "@/components/onboarding";
-import { saveValuationCloud, loadValuationsCloud, clearValuationsCloud } from "@/lib/supabase";
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
@@ -44,21 +43,14 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [preset, setPreset] = useState<VehicleInput | null>(null);
   const [asking, setAsking] = useState<number | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
-  const { session } = useAuth();
   const resultsRef = useRef<HTMLDivElement>(null);
   const appraiseRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // History: cloud (per-user) when signed in, else local.
-  async function refreshHistory() {
-    if (session) {
-      try {
-        const rows = await loadValuationsCloud();
-        setHistory(rows.map((r) => ({ id: r.id, ts: new Date(r.created_at).getTime(), label: r.label, mid: Number(r.mid_aed), result: r.result })));
-        return;
-      } catch { /* fall through to local */ }
-    }
+  // History is LOCAL to this browser. Accounts were removed (sign-in was broken and the
+  // cloud-sync branch was its only remaining consumer), so there is one code path now
+  // instead of two — and no promise of cross-device sync that the app cannot keep.
+  function refreshHistory() {
     setHistory(loadHistory());
   }
 
@@ -71,7 +63,7 @@ export default function Home() {
     const t = setTimeout(() => apiInfo().then((i) => setOnline(i.online)), 20_000);
     return () => clearTimeout(t);
   }, []);
-  useEffect(() => { refreshHistory(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session]);
+  useEffect(() => { refreshHistory(); }, []);
 
   async function run(input: VehicleInput) {
     setLoading(true); setSteps([]); setResult(null); setDemo(false); setError(null);
@@ -83,8 +75,7 @@ export default function Home() {
       onStep: (s) => setSteps((p) => [...p, s]),
       onResult: (r, isDemo) => {
         setResult(r); setDemo(isDemo); setLoading(false);
-        if (session && !isDemo) { saveValuationCloud(r).then(refreshHistory).catch(() => setHistory(saveToHistory(r))); }
-        else setHistory(saveToHistory(r));
+        if (!isDemo) setHistory(saveToHistory(r));
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
       },
       onError: (msg) => { setLoading(false); setError(msg); },
@@ -129,7 +120,7 @@ export default function Home() {
               onOpenHistory={() => setDrawer(true)}
               onScrollTo={() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
             />
-            <UserButton session={session} onSignIn={() => setAuthOpen(true)} />
+            <MainNav />
             <ThemeToggle />
           </div>
         </div>
@@ -258,9 +249,8 @@ export default function Home() {
       <HistoryDrawer
         open={drawer} items={history} onClose={() => setDrawer(false)}
         onSelect={(it) => { setResult(it.result); setDemo(false); setSteps(it.result.trace); setDrawer(false); setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 120); }}
-        onClear={() => { if (session) { clearValuationsCloud().then(refreshHistory); } else { setHistory(clearHistory()); } }}
+        onClear={() => setHistory(clearHistory())}
       />
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <Onboarding />
     </div>
   );
