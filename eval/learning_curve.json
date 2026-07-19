@@ -1,0 +1,137 @@
+{
+  "what": "median APE vs training-set size for the pre- and post-spec-join feature sets, paired on identical seeds and identical held-out test rows",
+  "usable_rows": 1302,
+  "test_n_held_constant": 150,
+  "seeds": 25,
+  "spec_join_active": true,
+  "spec_match_rate": 0.8095238095238095,
+  "baseline": {
+    "n_features": 11,
+    "curve": [
+      {
+        "n": 200,
+        "median_ape_pct": 22.65,
+        "std": 2.73,
+        "mae_aed": 38395.0
+      },
+      {
+        "n": 300,
+        "median_ape_pct": 20.82,
+        "std": 2.09,
+        "mae_aed": 35078.0
+      },
+      {
+        "n": 400,
+        "median_ape_pct": 18.99,
+        "std": 2.01,
+        "mae_aed": 33479.0
+      },
+      {
+        "n": 600,
+        "median_ape_pct": 17.6,
+        "std": 1.64,
+        "mae_aed": 31442.0
+      },
+      {
+        "n": 800,
+        "median_ape_pct": 16.67,
+        "std": 1.98,
+        "mae_aed": 30029.0
+      },
+      {
+        "n": 1000,
+        "median_ape_pct": 15.96,
+        "std": 1.89,
+        "mae_aed": 28654.0
+      },
+      {
+        "n": 1150,
+        "median_ape_pct": 15.74,
+        "std": 1.68,
+        "mae_aed": 27986.0
+      }
+    ],
+    "fit": {
+      "a": 162.55,
+      "b": 0.486,
+      "asymptote_pct": 10.36,
+      "degenerate": false,
+      "marginal_pp_per_1000_rows_at_1300": 1.207,
+      "marginal_pp_per_1000_rows_at_5000": 0.22,
+      "rows_needed": {
+        "14pct": 2484,
+        "13pct": 4815,
+        "12pct": 12844,
+        "11pct": 89612,
+        "10pct": "unreachable",
+        "9pct": "unreachable",
+        "8pct": "unreachable"
+      }
+    }
+  },
+  "shipped": {
+    "n_features": 17,
+    "curve": [
+      {
+        "n": 200,
+        "median_ape_pct": 20.55,
+        "std": 2.52,
+        "mae_aed": 36653.0
+      },
+      {
+        "n": 300,
+        "median_ape_pct": 18.29,
+        "std": 1.83,
+        "mae_aed": 33487.0
+      },
+      {
+        "n": 400,
+        "median_ape_pct": 17.08,
+        "std": 2.02,
+        "mae_aed": 31244.0
+      },
+      {
+        "n": 600,
+        "median_ape_pct": 15.39,
+        "std": 1.68,
+        "mae_aed": 28048.0
+      },
+      {
+        "n": 800,
+        "median_ape_pct": 14.1,
+        "std": 1.73,
+        "mae_aed": 26163.0
+      },
+      {
+        "n": 1000,
+        "median_ape_pct": 13.74,
+        "std": 1.62,
+        "mae_aed": 24549.0
+      },
+      {
+        "n": 1150,
+        "median_ape_pct": 13.28,
+        "std": 1.5,
+        "mae_aed": 23909.0
+      }
+    ],
+    "fit": {
+      "a": 138.65,
+      "b": 0.4371,
+      "asymptote_pct": 6.87,
+      "degenerate": false,
+      "marginal_pp_per_1000_rows_at_1300": 1.333,
+      "marginal_pp_per_1000_rows_at_5000": 0.257,
+      "rows_needed": {
+        "14pct": 889,
+        "13pct": 1256,
+        "12pct": 1889,
+        "11pct": 3102,
+        "10pct": 5852,
+        "9pct": 14126,
+        "8pct": 60322
+      }
+    }
+  },
+  "honest_note": "Extrapolations are a 3-parameter fit to a handful of points inside a narrow measured range \u2014 indicative, not a promise. The asymptote is the floor for THIS feature set: the spec join moved it, so more features can move it again. Re-run after the corpus grows or the feature set changes."
+}

@@ -154,9 +154,13 @@ Every figure here is reproducible from a committed script + JSON — nothing is 
   ([`notebooks/09_yolo_framing_invariance_retrain.ipynb`](notebooks/09_yolo_framing_invariance_retrain.ipynb)).
   The full diagnosis, with the four downstream fixes that were tried and rejected on measurement,
   is in [`docs/CV_FINDINGS.md`](docs/CV_FINDINGS.md).
-- **The pricing floor is data, not tuning.** The learning curve (`eval/learning_curve.py`)
-  asymptotes near ~10% median APE at 1,302 rows — so no amount of hyperparameter search reaches
-  the ~8% published floor for larger corpora. The lever is data.
+- **The pricing floor is data and features, not tuning.** The learning curve
+  (`eval/learning_curve.py`, 25 seeds, constant 150-row test) fits `APE(n) = a·n^-b + c` for the
+  old and the shipped feature sets, paired on identical splits. The spec join moved the
+  asymptote **10.36% → 6.87%** — so the ~8% figure quoted for larger markets went from
+  *unreachable at any corpus size* to reachable, and hyperparameter search still isn't the
+  lever. Indicative rows needed on the shipped curve: **~5.9k for 10%**, **~14k for 9%**. The
+  weekly scrape (`.github/workflows/scrape-comparables.yml`) is what closes that gap.
 - **The spec-join accuracy gain is now shipped.** `eval/spec_join_study.py` found joining
   vehicle physical specs (hp, torque, l/100km, 0–100, top speed, weight) drops median APE by a
   paired, bootstrapped, permutation-controlled **+2.4pp** (verdict: ADOPT). The shipped bundle
@@ -166,9 +170,6 @@ Every figure here is reproducible from a committed script + JSON — nothing is 
   CSV. A fresh clone without it retrains to the un-joined 15.64% instead of failing;
   `spec_join_active` in the bundle and in `valuation_metrics.json` records which path produced
   the artifact.
-- **The ~10% learning-curve floor predates these features.** `eval/learning_curve.py` was run on
-  the pre-spec-join feature set, so its asymptote is not a current bound on the shipped model.
-  It has not been re-run.
 
 Two research findings — both argued *against* the obvious design choice — are written up in **[docs/RESEARCH.md](docs/RESEARCH.md)**:
 - **Uncertainty (D3):** raw quantile regression promises 80% coverage but delivers **54.8%**; the "±25% rule of thumb" delivers **56.3%**. Only split-conformal keeps its promise.
