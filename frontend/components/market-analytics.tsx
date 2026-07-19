@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import { BarChart3 } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
-import { aed, km } from "@/lib/utils";
+import { aed, km, titleCase } from "@/lib/utils";
 import { SectionCard, Pill } from "./ui";
 import { RadialGauge } from "./gauges";
 
@@ -58,7 +58,34 @@ export function MarketAnalytics({ result }: { result: ValuationResult }) {
     return rows.sort((a, b) => a.price - b.price);
   }, [comparables, mid]);
 
-  if (scatter.length < 2 && comparables.length < 2) return null;
+  // Too few comparables to chart anything honest — a scatter or a market-position gauge built on
+  // one listing is noise dressed as a signal. Rather than vanish (which made the feature look
+  // absent), say why: the corpus is thin for this model. Same data-scarcity limit the /model
+  // page and the accuracy plan already own — surfaced here instead of hidden.
+  if (scatter.length < 2 && comparables.length < 2) {
+    return (
+      <SectionCard
+        title="Market analytics"
+        subtitle="Price-vs-mileage, market position"
+        icon={<BarChart3 className="h-4.5 w-4.5" />}
+        right={<Pill tone="muted">{comparables.length === 0 ? "no comparables" : "1 comparable"}</Pill>}
+      >
+        <div className="rounded-xl border border-dashed bg-surface-2/30 p-4">
+          <p className="text-sm text-fg/85">
+            Not enough comparable listings for{" "}
+            <span className="font-medium">{vehicle.year} {titleCase(vehicle.make)} {titleCase(vehicle.model)}</span>{" "}
+            to chart the market yet.
+          </p>
+          <p className="mt-1.5 text-xs text-muted">
+            The charts need at least two similar cars in the corpus, and this make/model is
+            currently sparse. The valuation above still stands — it leans on the model rather than
+            on comparables — but the price-vs-mileage scatter and market-position gauge only appear
+            once the corpus has more of this car. Growing the corpus is the fix, not a code change.
+          </p>
+        </div>
+      </SectionCard>
+    );
+  }
 
   return (
     <SectionCard
