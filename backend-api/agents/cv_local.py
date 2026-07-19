@@ -19,8 +19,13 @@ import numpy as np
 MODEL_PATH = Path(__file__).resolve().parents[2] / "cv-service" / "model" / "best.onnx"
 IMGSZ = 640
 DECODE_FLOOR = 0.20      # keep candidates above this at decode; per-pass gate applied AFTER NMS
-CONF_THRES = 0.35        # full-frame pass gate (applied after NMS, matching the browser)
-TILE_CONF = 0.33         # tile-only pass gate
+# 0.20, lowered from 0.35/0.33 — MEASURED. A wrecked Civic's detections peaked at
+# missing_part 0.228 / dent 0.143, all below the old gates, so the car scored 100/100
+# "no visible damage". The detector is under-confident on WHOLE-CAR photos (the same
+# damage cropped scores 0.33) because it trained on close-up crops. Lock-step with
+# frontend/lib/cv-browser.ts CONF_THRES/TILE_CONF.
+CONF_THRES = 0.20        # full-frame pass gate (applied after NMS, matching the browser)
+TILE_CONF = 0.20         # tile-only pass gate
 IOU_THRES = 0.45
 MIN_AREA = 0.0008        # minimum box area as a fraction of frame (spec §3.7 step 5)
 CLASSES = ["dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat", "punctured", "missing_part"]
@@ -30,10 +35,14 @@ CLASSES = ["dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_fla
 # (See frontend cv-browser TILE_REGIONS.)
 TILE_REGIONS = [(0, 0, 1, 1), (0, 0, 1, 0.6), (0, 0.4, 0.6, 1), (0.4, 0.4, 1, 1)]
 # glass_shatter is hallucinated on zoomed tiles (reflections); take it only from the full pass.
-TILE_EXCLUDE = {"glass_shatter"}
+# tire_flat joins glass_shatter: on a ZOOMED tile the model calls a normal wheel "tire_flat"
+# at 0.77, which scored an undamaged car 38/100. Both accepted only from the full frame.
+TILE_EXCLUDE = {"glass_shatter", "tire_flat"}
 # ...and even on the full pass it FPs on windshield reflections. Real shattered glass is reliably
 # detected ≥0.75, so demand higher confidence for it to drop weaker reflection false positives.
 GLASS_CONF = 0.55
+# Same hallucination class as glass on the full pass (normal wheels) — needs a much higher bar.
+TIRE_CONF = 0.55
 
 
 def available() -> bool:
@@ -214,7 +223,8 @@ def _fuse_detections(dets: list[dict]) -> list[dict]:
     fused = _wbf(dets)
     fused = [d for d in fused
              if _box_area(d["box"]) >= MIN_AREA
-             and not (d["label"] == "glass_shatter" and d["confidence"] < GLASS_CONF)]
+             and not (d["label"] == "glass_shatter" and d["confidence"] < GLASS_CONF)
+             and not (d["label"] == "tire_flat" and d["confidence"] < TIRE_CONF)]
     fused.sort(key=lambda d: (CLASSES.index(d["label"]), -d["confidence"],
                               d["box"][0], d["box"][1], d["box"][2], d["box"][3]))
     return fused

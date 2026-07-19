@@ -1,38 +1,225 @@
 {
   "_comment": "Synthetic detection sets (one photo each) for the scoring check. Each case is a list of detections {label, confidence, box:[x1,y1,x2,y2] normalized, sev:0..1}. Run through BOTH the browser scorer (frontend/scripts/cv-scoring-run.mjs -> conditionFromDetections) and the backend scorer (eval/cv_scoring.py -> aggregation_agent.aggregate); the two must agree within tolerance, and each must land in its expected band. This is the regression guard for 'a crushed side must not score as minor cosmetic'.",
   "bands": {
-    "clean": [95, 100],
-    "small_ding": [88, 99],
-    "one_moderate": [78, 93],
-    "single_moderate_crack": [78, 88],
-    "single_severe_missing": [40, 72],
-    "side_collision": [44, 60],
-    "structural_wreck": [1, 50]
+    "clean": [
+      95,
+      100
+    ],
+    "small_ding": [
+      88,
+      99
+    ],
+    "one_moderate": [
+      78,
+      93
+    ],
+    "single_moderate_crack": [
+      78,
+      88
+    ],
+    "single_severe_missing": [
+      40,
+      72
+    ],
+    "side_collision": [
+      44,
+      60
+    ],
+    "structural_wreck": [
+      1,
+      50
+    ],
+    "wide_shot_wreck_low_conf": [
+      1,
+      55
+    ],
+    "clean_car_tire_fp": [
+      85,
+      100
+    ]
   },
   "cases": {
     "clean": [],
     "small_ding": [
-      {"label": "dent", "confidence": 0.5, "box": [0.45, 0.5, 0.52, 0.57], "sev": 0.3}
+      {
+        "label": "dent",
+        "confidence": 0.5,
+        "box": [
+          0.45,
+          0.5,
+          0.52,
+          0.57
+        ],
+        "sev": 0.3
+      }
     ],
     "one_moderate": [
-      {"label": "dent", "confidence": 0.55, "box": [0.40, 0.45, 0.60, 0.62], "sev": 0.5}
+      {
+        "label": "dent",
+        "confidence": 0.55,
+        "box": [
+          0.4,
+          0.45,
+          0.6,
+          0.62
+        ],
+        "sev": 0.5
+      }
     ],
     "single_moderate_crack": [
-      {"label": "crack", "confidence": 0.55, "box": [0.46, 0.55, 0.56, 0.66], "sev": 0.45}
+      {
+        "label": "crack",
+        "confidence": 0.55,
+        "box": [
+          0.46,
+          0.55,
+          0.56,
+          0.66
+        ],
+        "sev": 0.45
+      }
     ],
     "single_severe_missing": [
-      {"label": "missing_part", "confidence": 0.6, "box": [0.5, 0.55, 0.62, 0.72], "sev": 0.7}
+      {
+        "label": "missing_part",
+        "confidence": 0.6,
+        "box": [
+          0.5,
+          0.55,
+          0.62,
+          0.72
+        ],
+        "sev": 0.7
+      }
     ],
     "side_collision": [
-      {"label": "dent", "confidence": 0.60, "box": [0.24, 0.55, 0.55, 0.78], "sev": 0.55},
-      {"label": "dent", "confidence": 0.55, "box": [0.37, 0.60, 0.72, 0.82], "sev": 0.5},
-      {"label": "dent", "confidence": 0.60, "box": [0.72, 0.55, 0.98, 0.86], "sev": 0.6}
+      {
+        "label": "dent",
+        "confidence": 0.6,
+        "box": [
+          0.24,
+          0.55,
+          0.55,
+          0.78
+        ],
+        "sev": 0.55
+      },
+      {
+        "label": "dent",
+        "confidence": 0.55,
+        "box": [
+          0.37,
+          0.6,
+          0.72,
+          0.82
+        ],
+        "sev": 0.5
+      },
+      {
+        "label": "dent",
+        "confidence": 0.6,
+        "box": [
+          0.72,
+          0.55,
+          0.98,
+          0.86
+        ],
+        "sev": 0.6
+      }
     ],
     "structural_wreck": [
-      {"label": "crack", "confidence": 0.6, "box": [0.7, 0.5, 0.85, 0.62], "sev": 0.6},
-      {"label": "glass_shatter", "confidence": 0.8, "box": [0.4, 0.2, 0.6, 0.35], "sev": 0.5},
-      {"label": "lamp_broken", "confidence": 0.6, "box": [0.9, 0.55, 0.98, 0.66], "sev": 0.5},
-      {"label": "missing_part", "confidence": 0.6, "box": [0.75, 0.6, 0.95, 0.85], "sev": 0.7}
+      {
+        "label": "crack",
+        "confidence": 0.6,
+        "box": [
+          0.7,
+          0.5,
+          0.85,
+          0.62
+        ],
+        "sev": 0.6
+      },
+      {
+        "label": "glass_shatter",
+        "confidence": 0.8,
+        "box": [
+          0.4,
+          0.2,
+          0.6,
+          0.35
+        ],
+        "sev": 0.5
+      },
+      {
+        "label": "lamp_broken",
+        "confidence": 0.6,
+        "box": [
+          0.9,
+          0.55,
+          0.98,
+          0.66
+        ],
+        "sev": 0.5
+      },
+      {
+        "label": "missing_part",
+        "confidence": 0.6,
+        "box": [
+          0.75,
+          0.6,
+          0.95,
+          0.85
+        ],
+        "sev": 0.7
+      }
+    ],
+    "wide_shot_wreck_low_conf": [
+      {
+        "label": "missing_part",
+        "confidence": 0.228,
+        "box": [
+          0.03,
+          0.1,
+          0.3,
+          0.62
+        ],
+        "sev": 0.62
+      },
+      {
+        "label": "dent",
+        "confidence": 0.143,
+        "box": [
+          0.05,
+          0.25,
+          0.38,
+          0.7
+        ],
+        "sev": 0.55
+      },
+      {
+        "label": "crack",
+        "confidence": 0.21,
+        "box": [
+          0.1,
+          0.18,
+          0.28,
+          0.45
+        ],
+        "sev": 0.5
+      }
+    ],
+    "clean_car_tire_fp": [
+      {
+        "label": "tire_flat",
+        "confidence": 0.44,
+        "box": [
+          0.62,
+          0.55,
+          0.86,
+          0.95
+        ],
+        "sev": 0.5
+      }
     ]
   }
 }

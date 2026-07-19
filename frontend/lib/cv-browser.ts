@@ -41,7 +41,10 @@ export const PREPROCESSING_VERSION = "1.1.0";
 // 1.1.0: damage-EXTENT escalation (EXTENT_KNEE) so a large-area collision isn't "minor cosmetic".
 // 1.2.0: STRUCT_*_FLOOR + finding-aware band — a detected moderate/severe crack (etc.) can't leave
 // the car reading "Excellent — minimal visible damage". A scoring change = a config change.
-export const INFERENCE_CONFIG_VERSION = "1.2.0";
+// 1.3.0: detection gates recalibrated for WHOLE-CAR photos (CONF_THRES/TILE_CONF 0.35/0.33 ->
+// 0.20) after a wrecked Civic scored 100/100, plus a TIRE_CONF gate and tire_flat added to
+// TILE_EXCLUDE to stop the normal-wheel hallucination that scored a CLEAN car 38/100.
+export const INFERENCE_CONFIG_VERSION = "1.3.0";
 
 export const CV_CLASSES = [
   "dent", "scratch", "crack", "glass_shatter",
@@ -50,7 +53,13 @@ export const CV_CLASSES = [
 export type DamageClass = (typeof CV_CLASSES)[number];
 
 const IMGSZ = 640;
-const CONF_THRES = 0.35;   // full-frame pass gate (matches cv_local.py CONF_THRES)
+// 0.20, lowered from 0.35. MEASURED, not guessed: on a Honda Civic with a destroyed front end,
+// the model's own detections peaked at missing_part 0.228 / dent 0.143 — every one of them below
+// the old gate, so the car scored 100/100 "no visible damage". The detector is systematically
+// under-confident on WHOLE-CAR photos (the same damage cropped scores 0.33), because it was
+// trained on close-up damage crops. The gate was set for that training distribution, not for the
+// wide shots users actually upload. See scripts/diagnose_scan.py.
+const CONF_THRES = 0.20;   // full-frame pass gate (matches cv_local.py CONF_THRES)
 const DECODE_FLOOR = 0.20; // decode keeps everything above this; the per-pass gate is applied later
 const IOU_THRES = 0.45;  // matches cv_local.py IOU_THRES
 // Content-addressed (`?v=<sha256[:12]>`) so a redeployed model is a cache miss rather than
@@ -585,7 +594,7 @@ function decode(output: Tensor, meta: PreprocessResult): Detection[] {
 }
 
 const MIN_AREA = 0.0008; // drop pinprick boxes (<0.08% of frame) as likely noise
-const TILE_CONF = 0.33;  // tile-only detections need a bit more confidence than the full pass
+const TILE_CONF = 0.20;  // tile pass gate — lowered with CONF_THRES; see the note there
 // Full frame + top half + the two bottom quadrants (4 passes). A single 640² letterbox
 // squashes a whole-car photo so small/localized damage vanishes; zooming into regions recovers
 // it — the biggest recall lever without retraining. This 4-pass layout matched full+4-quadrants
@@ -600,10 +609,18 @@ const TILE_REGIONS: Array<[number, number, number, number]> = [
 ];
 // glass_shatter is hallucinated on zoomed tiles (window reflections/glare) at high confidence,
 // so accept it ONLY from the full-frame pass, where it's reliable. Everything else: full+tiles.
-const TILE_EXCLUDE = new Set<DamageClass>(["glass_shatter"]);
+// tire_flat joins glass_shatter here for the same measured reason: on a ZOOMED tile the model
+// calls a perfectly normal wheel "tire_flat" at 0.77 confidence. That single hallucination scored
+// an undamaged car 38/100 under the old config — the mirror image of the Civic bug, and the same
+// thing that tanked a clean car when 3x3 tiling was trialled. Both classes are accepted only from
+// the full frame, where they are reliable.
+const TILE_EXCLUDE = new Set<DamageClass>(["glass_shatter", "tire_flat"]);
 // ...and even on the full pass it FPs on windshield reflections. Real shattered glass is reliably
 // detected ≥0.75, so demand higher confidence for it to drop weaker reflection false positives.
 const GLASS_CONF = 0.55;
+// Same treatment for tire_flat on the full pass: it is the model's other reflection-style
+// hallucination (normal wheels), so it must clear a much higher bar than the general gate.
+const TIRE_CONF = 0.55;
 
 /** Run the model on one crop; returns detections normalized to the FULL image. */
 async function inferRegion(
@@ -689,7 +706,8 @@ function canonicalSort(dets: Detection[]): Detection[] {
 export function fuseDetections(dets: Detection[]): Detection[] {
   const fused = mergeDetections(dets).filter((d) =>
     boxArea(d.box) >= MIN_AREA
-    && !(d.label === "glass_shatter" && d.confidence < GLASS_CONF));
+    && !(d.label === "glass_shatter" && d.confidence < GLASS_CONF)
+    && !(d.label === "tire_flat" && d.confidence < TIRE_CONF));
   return canonicalSort(fused);
 }
 

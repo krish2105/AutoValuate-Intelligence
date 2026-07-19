@@ -80,18 +80,48 @@ Transpose to `(8400, 12)`. Columns 0-3 = `cx, cy, w, h` (in 640-space); columns 
 scores. Per row: `class = argmax(scores)`, `confidence = max(scores)`. Convert to corners:
 `x1 = cx - w/2`, `y1 = cy - h/2`, `x2 = cx + w/2`, `y2 = cy + h/2`.
 
+### 3.4a Gate calibration (config 1.3.0) — why 0.20
+
+The gates were originally set for the training distribution (CarDD/VehiDE **close-up damage
+crops**), not for the **whole-car photos** users actually upload. Measured on a Honda Civic with a
+destroyed front end (`scripts/diagnose_scan.py`):
+
+| pass | best detection | old gate | outcome |
+|---|---|---|---|
+| full-frame | `tire_flat` 0.085 | 0.35 | dropped |
+| top-half | `missing_part` **0.228** | 0.33 | dropped |
+| bottom-left | `dent` 0.143 | 0.33 | dropped |
+
+Every detection was discarded and the car scored **100/100 "no visible damage"**. The same damage
+**cropped** scores `missing_part` 0.33 — the model is under-confident when damage is small in
+frame, not blind.
+
+Lowering the gate alone is unsafe: on a zoomed tile the model calls a **normal wheel** `tire_flat`
+at **0.77**, which scored an undamaged car **38/100**. Hence `tire_flat` is gated like
+`glass_shatter` (full-frame only, `TIRE_CONF`). Verified on real photos:
+
+| | before | after |
+|---|---|---|
+| wrecked Civic (whole car) | 100 | **38** — "Severe / likely structural" |
+| clean rear panel | 38 | **90** — "Excellent" |
+| clean door panel | 100 | 100 |
+
+Regression fixtures: `wide_shot_wreck_low_conf`, `clean_car_tire_fp` in
+`eval/cv_scoring_fixtures.json`.
+
 ### 3.5 Thresholds
 
 | Constant | Value | Meaning |
 |---|---|---|
 | `DECODE_FLOOR` | 0.20 | browser: keep candidates above this at decode; per-pass gate applied after NMS |
-| `CONF_THRES` | 0.35 | full-frame pass gate |
-| `TILE_CONF` | 0.33 | tile pass gate; also the per-detection floor in aggregation |
+| `CONF_THRES` | 0.20 | full-frame pass gate (lowered from 0.35 in config 1.3.0 — see §3.4a) |
+| `TILE_CONF` | 0.20 | tile pass gate; also the per-detection floor in aggregation |
 | `IOU_THRES` | 0.45 | per-class NMS |
 | `WBF_IOU` | 0.55 | Weighted Box Fusion |
 | `AGREE_BONUS` | 0.05 | per extra agreeing box; fused conf capped at 0.98 |
 | `MIN_AREA` | 0.0008 | minimum box area as a fraction of frame |
 | `GLASS_CONF` | 0.55 | `glass_shatter`-only final gate |
+| `TIRE_CONF` | 0.55 | `tire_flat`-only final gate (same hallucination class) |
 
 **Comparison direction is normative:** `>= minConf`, applied **after** NMS, on both paths.
 The backend previously gated `> min_conf` *before* NMS; it now decodes above `DECODE_FLOOR`,
@@ -114,7 +144,7 @@ runs NMS, then gates `>= min_conf` — matching the browser (was §6 #2, now clo
 Each pass letterboxes its crop independently and runs inference. Boxes remap to full-frame
 normalized coordinates as `(sx + x * sw) / W`.
 
-`TILE_EXCLUDE = {glass_shatter}` — accepted from the full-frame pass **only**. Windshield
+`TILE_EXCLUDE = {glass_shatter, tire_flat}` — accepted from the full-frame pass **only**. Windshield
 reflections fire hardest in crops.
 
 ### 3.7 Fusion and filtering, in order
@@ -123,9 +153,9 @@ reflections fire hardest in crops.
 2. Per-pass confidence gate (`CONF_THRES` full, `TILE_CONF` tiles).
 3. Weighted Box Fusion across passes (`WBF_IOU`): confidence-weighted box average;
    `fused = min(0.98, max(confs) + AGREE_BONUS * (n - 1))`.
-4. Drop tile-sourced `glass_shatter` (`TILE_EXCLUDE`).
+4. Drop tile-sourced `glass_shatter` and `tire_flat` (`TILE_EXCLUDE`).
 5. Drop boxes with area `< MIN_AREA`.
-6. Drop `glass_shatter` with confidence `< GLASS_CONF`.
+6. Drop `glass_shatter` below `GLASS_CONF` and `tire_flat` below `TIRE_CONF`.
 
 ### 3.8 Severity — pixel-graded, never confidence
 

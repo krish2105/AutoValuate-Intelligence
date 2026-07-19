@@ -43,7 +43,10 @@ BASE_SEVERITY = {
     "missing_part": 0.28,
 }
 STRUCTURAL = {"crack", "glass_shatter", "lamp_broken", "punctured", "missing_part", "tire_flat"}
-CONF_THRESHOLD = 0.33    # matches TILE_CONF — the lowest pass gate; detect() already gated
+# Must track cv_local.TILE_CONF. If this stays above the detection gate it silently re-drops
+# everything the recalibration was meant to surface — the aggregation floor is the second place
+# a detection can die, and it is easy to miss.
+CONF_THRESHOLD = 0.20    # matches TILE_CONF — the lowest pass gate; detect() already gated
 CONF_LO, CONF_HI = 0.20, 0.55
 CONF_FLOOR = 0.35
 SEV_MULT_LO, SEV_MULT_HI = 0.5, 2.5   # pixel severity 0..1 → impact multiplier 0.5..2.5
