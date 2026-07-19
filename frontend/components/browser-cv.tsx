@@ -21,7 +21,13 @@ export function BrowserCV({ job }: { job: ScanJob }) {
   const busy = !isTerminal(status);
   const totalFindings = cond?.findings.length ?? 0;
   const score = cond?.condition_score ?? null;
-  const scoreTone = score == null ? "muted" : score >= 78 ? "good" : score >= 60 ? "warn" : "bad";
+  // A scan that found NOTHING is unverified, not good news — the detector misses ~a third of
+  // real damage, so it must not render in confident green with a shield. Any car with at least
+  // one finding is scored normally; only the zero-detection case is de-confidenced.
+  const foundNothing = status === "complete" && totalFindings === 0;
+  const scoreTone = score == null ? "muted"
+    : foundNothing ? "muted"
+      : score >= 78 ? "good" : score >= 60 ? "warn" : "bad";
   const sevTone: Record<string, string> = { minor: "text-muted", moderate: "text-warn", severe: "text-bad" };
 
   const busyLabel =
@@ -51,8 +57,10 @@ export function BrowserCV({ job }: { job: ScanJob }) {
           <Pill tone="info" aria-live="polite"><Loader2 className="h-3 w-3 animate-spin" /> {busyLabel}</Pill>
         ) : status === "complete" ? (
           <Pill tone={scoreTone as any}>
-            {score != null && score >= 78 ? <ShieldCheck className="h-3 w-3" /> : null}
-            {score}/100 · {totalFindings} issue{totalFindings === 1 ? "" : "s"}
+            {score != null && score >= 78 && !foundNothing ? <ShieldCheck className="h-3 w-3" /> : null}
+            {foundNothing
+              ? "no damage detected · unconfirmed"
+              : `${score}/100 · ${totalFindings} issue${totalFindings === 1 ? "" : "s"}`}
           </Pill>
         ) : status === "partial" ? (
           <Pill tone="warn"><AlertTriangle className="h-3 w-3" /> partial scan</Pill>
@@ -178,13 +186,25 @@ export function BrowserCV({ job }: { job: ScanJob }) {
           substitute for a physical inspection.
         </p>
       )}
-      {/* Only a COMPLETE scan may claim a clean car. A partial or failed scan saying
-          "no visible damage" would be asserting something it did not look at. */}
+      {/* A zero-detection scan is NOT a clean bill of health. The detector's measured recall is
+          0.690 overall (dent 0.525, crack 0.389) — it misses roughly a third of real damage — so
+          "found nothing" cannot support "the car is clean". It previously rendered in confident
+          green as "condition looks clean" at 100/100, which is the single most damaging thing
+          this UI could say about a car it failed to read. Absence of evidence, stated as such. */}
       {cond && cond.findings.length === 0 && status === "complete" && (
-        <p className="mt-3 text-[11px] text-good">
-          No visible damage detected in these photos — condition looks clean.
-          <span className="text-muted"> A photo scan can’t assess frame, mechanical or service history.</span>
-        </p>
+        <div className="mt-3 rounded-xl border border-warn/30 bg-warn/5 p-3">
+          <p className="flex items-start gap-1.5 text-[11px] font-medium text-warn">
+            <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+            No damage was detected — but that is not the same as no damage.
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
+            This detector finds about <span className="text-fg/80">two-thirds</span> of real damage,
+            so a clean scan is <span className="text-fg/80">unconfirmed, not proof</span>. It is
+            weakest on dents and fine cracks, and on wide shots where damage is small in frame.
+            Photograph each panel close-up, and treat this result as a starting point for an
+            inspection rather than a verdict.
+          </p>
+        </div>
       )}
     </motion.div>
   );

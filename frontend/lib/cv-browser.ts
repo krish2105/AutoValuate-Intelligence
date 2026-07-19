@@ -876,8 +876,11 @@ export function conditionFromDetections(
   const score = Math.round(100 * (1 - deduction));
   const hasModeratePlus = findings.some((f) => f.severity !== "minor");
   // Any structural finding warrants a physical check — a crack/impact can hide damage behind the
-  // panel — even if the numeric score is high.
-  const needsInspection = score < 70 || hasModeratePlus || structFindings.length > 0;
+  // panel — even if the numeric score is high. A scan that found NOTHING also warrants one: the
+  // detector's measured recall is 0.690 (dent 0.525, crack 0.389), so "no detections" is
+  // unconfirmed rather than clean, and a wrecked car reading 100/100 is exactly that failure.
+  const foundNothing = findings.length === 0;
+  const needsInspection = score < 70 || hasModeratePlus || structFindings.length > 0 || foundNothing;
   return {
     cv_available: true,
     condition_score: score,
