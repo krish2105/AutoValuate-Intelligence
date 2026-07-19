@@ -2,6 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
   images: { remotePatterns: [{ protocol: "https", hostname: "**" }] },
+  // framer-motion 11.15+ ships motion-dom/motion-utils as pure ESM with a circular import
+  // between css-variables-conversion.mjs and errors.mjs. Next's webpack dev bundler executes
+  // that cycle out of order ("Cannot read properties of undefined (reading 'call')", blank
+  // page, hydration failure on every route). Transpiling forces these through Next's own
+  // loader instead of consuming the prebuilt dist output, which resolves the ordering.
+  transpilePackages: ["framer-motion", "motion-dom", "motion-utils"],
   webpack: (config) => {
     // onnxruntime-web references node builtins in code paths we never hit in the
     // browser wasm EP — stub them so the client bundle builds cleanly.

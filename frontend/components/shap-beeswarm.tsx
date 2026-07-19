@@ -17,6 +17,17 @@ import { FEATURE_LABEL } from "@/lib/feature-labels";
 
 type Pt = { s: number; v: number };
 
+// Integer-only hash (no Math.sin/trig): trig-based "random" hashes drift in their last few
+// float digits between Node's SSR pass and the browser's hydration pass (different libm),
+// which React flags as a hydration mismatch even though the dots land in visually the same
+// spot. Bitwise int32 ops are bit-exact across every JS engine, so this can't happen here.
+function hash01(i: number, r: number): number {
+  let h = (Math.imul(i, 374761393) + Math.imul(r, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
 export function ShapBeeswarm({
   order, features, n,
 }: {
@@ -65,7 +76,7 @@ export function ShapBeeswarm({
                 {pts.map((p, i) => {
                   // Deterministic jitter: index-hashed, so the swarm is stable across renders
                   // (a random one would twitch on every re-render and look like live data).
-                  const j = ((Math.sin(i * 12.9898 + r * 78.233) * 43758.5453) % 1 + 1) % 1;
+                  const j = hash01(i, r);
                   return (
                     <circle key={i} cx={x(p.s)} cy={cy + (j - 0.5) * (ROW - 12)} r={2.4}
                       fill={p.v > 0.5 ? "hsl(var(--accent))" : "hsl(var(--info))"}
