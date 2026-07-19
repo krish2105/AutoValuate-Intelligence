@@ -1,0 +1,44 @@
+{
+  "labels": [
+    {
+      "name": "dent",
+      "color": "#000000",
+      "attributes": []
+    },
+    {
+      "name": "scratch",
+      "color": "#3779b1",
+      "attributes": []
+    },
+    {
+      "name": "crack",
+      "color": "#6ef362",
+      "attributes": []
+    },
+    {
+      "name": "glass_shatter",
+      "color": "#a66d13",
+      "attributes": []
+    },
+    {
+      "name": "lamp_broken",
+      "color": "#dde6c4",
+      "attributes": []
+    },
+    {
+      "name": "tire_flat",
+      "color": "#156075",
+      "attributes": []
+    },
+    {
+      "name": "punctured",
+      "color": "#4cda26",
+      "attributes": []
+    },
+    {
+      "name": "missing_part",
+      "color": "#8453d7",
+      "attributes": []
+    }
+  ]
+}

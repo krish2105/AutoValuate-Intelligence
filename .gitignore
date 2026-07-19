@@ -62,3 +62,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# ---- Local Claude Code dev config (per-machine, e.g. dev-server launch config) ----
+.claude/

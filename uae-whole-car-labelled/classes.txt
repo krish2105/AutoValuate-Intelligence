@@ -1,0 +1,8 @@
+dent
+scratch
+crack
+glass_shatter
+lamp_broken
+tire_flat
+punctured
+missing_part

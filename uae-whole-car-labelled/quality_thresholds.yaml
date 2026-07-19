@@ -1,0 +1,15 @@
+# Structural checks are always enforced.
+# These targets are reported as warnings unless --production is supplied.
+minimum_images:
+  train: 160
+  val: 32
+  test: 64
+
+minimum_boxes_per_class:
+  train: 30
+  val: 5
+  test: 10
+
+minimum_short_side_px: 640
+near_duplicate_error_distance: 2
+near_duplicate_warning_distance: 6

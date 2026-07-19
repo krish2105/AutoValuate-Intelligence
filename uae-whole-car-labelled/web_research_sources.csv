@@ -1,0 +1,7 @@
+source,url,decision,reason
+CarDD official,https://cardd-ustc.github.io/,Not directly usable as the UAE test set,"4,000 images and six damage categories; official access requires a licensing form; not UAE-specific."
+CarDD YOLO conversion on Kaggle,https://www.kaggle.com/datasets/gabrielfcarvalho/cardd-with-yolo-annotations-images-labels,Supplementary research only,Six classes and CC BY-NC 4.0; not UAE-specific and missing punctured/missing_part alignment.
+Humans in the Loop car damage dataset,https://humansintheloop.org/resources/datasets/car-parts-and-car-damages-dataset/,Potential supplementary pretraining only,"CC0 and annotated, but not UAE-specific and class taxonomy differs."
+UAE Open Data traffic incidents,https://opendata.fcsc.gov.ae/@dubaipulse/dp-traffic-incidents,Not an image dataset,Tabular incident categories and coordinates; no damage photographs or bounding boxes.
+UAE Auto Auction terms,https://www.uaeautoauction.com/terms,Do not scrape without written permission,Site content is described as protected intellectual property.
+Copart Middle East terms,https://www.copartmea.com/content/uk/en/member-terms-and-conditions,Do not scrape without a suitable image/data licence,Auction access and vehicle information are governed by member terms and separate image/data licensing.

@@ -1,0 +1,13 @@
+<View>
+  <Image name="image" value="$image"/>
+  <RectangleLabels name="damage" toName="image">
+    <Label value="dent" hotkey="1"/>
+    <Label value="scratch" hotkey="2"/>
+    <Label value="crack" hotkey="3"/>
+    <Label value="glass_shatter" hotkey="4"/>
+    <Label value="lamp_broken" hotkey="5"/>
+    <Label value="tire_flat" hotkey="6"/>
+    <Label value="punctured" hotkey="7"/>
+    <Label value="missing_part" hotkey="8"/>
+  </RectangleLabels>
+</View>
