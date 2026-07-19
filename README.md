@@ -134,9 +134,9 @@ Every figure here is reproducible from a committed script + JSON — nothing is 
 
 | Metric | Value | Source |
 |---|---:|---|
-| Pricing — median APE | **15.65%** | `eval/valuation_metrics.json` |
+| Pricing — median APE | **13.18%** | `eval/valuation_metrics.json` |
 | Pricing — conformal coverage (target 80%) | **≈79%** | `eval/uncertainty_study.json` |
-| Pricing — improvement over make+model baseline | **+46%** | `eval/valuation_metrics.json` |
+| Pricing — improvement over make+model baseline | **+52%** | `eval/valuation_metrics.json` |
 | Report faithfulness | **1.000** | `eval/faithfulness_report.json` |
 | Retrieval same-make P@5 (benchmark) | **1.000** | `eval/comparables_eval.json` |
 | CV detection — mAP@0.5 | **0.732** *(see caveat)* | `eval/cv_train_summary.json` |
@@ -155,14 +155,20 @@ Every figure here is reproducible from a committed script + JSON — nothing is 
   The full diagnosis, with the four downstream fixes that were tried and rejected on measurement,
   is in [`docs/CV_FINDINGS.md`](docs/CV_FINDINGS.md).
 - **The pricing floor is data, not tuning.** The learning curve (`eval/learning_curve.py`)
-  asymptotes near ~10% median APE with the current features and 1,302 rows — so no amount of
-  hyperparameter search reaches the ~8% published floor for larger corpora. The lever is data.
-- **The spec-join accuracy gain is proven but not yet shipped.** `eval/spec_join_study.py`
-  found joining vehicle physical specs drops median APE by a paired, bootstrapped,
-  permutation-controlled **+2.4pp** (verdict: ADOPT). `train_valuation.py` and
-  `valuation_model.py` are wired to pick this up automatically, but it activates only when
-  `data/raw/DriveArabia_All_uae.csv` (gitignored, Kaggle-downloaded) is present at train time —
-  the **15.65%** above is still the un-joined number until someone retrains with that file.
+  asymptotes near ~10% median APE at 1,302 rows — so no amount of hyperparameter search reaches
+  the ~8% published floor for larger corpora. The lever is data.
+- **The spec-join accuracy gain is now shipped.** `eval/spec_join_study.py` found joining
+  vehicle physical specs (hp, torque, l/100km, 0–100, top speed, weight) drops median APE by a
+  paired, bootstrapped, permutation-controlled **+2.4pp** (verdict: ADOPT). The shipped bundle
+  is now trained with it: **15.65% → 13.18%**, at an **81.0%** spec match rate. The join needs
+  `data/raw/DriveArabia_All_uae.csv` (gitignored, Kaggle-downloaded) **only at train time** —
+  the aggregated spec table is baked into `valuation_model.joblib`, so inference never needs the
+  CSV. A fresh clone without it retrains to the un-joined 15.64% instead of failing;
+  `spec_join_active` in the bundle and in `valuation_metrics.json` records which path produced
+  the artifact.
+- **The ~10% learning-curve floor predates these features.** `eval/learning_curve.py` was run on
+  the pre-spec-join feature set, so its asymptote is not a current bound on the shipped model.
+  It has not been re-run.
 
 Two research findings — both argued *against* the obvious design choice — are written up in **[docs/RESEARCH.md](docs/RESEARCH.md)**:
 - **Uncertainty (D3):** raw quantile regression promises 80% coverage but delivers **54.8%**; the "±25% rule of thumb" delivers **56.3%**. Only split-conformal keeps its promise.
