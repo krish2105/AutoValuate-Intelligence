@@ -221,5 +221,353 @@
         "sev": 0.5
       }
     ]
+  },
+  "multi_photo_cases": {
+    "same_dent_8_angles": [
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ]
+    ],
+    "same_dent_3_angles": [
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ]
+    ],
+    "single_photo_dent": [
+      [
+        {
+          "label": "dent",
+          "confidence": 0.6,
+          "box": [
+            0.35,
+            0.4,
+            0.65,
+            0.7
+          ],
+          "sev": 0.5
+        }
+      ]
+    ],
+    "false_positive_x6": [
+      [
+        {
+          "label": "scratch",
+          "confidence": 0.3,
+          "box": [
+            0.55,
+            0.6,
+            0.7,
+            0.72
+          ],
+          "sev": 0.35
+        }
+      ],
+      [
+        {
+          "label": "scratch",
+          "confidence": 0.3,
+          "box": [
+            0.55,
+            0.6,
+            0.7,
+            0.72
+          ],
+          "sev": 0.35
+        }
+      ],
+      [
+        {
+          "label": "scratch",
+          "confidence": 0.3,
+          "box": [
+            0.55,
+            0.6,
+            0.7,
+            0.72
+          ],
+          "sev": 0.35
+        }
+      ],
+      [
+        {
+          "label": "scratch",
+          "confidence": 0.3,
+          "box": [
+            0.55,
+            0.6,
+            0.7,
+            0.72
+          ],
+          "sev": 0.35
+        }
+      ],
+      [
+        {
+          "label": "scratch",
+          "confidence": 0.3,
+          "box": [
+            0.55,
+            0.6,
+            0.7,
+            0.72
+          ],
+          "sev": 0.35
+        }
+      ],
+      [
+        {
+          "label": "scratch",
+          "confidence": 0.3,
+          "box": [
+            0.55,
+            0.6,
+            0.7,
+            0.72
+          ],
+          "sev": 0.35
+        }
+      ]
+    ],
+    "wreck_one_wide": [
+      [
+        {
+          "label": "missing_part",
+          "confidence": 0.6,
+          "box": [
+            0.05,
+            0.15,
+            0.35,
+            0.65
+          ],
+          "sev": 0.65
+        },
+        {
+          "label": "crack",
+          "confidence": 0.5,
+          "box": [
+            0.3,
+            0.3,
+            0.45,
+            0.55
+          ],
+          "sev": 0.5
+        },
+        {
+          "label": "dent",
+          "confidence": 0.55,
+          "box": [
+            0.1,
+            0.4,
+            0.4,
+            0.75
+          ],
+          "sev": 0.55
+        }
+      ]
+    ],
+    "wreck_3_closeups": [
+      [
+        {
+          "label": "missing_part",
+          "confidence": 0.6,
+          "box": [
+            0.05,
+            0.15,
+            0.35,
+            0.65
+          ],
+          "sev": 0.65
+        }
+      ],
+      [
+        {
+          "label": "crack",
+          "confidence": 0.5,
+          "box": [
+            0.3,
+            0.3,
+            0.45,
+            0.55
+          ],
+          "sev": 0.5
+        }
+      ],
+      [
+        {
+          "label": "dent",
+          "confidence": 0.55,
+          "box": [
+            0.1,
+            0.4,
+            0.4,
+            0.75
+          ],
+          "sev": 0.55
+        }
+      ]
+    ]
+  },
+  "multi_photo_bands": {
+    "same_dent_8_angles": [
+      72,
+      95
+    ],
+    "same_dent_3_angles": [
+      84,
+      95
+    ],
+    "single_photo_dent": [
+      86,
+      96
+    ],
+    "false_positive_x6": [
+      90,
+      100
+    ],
+    "wreck_one_wide": [
+      1,
+      55
+    ],
+    "wreck_3_closeups": [
+      1,
+      55
+    ]
   }
 }

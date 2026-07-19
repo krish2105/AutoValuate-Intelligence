@@ -10,7 +10,9 @@ import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const fixtures = JSON.parse(readFileSync(process.argv[2], "utf8")).cases;
+const _fx = JSON.parse(readFileSync(process.argv[2], "utf8"));
+const fixtures = _fx.cases;
+const multi = _fx.multi_photo_cases || {};
 const out = join(tmpdir(), `_cvb_score_${process.pid}.mjs`);
 await build({
   entryPoints: ["lib/cv-browser.ts"], outfile: out, bundle: true, format: "esm",
@@ -28,6 +30,20 @@ for (const [name, dets] of Object.entries(fixtures)) {
       (w, f) => (["minor", "moderate", "severe"].indexOf(f.severity) > ["minor", "moderate", "severe"].indexOf(w) ? f.severity : w),
       "minor"),
     findings: cc.findings.map((f) => ({ t: f.damage_type, sev: f.severity, imp: f.value_impact_pct })),
+  };
+}
+// Multi-photo cases: each value is a LIST OF PHOTOS. These pin the cross-photo
+// aggregation (combineAcrossPhotos) — redundant angles must not compound, and a wreck
+// split into close-ups must not inflate.
+for (const [name, photos] of Object.entries(multi)) {
+  const per = photos.map((dets) => dets.map((d) => ({ ...d, box: [...d.box] })));
+  const cc = conditionFromDetections(per, { ...binding, photosAssessed: per.length });
+  result[name] = {
+    score: cc.condition_score,
+    worst_severity: cc.findings.reduce(
+      (w, f) => (["minor", "moderate", "severe"].indexOf(f.severity) > ["minor", "moderate", "severe"].indexOf(w) ? f.severity : w),
+      "minor"),
+    findings: cc.findings.map((f) => ({ t: f.damage_type, sev: f.severity, imp: f.value_impact_pct, n: f.instances })),
   };
 }
 process.stdout.write(JSON.stringify(result));

@@ -65,6 +65,12 @@ COV_GRID = 48
 # Parity with frontend/lib/cv-browser.ts. glass_shatter is excluded (genuinely cheap to replace).
 STRUCT_MOD_FLOOR = 0.15
 STRUCT_SEV_FLOOR = 0.28
+# Weight of each ADDITIONAL photo showing the same damage class (the worst photo counts in
+# full). Chosen by sweep, not taste: at 1.0 (the old behaviour) one dent shot from 8 angles
+# cost 40 points; at 0.0 a wreck split into close-ups scores like a single scratch. 0.30 keeps
+# redundant angles nearly free (93 -> 79 over 8 photos) while genuinely more damage still
+# scores worse. Parity with frontend/lib/cv-browser.ts REPEAT_DISCOUNT.
+REPEAT_DISCOUNT = 0.30
 # Fallback when a detection carries no pixel `sev` (e.g. the remote CV Space): estimate from area.
 _FALLBACK_PRIOR = {"glass_shatter": 0.15, "missing_part": 0.20, "punctured": 0.15, "crack": 0.10, "lamp_broken": 0.08}
 
@@ -117,6 +123,47 @@ def _eff_weight(conf: float, sev: float) -> float:
 
 def _det_impact(label: str, sev: float, conf: float) -> float:
     return BASE_SEVERITY[label] * (SEV_MULT_LO + (SEV_MULT_HI - SEV_MULT_LO) * sev) * _eff_weight(conf, sev)
+
+
+def _distinct_instances(by_photo: dict[int, list[float]]) -> int:
+    """Best estimate of how many distinct damages of this class exist: the most seen in any
+    ONE photo. The cross-photo total counts the same dent once per angle."""
+    return max((len(v) for v in by_photo.values()), default=0)
+
+
+def _combine_across_photos(by_photo: dict[int, list[float]]) -> float:
+    """Combine one class's impacts into a single 0..1 value.
+
+    WITHIN a photo, two boxes are two distinct damages (NMS/WBF already merged duplicates),
+    so they multiply as independent losses — unchanged behaviour.
+
+    ACROSS photos the honest answer is that WE CANNOT TELL whether a dent in photo 3 is the
+    same dent as in photo 1. Nothing in the pipeline registers viewpoints, and boxes live in
+    different camera frames. Measured, the two cases are numerically identical to the scorer.
+    The old code resolved that ambiguity by charging every photo in full, so one dent shot
+    from 8 angles cost 40 points — the guided walk-around ASKS for 8 angles, so correct usage
+    was punished hardest. Taking the plain maximum resolves it the other way and lets a wreck
+    hide by being documented in close-ups, which is the failure this project keeps fixing.
+
+    So extra photos contribute at a discount: the worst single photo is charged in full and
+    each additional one at REPEAT_DISCOUNT. It is deliberately not 0 (more genuine damage
+    must still score worse) and not 1 (redundant angles must not compound). This is a
+    calibrated hedge against an ambiguity the data cannot resolve, not a derivation —
+    eval/cv_scoring.py pins both directions so the tradeoff is visible and testable.
+    """
+    per_photo = []
+    for impacts in by_photo.values():
+        kept = 1.0
+        for imp in impacts:
+            kept *= (1 - imp)
+        per_photo.append(1 - kept)
+    if not per_photo:
+        return 0.0
+    per_photo.sort(reverse=True)
+    kept = 1 - per_photo[0]
+    for p in per_photo[1:]:
+        kept *= (1 - REPEAT_DISCOUNT * p)
+    return 1 - kept
 
 
 def _severity_of(label: str, sev: float) -> str:
@@ -204,11 +251,16 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
                 continue
             sev = _sev_of_det(d)
             slot = per_class.setdefault(
-                label, {"max_conf": 0.0, "photos": set(), "impacts": [], "worst_sev": 0.0}
+                label, {"max_conf": 0.0, "photos": set(), "impacts": [],
+                        "by_photo": {}, "worst_sev": 0.0}
             )
             slot["max_conf"] = max(slot["max_conf"], conf)
             slot["photos"].add(i)
             slot["impacts"].append(_det_impact(label, sev, conf))
+            # Impacts grouped BY PHOTO. Within one photo, distinct boxes are distinct damage
+            # and multiply; across photos they may be the same damage seen again — see
+            # _combine_across_photos.
+            slot["by_photo"].setdefault(i, []).append(_det_impact(label, sev, conf))
             slot["worst_sev"] = max(slot["worst_sev"], sev)
             kept_boxes.append(d.get("box"))
         max_coverage = max(max_coverage, _coverage(kept_boxes))
@@ -228,19 +280,22 @@ def aggregate(vehicle: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
     # score reflects how much of the car is damaged, not merely how many boxes fired. (The
     # old count-based sum scored a crushed front-end the same as one door ding: −2%.)
     findings, kept_all, struct_hits = [], 1.0, 0
-    for label, s in sorted(per_class.items(), key=lambda kv: -sum(kv[1]["impacts"])):
-        kept_class = 1.0
-        for imp in s["impacts"]:
-            kept_class *= (1 - imp)
-            kept_all *= (1 - imp)
+    for label, s in sorted(per_class.items(), key=lambda kv: -_combine_across_photos(kv[1]["by_photo"])):
+        class_impact = _combine_across_photos(s["by_photo"])
+        kept_class = 1 - class_impact
+        kept_all *= kept_class
         if label in STRUCTURAL:
-            struct_hits += len(s["impacts"])
+            # Count distinct damage, not photographs of it — otherwise the accident
+            # escalation also fires harder the more angles the user shoots.
+            struct_hits += _distinct_instances(s["by_photo"])
         findings.append({
             "damage_type": label,
-            "instances": len(s["impacts"]),
+            # The largest number seen in any SINGLE photo. Reporting the cross-photo total
+            # told a user with one dent that the car had "8 spots".
+            "instances": _distinct_instances(s["by_photo"]),
             "max_confidence": round(s["max_conf"], 3),
             "photos_with_damage": sorted(s["photos"]),
-            "value_impact_pct": round((1 - kept_class) * 100, 1),
+            "value_impact_pct": round(class_impact * 100, 1),
             "severity": _severity_of(label, s["worst_sev"]),
         })
 

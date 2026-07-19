@@ -44,7 +44,9 @@ export const PREPROCESSING_VERSION = "1.1.0";
 // 1.3.0: detection gates recalibrated for WHOLE-CAR photos (CONF_THRES/TILE_CONF 0.35/0.33 ->
 // 0.20) after a wrecked Civic scored 100/100, plus a TIRE_CONF gate and tire_flat added to
 // TILE_EXCLUDE to stop the normal-wheel hallucination that scored a CLEAN car 38/100.
-export const INFERENCE_CONFIG_VERSION = "1.3.0";
+// 1.4.0: cross-photo aggregation — extra photos of the SAME damage class now contribute at
+// REPEAT_DISCOUNT instead of in full, so one dent shot from 8 angles no longer costs 40 points.
+export const INFERENCE_CONFIG_VERSION = "1.4.0";
 
 export const CV_CLASSES = [
   "dent", "scratch", "crack", "glass_shatter",
@@ -110,6 +112,13 @@ const COV_GRID = 48;            // grid resolution for the union-coverage estima
 // findings (a hairline) are exempt. Tuned so one moderate crack ⇒ ~85 (Good), one severe ⇒ ~72.
 const STRUCT_MOD_FLOOR = 0.15;  // ≥15% off when any structural finding is moderate
 const STRUCT_SEV_FLOOR = 0.28;  // ≥28% off when any structural finding is severe
+// Weight of each ADDITIONAL photo showing the same damage class (the worst photo counts in
+// full). Chosen by sweep: at 1.0 (the old behaviour) one dent shot from 8 angles cost 40
+// points — and the guided walk-around ASKS for 8 angles, so correct usage was punished
+// hardest. At 0.0 a wreck documented in close-ups scores like a single scratch. 0.30 keeps
+// redundant angles nearly free while more genuine damage still scores worse.
+// Parity with backend aggregation_agent.REPEAT_DISCOUNT.
+const REPEAT_DISCOUNT = 0.30;
 
 // Pixel-severity feature weights (kept in lock-step with cv_local.py). A detection's severity
 // (0..1) is graded from the crop's pixels — texture/gradient energy (crumple, cracks, scrapes),
@@ -790,6 +799,45 @@ function damageCoverage(dets: { box: readonly number[] }[]): number {
   return n / (G * G);
 }
 
+/**
+ * Combine one damage class's impacts across photos into a single 0..1 value.
+ *
+ * WITHIN a photo, two boxes are two distinct damages (NMS/WBF already merged duplicates), so
+ * they multiply as independent losses — unchanged.
+ *
+ * ACROSS photos we CANNOT TELL whether the dent in photo 3 is the dent from photo 1. Nothing
+ * registers viewpoints, and boxes live in different camera frames; measured, "one dent from 8
+ * angles" and "8 separate dents" are numerically identical here. The old code charged every
+ * photo in full, so one dent shot from 8 angles cost 40 points — and the guided walk-around
+ * asks for 8 angles, so correct usage was punished hardest. A plain maximum resolves it the
+ * other way and lets a wreck hide by being shot in close-ups.
+ *
+ * So the worst single photo is charged in full and each additional one at REPEAT_DISCOUNT: a
+ * deliberate hedge against an ambiguity the data cannot resolve. Mirror of
+ * aggregation_agent._combine_across_photos; eval/cv_scoring.py pins both directions.
+ */
+function combineAcrossPhotos(byPhoto: Map<number, number[]>): number {
+  const perPhoto: number[] = [];
+  for (const impacts of byPhoto.values()) {
+    let kept = 1;
+    for (const imp of impacts) kept *= 1 - imp;
+    perPhoto.push(1 - kept);
+  }
+  if (perPhoto.length === 0) return 0;
+  perPhoto.sort((a, b) => b - a);
+  let kept = 1 - perPhoto[0];
+  for (let i = 1; i < perPhoto.length; i++) kept *= 1 - REPEAT_DISCOUNT * perPhoto[i];
+  return 1 - kept;
+}
+
+/** Distinct damages of a class: the most seen in any ONE photo. The cross-photo total counts
+ *  the same dent once per angle, which told a user with one dent it had "8 spots". */
+function distinctInstances(byPhoto: Map<number, number[]>): number {
+  let n = 0;
+  for (const impacts of byPhoto.values()) n = Math.max(n, impacts.length);
+  return n;
+}
+
 /** Pixel severity if the detector attached it; else a coarse area+class fallback (mirrors backend). */
 function sevOfDet(d: Detection): number {
   if (d.sev != null) return d.sev;
@@ -820,6 +868,8 @@ export function conditionFromDetections(
     maxConf: number;
     photos: Set<number>;
     dets: { sev: number; conf: number; impact: number }[];
+    /** Impacts grouped BY PHOTO — see combineAcrossPhotos for why the grouping matters. */
+    byPhoto: Map<number, number[]>;
     worstSev: number;
   }
   const perClass = new Map<DamageClass, Slot>();
@@ -827,10 +877,14 @@ export function conditionFromDetections(
     for (const d of dets) {
       if (!(d.label in BASE_SEVERITY) || d.confidence < TILE_CONF) continue;
       const sev = sevOfDet(d);
-      const slot = perClass.get(d.label) ?? { maxConf: 0, photos: new Set<number>(), dets: [], worstSev: 0 };
+      const slot = perClass.get(d.label)
+        ?? { maxConf: 0, photos: new Set<number>(), dets: [], byPhoto: new Map<number, number[]>(), worstSev: 0 };
       slot.maxConf = Math.max(slot.maxConf, d.confidence);
       slot.photos.add(photoIdx);
-      slot.dets.push({ sev, conf: d.confidence, impact: detImpact(d.label, sev, d.confidence) });
+      const imp = detImpact(d.label, sev, d.confidence);
+      slot.dets.push({ sev, conf: d.confidence, impact: imp });
+      const bucket = slot.byPhoto.get(photoIdx);
+      if (bucket) bucket.push(imp); else slot.byPhoto.set(photoIdx, [imp]);
       slot.worstSev = Math.max(slot.worstSev, sev);
       perClass.set(d.label, slot);
     }
@@ -841,19 +895,17 @@ export function conditionFromDetections(
   const findings: DamageFindingClient[] = [];
   let keptAll = 1;
   let structHits = 0;
-  const ordered = [...perClass.entries()].sort((a, b) => {
-    const ia = a[1].dets.reduce((s, d) => s + d.impact, 0);
-    const ib = b[1].dets.reduce((s, d) => s + d.impact, 0);
-    return ib - ia;
-  });
+  const ordered = [...perClass.entries()].sort(
+    (a, b) => combineAcrossPhotos(b[1].byPhoto) - combineAcrossPhotos(a[1].byPhoto));
   for (const [label, s] of ordered) {
-    let keptClass = 1;
-    for (const d of s.dets) { keptClass *= 1 - d.impact; keptAll *= 1 - d.impact; }
-    if (STRUCTURAL.has(label)) structHits += s.dets.length;
-    const classImpact = 1 - keptClass;
+    const classImpact = combineAcrossPhotos(s.byPhoto);
+    keptAll *= 1 - classImpact;
+    // Count distinct damage, not photographs of it — otherwise the accident escalation also
+    // fires harder the more angles the user shoots.
+    if (STRUCTURAL.has(label)) structHits += distinctInstances(s.byPhoto);
     findings.push({
       damage_type: label,
-      instances: s.dets.length,
+      instances: distinctInstances(s.byPhoto),
       max_confidence: Math.round(s.maxConf * 1e3) / 1e3,
       photos_with_damage: [...s.photos].sort((a, b) => a - b),
       value_impact_pct: Math.round(classImpact * 100 * 10) / 10,

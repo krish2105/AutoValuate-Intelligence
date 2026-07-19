@@ -203,6 +203,37 @@ possibly-hidden damage, so it can't leave the car reading "Excellent" just becau
 small. The band is also finding-aware: any moderate+ finding forbids "Excellent — minimal visible
 damage", and any structural finding sets `needs_inspection`.
 
+### Cross-photo aggregation (config 1.4.0)
+
+Within ONE photo, distinct boxes are distinct damage and multiply as independent losses.
+ACROSS photos the pipeline **cannot tell** whether the dent in photo 3 is the dent from photo 1
+— nothing registers viewpoints, and boxes live in different camera frames. Measured, "one dent
+from 8 angles" and "eight separate dents" are numerically identical to the scorer.
+
+Charging every photo in full (the behaviour before 1.4.0) resolved that ambiguity in the worst
+direction: one dent photographed from 8 angles cost **40 points**, and the guided walk-around
+*asks for 8 angles*, so correct usage was punished hardest. A plain maximum resolves it the other
+way and lets a wreck hide by being shot in close-ups.
+
+The worst single photo is therefore charged in full and each additional one at
+`REPEAT_DISCOUNT = 0.30`:
+
+    per_photo_p  = 1 − Π(1 − impact)      within each photo
+    classImpact  = 1 − (1 − p₁) · Π_{k≥2} (1 − REPEAT_DISCOUNT · p_k),   p₁ ≥ p₂ ≥ …
+
+`instances` reports the most seen in any ONE photo, not the cross-photo total — the total told a
+user with a single dent that the car had "8 spots".
+
+This is a **calibrated hedge against an ambiguity the data cannot resolve**, chosen by sweep, not
+a derivation. Both directions are pinned in `eval/cv_scoring.py` (`multi_photo_cases`):
+
+| | before | after |
+|---|---|---|
+| one dent, 8 angles | 52 | **78** |
+| one dent, 1 photo | 92 | 92 |
+| false positive in 6 photos | 90 | **96** |
+| wreck: wide vs 3 close-ups | 38 / 38 | 38 / 38 |
+
 Cap at `MAX_TOTAL_DEDUCTION = 0.62`. `condition_score = round(100 · (1 − deduction))`.
 
 Only photos that actually decoded **and** completed inference are aggregated;

@@ -66,6 +66,61 @@ for name, dets in CASES.items():
     check(f"{name}: browser≈backend (|{jscore}-{bscore}|≤{SCORE_TOL})", abs(jscore - bscore) <= SCORE_TOL,
           f"browser {jscore} vs backend {bscore}")
 
+# ---- multi-photo aggregation --------------------------------------------------------------
+# The guided walk-around asks for 8 angles, so "many photos of one car" is the DESIGNED flow.
+# Charging every photo in full made one dent shot 8 times cost 40 points; taking the plain
+# maximum instead would let a wreck hide by being shot in close-ups. Both directions are pinned
+# here so the hedge (REPEAT_DISCOUNT) can never be silently retuned into either failure.
+MULTI = FIX.get("multi_photo_cases", {})
+MBANDS = FIX.get("multi_photo_bands", {})
+
+
+def backend_score_multi(photos: list[list[dict]]) -> dict:
+    """Score a multi-photo scan through the real aggregate(), one stubbed detect() per photo."""
+    _orig_avail, _orig_detect = cv_local.available, cv_local.detect
+    state = {"i": 0}
+
+    def _detect(_photo):
+        i = state["i"]; state["i"] += 1
+        return [dict(d) for d in photos[i]]
+
+    cv_local.available = lambda: True
+    cv_local.detect = _detect
+    try:
+        return aggregation_agent.aggregate({"photos": ["_stub_"] * len(photos)})
+    finally:
+        cv_local.available, cv_local.detect = _orig_avail, _orig_detect
+
+
+if MULTI:
+    print("\nmulti-photo aggregation (redundant angles vs genuinely more damage):")
+    for name, photos in MULTI.items():
+        be = backend_score_multi(photos)
+        bscore = be["condition_score"] if be["condition_score"] is not None else 100
+        jscore = JS[name]["score"]
+        lo, hi = MBANDS[name]
+        check(f"{name}: backend {bscore} in band [{lo},{hi}]", lo <= bscore <= hi, f"got {bscore}")
+        check(f"{name}: browser {jscore} in band [{lo},{hi}]", lo <= jscore <= hi, f"got {jscore}")
+        check(f"{name}: browser≈backend", abs(jscore - bscore) <= SCORE_TOL,
+              f"browser {jscore} vs backend {bscore}")
+
+    # The headline invariants, stated as assertions rather than left to the bands.
+    one = backend_score_multi(MULTI["single_photo_dent"])["condition_score"]
+    eight = backend_score_multi(MULTI["same_dent_8_angles"])["condition_score"]
+    check("photographing ONE dent from 8 angles costs <15 points vs one photo "
+          "(it cost 40 before — the walk-around asks for 8 angles)",
+          one - eight < 15, f"one={one} eight={eight} delta={one - eight}")
+    wide = backend_score_multi(MULTI["wreck_one_wide"])["condition_score"]
+    split = backend_score_multi(MULTI["wreck_3_closeups"])["condition_score"]
+    check("a wreck scores the same shot wide or as 3 close-ups (it cannot hide by being split)",
+          abs(wide - split) <= 6, f"wide={wide} split={split}")
+    fp = backend_score_multi(MULTI["false_positive_x6"])["condition_score"]
+    check("a false positive repeating in 6 photos does not condemn a clean car", fp >= 90,
+          f"got {fp}")
+    # instances must describe the CAR, not the photo shoot.
+    inst = backend_score_multi(MULTI["same_dent_8_angles"])["findings"][0]["instances"]
+    check("one dent seen in 8 photos reports 1 instance, not 8", inst == 1, f"got {inst}")
+
 # Regression 1: the side collision must read as major damage, not "Good/minor".
 sc = backend_score(CASES["side_collision"])
 check("side_collision is NOT labelled Good/Excellent (the original bug)",
