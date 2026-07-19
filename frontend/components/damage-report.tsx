@@ -8,7 +8,9 @@ import { SectionCard, Pill } from "./ui";
 import { aed, cn, titleCase } from "@/lib/utils";
 
 const CV_CLASSES = ["dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat", "punctured", "missing_part"];
-const MAX_TOTAL_DEDUCTION = 0.35; // mirror aggregation_agent
+// (No local MAX_TOTAL_DEDUCTION. It was a stale 0.35 copy of a value that is really 0.62, and
+// having a second copy of the scoring maths here is exactly what produced two different scores
+// for one car. The scan's condition_score is the single source of truth — see `live` below.)
 
 function scoreTone(s: number): "good" | "warn" | "bad" {
   return s >= 80 ? "good" : s >= 55 ? "warn" : "bad";
@@ -43,14 +45,28 @@ function DamageReportBody({ c, valuation }: { c: Condition; valuation?: Valuatio
     return valuation.price_mid_aed / f;
   }, [valuation]);
 
-  // Live recompute of the deduction/score over the still-present (not repaired) findings.
+  // The repair simulator must never invent a SECOND opinion of the car's condition.
+  //
+  // This used to recompute the score with its own copy of the maths: a LINEAR SUM of
+  // value_impact_pct capped at a stale MAX_TOTAL_DEDUCTION = 0.35 (the real cap is 0.62, and
+  // the real scorer uses a probabilistic union plus structural/extent escalations). On a
+  // wrecked Civic the scan card said 49/100 while this panel said 65/100 — for the same car,
+  // on the same screen — and the kinder number drove the "condition-adjusted" price shown here.
+  //
+  // The scan's condition_score is authoritative: it alone accounts for the escalations, which
+  // depend on box geometry this component does not have. So anchor to it, and scale only for
+  // the what-if: the share of total impact the user has "repaired". With nothing repaired the
+  // displayed score is EXACTLY the scan's score; with everything repaired it is 100.
   const live = useMemo(() => {
-    const active = c.findings.filter((f) => !repaired.has(f.damage_type));
-    const deduction = Math.min(active.reduce((s, f) => s + f.value_impact_pct / 100, 0), MAX_TOTAL_DEDUCTION);
+    const union = (fs: typeof c.findings) =>
+      1 - fs.reduce((k, f) => k * (1 - f.value_impact_pct / 100), 1);
+    const rawAll = union(c.findings);
+    const rawActive = union(c.findings.filter((f) => !repaired.has(f.damage_type)));
+    const baseDeduction = Math.max(0, 1 - (c.condition_score ?? 100) / 100);
+    const deduction = rawAll > 0 ? baseDeduction * (rawActive / rawAll) : 0;
     const score = Math.round(100 * (1 - deduction));
-    const factor = 1 - deduction;
-    return { deduction, score, factor };
-  }, [c.findings, repaired]);
+    return { deduction, score, factor: 1 - deduction };
+  }, [c.findings, c.condition_score, repaired]);
 
   const adjustedMid = baselineMid != null ? Math.round(baselineMid * live.factor) : null;
   const recovered = baselineMid != null ? Math.round(baselineMid * live.factor) - (valuation?.price_mid_aed ?? 0) : 0;

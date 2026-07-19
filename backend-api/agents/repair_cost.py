@@ -29,6 +29,12 @@ BASE_COST: dict[str, tuple[int, int]] = {
 
 # severity multipliers applied to the base band
 SEVERITY: dict[str, float] = {"minor": 0.6, "moderate": 1.0, "severe": 1.6}
+# The value impact a BASE_COST band implicitly assumes (a reference-sized instance). A finding
+# costing much more of the car's value than this is a bigger part than the band was written for.
+REFERENCE_IMPACT_PCT = 6.0
+# Ceiling on that correction. A photo cannot identify WHICH part is missing, so the estimate is
+# a bracket, not a quote — better to be honestly wide than confidently wrong in either direction.
+MAX_EXTENT_MULT = 6.0
 
 MAX_INSTANCES_PRICED = 4   # beyond this it's a bodyshop job, not a per-item repair
 
@@ -90,6 +96,19 @@ def estimate(condition: dict) -> dict[str, Any]:
         n = max(1, min(int(f.get("instances", 1) or 1), MAX_INSTANCES_PRICED))
         sev = _severity(f)
         mult = SEVERITY[sev]
+        # EXTENT correction. BASE_COST is anchored to the SMALL end of each class — the
+        # missing_part band is literally commented "trim/mirror/grille replacement". But the
+        # same class also covers a whole bumper assembly, headlight and crash structure, and a
+        # photo cannot tell which. On a wrecked Civic that produced "AED 500-3,500" for a
+        # destroyed front end, alongside advice that repairing "pays for itself".
+        #
+        # The one quantity that DOES scale with how much car is involved is the finding's own
+        # measured value impact. A part worth 28% of the car is not a AED 500 trim clip. So
+        # scale the band by impact relative to what the base band already assumes (~6%),
+        # clamped so a small finding is never inflated and a severe one is not unbounded.
+        impact_pct = float(f.get("value_impact_pct", 0) or 0)
+        extent_mult = min(MAX_EXTENT_MULT, max(1.0, impact_pct / REFERENCE_IMPACT_PCT))
+        mult *= extent_mult
         lo = int(round(band[0] * mult * n))
         hi = int(round(band[1] * mult * n))
         lo_total += lo
