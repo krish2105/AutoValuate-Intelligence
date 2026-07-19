@@ -197,7 +197,7 @@ export default function Home() {
                     { icon: <Gauge className="h-4 w-4" />, label: "Fair-market range" },
                     { icon: <Sparkles className="h-4 w-4" />, label: "SHAP price drivers" },
                     { icon: <BarChart3 className="h-4 w-4" />, label: "Live comparables" },
-                    { icon: <ScanSearch className="h-4 w-4" />, label: "On-device damage scan" },
+                    { icon: <ScanSearch className="h-4 w-4" />, label: "AI damage detection" },
                     { icon: <FileText className="h-4 w-4" />, label: "Grounded report" },
                     { icon: <ShieldCheck className="h-4 w-4" />, label: "Verified citations" },
                   ].map((f) => (
