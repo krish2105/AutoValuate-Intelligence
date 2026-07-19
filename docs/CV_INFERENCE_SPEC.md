@@ -119,7 +119,8 @@ Regression fixtures: `wide_shot_wreck_low_conf`, `clean_car_tire_fp` in
 | `IOU_THRES` | 0.45 | per-class NMS |
 | `WBF_IOU` | 0.55 | Weighted Box Fusion |
 | `AGREE_BONUS` | 0.05 | per extra agreeing box; fused conf capped at 0.98 |
-| `MIN_AREA` | 0.0008 | minimum box area as a fraction of frame |
+| `MIN_AREA` | 0.0008 | minimum box area as a fraction of frame (default) |
+| `MIN_AREA_BY_CLASS` | `missing_part` 0.010, `punctured` 0.006 | class-aware floor — see below |
 | `GLASS_CONF` | 0.55 | `glass_shatter`-only final gate |
 | `TIRE_CONF` | 0.55 | `tire_flat`-only final gate (same hallucination class) |
 
@@ -154,7 +155,15 @@ reflections fire hardest in crops.
 3. Weighted Box Fusion across passes (`WBF_IOU`): confidence-weighted box average;
    `fused = min(0.98, max(confs) + AGREE_BONUS * (n - 1))`.
 4. Drop tile-sourced `glass_shatter` and `tire_flat` (`TILE_EXCLUDE`).
-5. Drop boxes with area `< MIN_AREA`.
+5. Drop boxes with area `< MIN_AREA_BY_CLASS[class]` (default `MIN_AREA`). Some classes are
+   LARGE BY DEFINITION: `missing_part` means a bumper/mirror/grille is absent and `punctured`
+   means metal is pierced through, so a sub-percent blob cannot be either — whatever the
+   confidence. Measured on a wrecked Civic: a DOOR HANDLE was detected as `missing_part` at
+   area 0.0030 while the real front-end damage was 0.0276 — 9x larger but at essentially the
+   same confidence (0.228 vs 0.203), so no confidence gate could separate them. Size can.
+   Scratches and hairline cracks genuinely can be tiny, so the floor must stay per-class.
+   Pinned by `tiny_missing_part_is_not_a_missing_part` / `real_missing_part_survives_area_floor`
+   / `small_crack_still_kept` in `eval/cv_conformance_fixtures.json`.
 6. Drop `glass_shatter` below `GLASS_CONF` and `tire_flat` below `TIRE_CONF`.
 
 ### 3.8 Severity — pixel-graded, never confidence

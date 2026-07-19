@@ -603,6 +603,22 @@ function decode(output: Tensor, meta: PreprocessResult): Detection[] {
 }
 
 const MIN_AREA = 0.0008; // drop pinprick boxes (<0.08% of frame) as likely noise
+/**
+ * Class-aware minimum area. Some classes are LARGE BY DEFINITION: "missing_part" means a
+ * bumper, mirror, grille or panel is absent, and "punctured" means metal is pierced through.
+ * A blob covering a fraction of a percent of the frame cannot be either of those, whatever the
+ * model's confidence — but a scratch or a hairline crack genuinely can be that small, so a
+ * single global floor cannot express this.
+ *
+ * Measured on a wrecked Civic: the real front-end damage came back at area 0.0276 while a car
+ * DOOR HANDLE was detected as missing_part at area 0.0030 — 9x smaller, but at essentially the
+ * same confidence (0.203 vs 0.228), so no confidence gate could separate them. Size can.
+ */
+const MIN_AREA_BY_CLASS: Partial<Record<DamageClass, number>> = {
+  missing_part: 0.010,  // a missing body part is a substantial absence, not a speck
+  punctured: 0.006,     // a puncture through metal is likewise not sub-pixel
+};
+const minAreaFor = (label: DamageClass) => MIN_AREA_BY_CLASS[label] ?? MIN_AREA;
 const TILE_CONF = 0.20;  // tile pass gate — lowered with CONF_THRES; see the note there
 // Full frame + top half + the two bottom quadrants (4 passes). A single 640² letterbox
 // squashes a whole-car photo so small/localized damage vanishes; zooming into regions recovers
@@ -714,7 +730,7 @@ function canonicalSort(dets: Detection[]): Detection[] {
  */
 export function fuseDetections(dets: Detection[]): Detection[] {
   const fused = mergeDetections(dets).filter((d) =>
-    boxArea(d.box) >= MIN_AREA
+    boxArea(d.box) >= minAreaFor(d.label)
     && !(d.label === "glass_shatter" && d.confidence < GLASS_CONF)
     && !(d.label === "tire_flat" && d.confidence < TIRE_CONF));
   return canonicalSort(fused);

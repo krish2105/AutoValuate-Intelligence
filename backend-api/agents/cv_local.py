@@ -28,6 +28,17 @@ CONF_THRES = 0.20        # full-frame pass gate (applied after NMS, matching the
 TILE_CONF = 0.20         # tile-only pass gate
 IOU_THRES = 0.45
 MIN_AREA = 0.0008        # minimum box area as a fraction of frame (spec §3.7 step 5)
+# Class-aware floor. "missing_part" (a bumper/mirror/grille is absent) and "punctured" (metal
+# pierced through) are LARGE BY DEFINITION; a sub-percent blob cannot be either, whatever the
+# confidence. Scratches and hairline cracks genuinely can be tiny, so one global floor cannot
+# express this. Measured on a wrecked Civic: real front-end damage area 0.0276 vs a DOOR HANDLE
+# detected as missing_part at area 0.0030 — 9x smaller at the same confidence (0.203 vs 0.228),
+# so only size separates them. Parity with frontend/lib/cv-browser.ts MIN_AREA_BY_CLASS.
+MIN_AREA_BY_CLASS = {"missing_part": 0.010, "punctured": 0.006}
+
+
+def _min_area_for(label: str) -> float:
+    return MIN_AREA_BY_CLASS.get(label, MIN_AREA)
 CLASSES = ["dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat", "punctured", "missing_part"]
 # Full frame + top half + the two bottom quadrants (4 passes). Zooming into regions recovers
 # small/localized damage a single 640² letterbox squashes away — the main recall lever, no
@@ -222,7 +233,7 @@ def _fuse_detections(dets: list[dict]) -> list[dict]:
     """
     fused = _wbf(dets)
     fused = [d for d in fused
-             if _box_area(d["box"]) >= MIN_AREA
+             if _box_area(d["box"]) >= _min_area_for(d["label"])
              and not (d["label"] == "glass_shatter" and d["confidence"] < GLASS_CONF)
              and not (d["label"] == "tire_flat" and d["confidence"] < TIRE_CONF)]
     fused.sort(key=lambda d: (CLASSES.index(d["label"]), -d["confidence"],
