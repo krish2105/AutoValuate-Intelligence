@@ -157,6 +157,12 @@ Every figure here is reproducible from a committed script + JSON — nothing is 
 - **The pricing floor is data, not tuning.** The learning curve (`eval/learning_curve.py`)
   asymptotes near ~10% median APE with the current features and 1,302 rows — so no amount of
   hyperparameter search reaches the ~8% published floor for larger corpora. The lever is data.
+- **The spec-join accuracy gain is proven but not yet shipped.** `eval/spec_join_study.py`
+  found joining vehicle physical specs drops median APE by a paired, bootstrapped,
+  permutation-controlled **+2.4pp** (verdict: ADOPT). `train_valuation.py` and
+  `valuation_model.py` are wired to pick this up automatically, but it activates only when
+  `data/raw/DriveArabia_All_uae.csv` (gitignored, Kaggle-downloaded) is present at train time —
+  the **15.65%** above is still the un-joined number until someone retrains with that file.
 
 Two research findings — both argued *against* the obvious design choice — are written up in **[docs/RESEARCH.md](docs/RESEARCH.md)**:
 - **Uncertainty (D3):** raw quantile regression promises 80% coverage but delivers **54.8%**; the "±25% rule of thumb" delivers **56.3%**. Only split-conformal keeps its promise.
@@ -187,7 +193,7 @@ Optional: set `GEMINI_API_KEY` or `GROQ_API_KEY` for LLM-written reports (a dete
 ## Tests & evaluation
 
 ```bash
-python eval/unit_tests.py            # 65 backend guardrail + contract tests
+python eval/unit_tests.py            # 72 backend guardrail + contract tests
 python eval/cv_scoring.py            # scoring bands + browser==backend parity (56 cases)
 python eval/cv_conformance.py        # browser/backend post-processing parity
 python eval/faithfulness_eval.py     # report grounding (Verifier)

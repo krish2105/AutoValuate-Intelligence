@@ -22,6 +22,10 @@ What this ships, and why (measured in `eval/model_improvement_study.py`, RESEARC
   * **Mondrian (per-brand-tier) conformal.** A single global delta covers luxury cars only
     75.4% of the time vs the 80% promise; per-tier calibration lifts that to 78.2% (at ~12%
     wider luxury bands). Measured over 20 seeds — see the seed note below.
+  * **Spec join (optional, see `spec_join.py`).** When `data/raw/DriveArabia_All_uae.csv` is
+    present, physical specs (hp/torque/etc) join onto the corpus for a measured +2.4pp median
+    APE (`eval/spec_join_study.json`, ADOPT). The CSV is gitignored, so this degrades to OFF
+    on a fresh clone rather than failing — `spec_join_active` in the bundle/metrics says which.
 
 Target is `log1p(price)`, inverted with `expm1` — exact inverses. (The CSV's own `log_price`
 column is `ln(price)`; pairing that with `expm1` under-predicts every car by 1 AED.)
@@ -51,6 +55,7 @@ from sklearn.model_selection import KFold, train_test_split
 
 ROOT = Path(__file__).resolve().parents[2]
 CSV = ROOT / "data" / "processed" / "comparables.csv"
+SPECS_CSV = ROOT / "data" / "raw" / "DriveArabia_All_uae.csv"
 BUNDLE = Path(__file__).with_name("valuation_model.joblib")
 METRICS = ROOT / "eval" / "valuation_metrics.json"
 SHAP = ROOT / "eval" / "shap_report.json"
@@ -74,13 +79,16 @@ BEESWARM_FEATURES = 8
 CATS = ["make", "model", "bodyType", "transmissionType", "fuelType", "regionalSpecs",
         "sellerType", "city"]
 NUMS = ["age", "kilometers", "noOfCylinders"]  # B3: mileage_per_year dropped
-FEATURES = CATS + NUMS
-# Price must never rise as a car ages or accrues kilometers. Order mirrors FEATURES.
-MONOTONE = tuple([0] * len(CATS) + [-1 if n in ("age", "kilometers") else 0 for n in NUMS])
 
-PARAMS = dict(n_estimators=400, max_depth=5, learning_rate=0.05, subsample=0.9,
-              colsample_bytree=0.9, random_state=SEED, n_jobs=-1,
-              objective="reg:squarederror", monotone_constraints=MONOTONE)
+# `numeric_features`/`FEATURES`/`monotone_constraints`/`PARAMS` are built in main(), not here —
+# they depend on whether the spec CSV (see spec_join) is present, so they can't be module
+# constants. encode()/check_monotone()/shap_report() take the numeric/feature list as a param.
+
+
+def _params(monotone: tuple[int, ...]) -> dict:
+    return dict(n_estimators=400, max_depth=5, learning_rate=0.05, subsample=0.9,
+                colsample_bytree=0.9, random_state=SEED, n_jobs=-1,
+                objective="reg:squarederror", monotone_constraints=monotone)
 
 # Brand tiers for the B5 per-segment coverage diagnostic (RESEARCH.md B5).
 # Single source of truth in models/brand_tier.py — this was duplicated here, in
@@ -91,8 +99,10 @@ PARAMS = dict(n_estimators=400, max_depth=5, learning_rate=0.05, subsample=0.9,
 # documented path) and imported as a package member (from models import train_valuation).
 try:
     from .brand_tier import LUXURY_KEYS as LUXURY, is_luxury
+    from . import spec_join
 except ImportError:  # executed as a top-level script — no parent package
     from brand_tier import LUXURY_KEYS as LUXURY, is_luxury  # noqa: E402
+    import spec_join  # noqa: E402
 
 
 def load() -> pd.DataFrame:
@@ -111,13 +121,30 @@ def load() -> pd.DataFrame:
     return df.dropna(subset=["log_price"]).reset_index(drop=True)
 
 
-def encode(df: pd.DataFrame, maps: dict) -> pd.DataFrame:
+def try_join_specs(df: pd.DataFrame) -> tuple[pd.DataFrame, float | None, pd.DataFrame | None]:
+    """Join physical specs onto the corpus (see eval/spec_join_study.json — ADOPT, +2.4pp).
+
+    Optional: the spec CSV is gitignored (Kaggle-downloaded, not committed), so a fresh clone
+    with only the committed corpus still trains — just without this feature block. Returns the
+    (possibly joined) df, the match rate (None if specs unavailable), and the aggregated specs
+    table itself (for bundling — inference looks vehicles up there, not the raw CSV).
+    """
+    if not SPECS_CSV.exists():
+        return df, None, None
+    specs = spec_join.load_specs(SPECS_CSV)
+    joined, match_rate = spec_join.join(df, specs)
+    for c in spec_join.SPEC_FEATURES:
+        joined[c] = joined[c].fillna(joined[c].median())
+    return joined, match_rate, specs
+
+
+def encode(df: pd.DataFrame, maps: dict, numeric_features: list[str]) -> pd.DataFrame:
     X = pd.DataFrame(index=df.index)
     for c in CATS:
         X[c] = df[c].map(maps[c]).fillna(-1).astype("int32")
-    for n in NUMS:
+    for n in numeric_features:
         X[n] = df[n].astype("float32")
-    return X[FEATURES]
+    return X[CATS + numeric_features]
 
 
 def conformal_delta(resid: np.ndarray, alpha: float = 0.20) -> float:
@@ -126,7 +153,7 @@ def conformal_delta(resid: np.ndarray, alpha: float = 0.20) -> float:
     return float(np.sort(resid)[min(max(k, 0), len(resid) - 1)])
 
 
-def check_monotone(model, df: pd.DataFrame, maps: dict) -> dict:
+def check_monotone(model, df: pd.DataFrame, maps: dict, numeric_features: list[str]) -> dict:
     """The guarantee this retrain exists to deliver: no price rise along a worsening sweep.
 
     Sweeps every held-out car over kilometers 20k->300k and age 1->15. Threshold 1e-4 in log
@@ -139,7 +166,7 @@ def check_monotone(model, df: pd.DataFrame, maps: dict) -> dict:
         for _, row in df.iterrows():
             v = pd.DataFrame([row] * len(grid))
             v[kind] = grid
-            pred = model.predict(encode(v, maps)).astype(np.float64)
+            pred = model.predict(encode(v, maps, numeric_features)).astype(np.float64)
             worst = float(np.diff(pred).max()) if len(pred) > 1 else 0.0
             if worst > 1e-4:
                 violated += 1
@@ -149,7 +176,7 @@ def check_monotone(model, df: pd.DataFrame, maps: dict) -> dict:
     return out
 
 
-def shap_report(model, X: pd.DataFrame) -> dict:
+def shap_report(model, X: pd.DataFrame, features: list[str]) -> dict:
     """Global SHAP importance + directional sanity checks, derived from the shipped model.
 
     Generated here rather than in notebook 06 so it cannot drift from the artifact (and so it
@@ -157,10 +184,10 @@ def shap_report(model, X: pd.DataFrame) -> dict:
     values as the shap library, without the heavy dependency.
     """
     sv = model.get_booster().predict(xgb.DMatrix(X), pred_contribs=True)[:, :-1]
-    imp = {f: round(float(np.mean(np.abs(sv[:, j]))), 4) for j, f in enumerate(FEATURES)}
+    imp = {f: round(float(np.mean(np.abs(sv[:, j]))), 4) for j, f in enumerate(features)}
     checks = {}
     for feat in ("kilometers", "age"):
-        j = FEATURES.index(feat)
+        j = features.index(feat)
         r = float(np.corrcoef(X[feat].to_numpy(), sv[:, j])[0, 1])
         checks[feat] = {"shap_corr": round(r, 3), "expected": "negative", "pass": bool(r < 0)}
 
@@ -173,7 +200,7 @@ def shap_report(model, X: pd.DataFrame) -> dict:
     ranked = sorted(imp, key=lambda f: -imp[f])[:BEESWARM_FEATURES]  # the rest are flat lines
     beeswarm = {}
     for f in ranked:
-        j = FEATURES.index(f)
+        j = features.index(f)
         col = X[f].to_numpy()[take].astype(float)
         lo, hi = float(np.nanmin(col)), float(np.nanmax(col))
         span = hi - lo
@@ -193,8 +220,21 @@ def main() -> int:
     args = ap.parse_args()
 
     df = load()
+    df, spec_match_rate, spec_table = try_join_specs(df)
+    spec_active = spec_match_rate is not None
+    numeric_features = NUMS + (spec_join.SPEC_FEATURES if spec_active else [])
+    features = CATS + numeric_features
+    monotone = tuple([0] * len(CATS)
+                      + [-1 if n in ("age", "kilometers") else 0 for n in numeric_features])
+    params = _params(monotone)
+    if spec_active:
+        print(f"spec join: ON — {spec_match_rate:.1%} match rate, features {spec_join.SPEC_FEATURES}")
+    else:
+        print(f"spec join: OFF — {SPECS_CSV.relative_to(ROOT)} not found "
+              "(training on the committed corpus only; see eval/spec_join_study.py)")
+
     maps = {c: {v: i for i, v in enumerate(sorted(df[c].unique()))} for c in CATS}
-    X = encode(df, maps)
+    X = encode(df, maps, numeric_features)
     y = df["log_price"].to_numpy()
     price = df["price"].to_numpy()
 
@@ -202,7 +242,7 @@ def main() -> int:
     fold = []
     for seed in range(N_CV_SEEDS):
         for tr, te in KFold(5, shuffle=True, random_state=seed).split(X):
-            m = xgb.XGBRegressor(**PARAMS).fit(X.iloc[tr], y[tr], verbose=False)
+            m = xgb.XGBRegressor(**params).fit(X.iloc[tr], y[tr], verbose=False)
             pred = np.expm1(m.predict(X.iloc[te]))
             true = price[te]
             ape = np.abs(pred - true) / true
@@ -233,7 +273,7 @@ def main() -> int:
     for seed in range(N_CONF_SEEDS):
         tr_i, tmp_i = train_test_split(idx, test_size=0.40, random_state=seed)
         cal_i, te_i = train_test_split(tmp_i, test_size=0.50, random_state=seed)
-        m = xgb.XGBRegressor(**PARAMS).fit(X.iloc[tr_i], y[tr_i], verbose=False)
+        m = xgb.XGBRegressor(**params).fit(X.iloc[tr_i], y[tr_i], verbose=False)
         resid = np.abs(y[cal_i] - m.predict(X.iloc[cal_i]))
         t_cal, t_te = tiers_all[cal_i], tiers_all[te_i]
         r_te_signed = y[te_i] - m.predict(X.iloc[te_i])
@@ -288,10 +328,11 @@ def main() -> int:
     baseline = float(np.mean(base))
 
     # --- final fit on all rows + the monotonicity gate
-    final = xgb.XGBRegressor(**PARAMS).fit(X, y, verbose=False)
-    sweeps = check_monotone(final, df.sample(min(120, len(df)), random_state=SEED), maps)
+    final = xgb.XGBRegressor(**params).fit(X, y, verbose=False)
+    sweeps = check_monotone(final, df.sample(min(120, len(df)), random_state=SEED), maps,
+                             numeric_features)
 
-    print(f"xgboost {xgb.__version__} | rows {len(df)} | features {FEATURES}")
+    print(f"xgboost {xgb.__version__} | rows {len(df)} | features {features}")
     print(f"MAPE {cv_metrics['MAPE_pct']['mean']}±{cv_metrics['MAPE_pct']['std']}  "
           f"medAPE {cv_metrics['median_APE_pct']['mean']}±{cv_metrics['median_APE_pct']['std']}  "
           f"MAE {cv_metrics['MAE_AED']['mean']:,.0f} (baseline {baseline:,.0f})")
@@ -302,7 +343,7 @@ def main() -> int:
           + "  ".join(f"{p['nominal']:.0%}->{p['actual']:.0%}" for p in calibration_curve)
           + f"  (mean |promised-delivered| {calibration_error:.3f})")
 
-    shap = shap_report(final, X)
+    shap = shap_report(final, X, features)
     print(f"shap directional checks: { {k: v['pass'] for k, v in shap['directional_checks'].items()} }")
 
     # The guarantee is the point of this config — refuse to ship an artifact without it.
@@ -320,9 +361,9 @@ def main() -> int:
     joblib.dump({
         "models": {"q50": final},
         "cat_maps": maps,
-        "features": FEATURES,
+        "features": features,
         "categorical_features": CATS,
-        "numeric_features": NUMS,
+        "numeric_features": numeric_features,
         "target": "log1p(price) (expm1 -> AED)",
         "quantiles": {"q50": 0.50},
         "cv_metrics": cv_metrics,
@@ -330,6 +371,15 @@ def main() -> int:
         "training_rows": int(len(df)),
         "dataset": f"Dubizzle UAE scrape July 2026 ({len(df)} real listings)",
         "reference_year": REFERENCE_YEAR,
+        # Spec join (eval/spec_join_study.json): OFF unless data/raw/DriveArabia_All_uae.csv
+        # was present at train time. When ON, valuation_model._spec_features() looks up
+        # spec_hp/spec_torque/etc for an inference request from `spec_table` below — inference
+        # never touches the raw CSV, only this small bundled aggregate.
+        "spec_join_active": spec_active,
+        "spec_match_rate": spec_match_rate,
+        "spec_table": spec_table,
+        "spec_medians": ({c: float(df[c].median()) for c in spec_join.SPEC_FEATURES}
+                         if spec_active else None),
         "conformal_delta_log": delta,  # fallback: a make in no known tier
         "conformal_delta_log_by_tier": deltas_by_tier,
         "brand_tier_luxury": sorted(LUXURY),  # bundle is self-contained: inference needs the tier
@@ -352,7 +402,9 @@ def main() -> int:
         "model": "XGBoost reg:squarederror, monotone(age,kilometers), on log1p(price)",
         "cv": f"{N_CV_SEEDS} seeds x 5-fold shuffled — held-out folds only",
         "training_rows": int(len(df)),
-        "features": FEATURES,
+        "features": features,
+        "spec_join_active": spec_active,
+        "spec_match_rate": spec_match_rate,
         "xgboost_version": xgb.__version__,
         "metrics": cv_metrics,
         "baseline_make_model_median_MAE_AED": round(baseline, 2),
@@ -371,7 +423,12 @@ def main() -> int:
             f"{len(df)}-row corpus supports; the literature's ~8% floor assumes a corpus ~15x "
             "larger. Coverage carries a ~5pp per-split std at this size, so every coverage "
             f"number here is a mean over {N_CONF_SEEDS} seeds — single-split coverage claims "
-            "are noise (see RESEARCH.md B5). Both numbers move mainly with data, not tuning."
+            "are noise (see RESEARCH.md B5). Both numbers move mainly with data, not tuning. "
+            + (f"Spec join active ({spec_match_rate:.0%} match rate) — see eval/spec_join_study.json "
+               "for the paired, permutation-controlled study behind this feature block."
+               if spec_active else
+               "Spec join (eval/spec_join_study.json, +2.4pp) is NOT active in this run — "
+               "data/raw/DriveArabia_All_uae.csv was absent at train time.")
         ),
     }, indent=2) + "\n")
     print(f"wrote {METRICS}")

@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import warnings
 from pathlib import Path
@@ -46,7 +45,7 @@ from sklearn.model_selection import KFold
 warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend-api" / "models"))
-from brand_tier import make_key  # noqa: E402  (canonical make normaliser)
+from spec_join import SPEC_NUM, load_specs as _load_specs, join as _join  # noqa: E402
 
 CORPUS = ROOT / "data" / "processed" / "comparables.csv"
 SPECS = ROOT / "data" / "raw" / "DriveArabia_All_uae.csv"
@@ -57,31 +56,6 @@ OUT = ROOT / "eval" / "spec_join_study.json"
 CATS = ["make", "model", "bodyType", "transmissionType", "fuelType", "regionalSpecs",
         "sellerType", "city"]
 NUMS = ["age", "kilometers", "noOfCylinders"]
-
-# Physical specifications only. `Approx Cost` is deliberately absent (see LEAKAGE above), as is
-# `Link`/`Overview` (free text/identifiers, not features).
-SPEC_NUM = {
-    "Power (hp)": "spec_hp",
-    "Torque (Nm)": "spec_torque",
-    "Fuel Econ (L/100km)": "spec_l100km",
-    "Performance 0-100 kph (sec)": "spec_0to100",
-    "Top speed (kph)": "spec_topspeed",
-    "Weight": "spec_weight",
-}
-BANNED = ("cost", "price", "aed", "msrp", "value")  # any of these in a used column = leakage
-
-
-def _first_number(v) -> float:
-    """'1730 - 1920' / '272' / '7.4' -> the first number. Spec fields carry ranges and units."""
-    if pd.isna(v):
-        return np.nan
-    m = re.search(r"\d+(?:\.\d+)?", str(v).replace(",", ""))
-    return float(m.group()) if m else np.nan
-
-
-def _norm_model(v) -> str:
-    """Loose model key: lowercase, strip punctuation/spaces. 'CLS-Class' == 'cls class'."""
-    return re.sub(r"[^a-z0-9]", "", str(v or "").lower())
 
 
 def load_corpus() -> pd.DataFrame:
@@ -97,47 +71,13 @@ def load_corpus() -> pd.DataFrame:
     return df.dropna(subset=["log_price"]).reset_index(drop=True)
 
 
-def load_specs() -> pd.DataFrame:
-    s = pd.read_csv(SPECS)
-    # Assert the leakage guard against the ACTUAL columns we are about to use.
-    for col in SPEC_NUM:
-        assert not any(b in col.lower() for b in BANNED), f"leaky spec column selected: {col}"
-    assert "Approx Cost" not in SPEC_NUM, "Approx Cost is a price column — never join it"
-
-    out = pd.DataFrame({
-        "k_make": s["Manufacturer"].map(make_key),
-        "k_model": s["Brand"].map(_norm_model),
-        "k_year": pd.to_numeric(s["Model Year"], errors="coerce"),
-    })
-    for src, dst in SPEC_NUM.items():
-        out[dst] = s[src].map(_first_number) if src in s.columns else np.nan
-    out = out.dropna(subset=["k_make", "k_model"])
-    # One spec row per nameplate-year: the table lists trims, so aggregate to the median.
-    return out.groupby(["k_make", "k_model", "k_year"], as_index=False).median(numeric_only=True)
-
-
-def join(df: pd.DataFrame, specs: pd.DataFrame, permute_seed: int | None = None) -> tuple[pd.DataFrame, float]:
-    """Left-join specs. permute_seed shuffles specs ACROSS nameplates (the negative control)."""
-    d = df.copy()
-    d["k_make"] = d["make"].map(make_key)
-    d["k_model"] = d["model"].map(_norm_model)
-    d["k_year"] = pd.to_numeric(d["year"], errors="coerce")
-
+def _permuted_specs(specs: pd.DataFrame, seed: int) -> pd.DataFrame:
+    """Negative control: shuffle spec VALUES across nameplates (join keys untouched), so
+    coverage and column count match the real join but the values carry no information."""
     sp = specs.copy()
-    if permute_seed is not None:
-        # Keep the join keys, shuffle the VALUES. Same coverage, same column count, no information.
-        vals = sp[list(SPEC_NUM.values())].sample(frac=1.0, random_state=permute_seed).reset_index(drop=True)
-        sp[list(SPEC_NUM.values())] = vals
-
-    # Exact (make, model, year) first; fall back to nameplate median across years.
-    m = d.merge(sp, on=["k_make", "k_model", "k_year"], how="left")
-    nameplate = sp.groupby(["k_make", "k_model"], as_index=False).median(numeric_only=True).drop(columns=["k_year"])
-    m = m.merge(nameplate, on=["k_make", "k_model"], how="left", suffixes=("", "_np"))
-    for c in SPEC_NUM.values():
-        m[c] = m[c].fillna(m[f"{c}_np"])
-    m = m.drop(columns=[f"{c}_np" for c in SPEC_NUM.values()])
-    match_rate = float(m[list(SPEC_NUM.values())].notna().any(axis=1).mean())
-    return m, match_rate
+    cols = list(SPEC_NUM.values())
+    sp[cols] = sp[cols].sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    return sp
 
 
 def evaluate(df: pd.DataFrame, feats: list[str], seeds: int, folds: int = 5) -> list[float]:
@@ -175,10 +115,10 @@ def main() -> int:
     args = ap.parse_args()
 
     df = load_corpus()
-    specs = load_specs()
+    specs = _load_specs(SPECS)
     print(f"corpus {len(df)} rows | spec table {len(specs)} nameplate-years")
 
-    joined, match = join(df, specs)
+    joined, match = _join(df, specs)
     print(f"spec match rate: {match:.1%} of corpus rows got at least one spec\n")
 
     base_feats = NUMS + CATS
@@ -187,7 +127,7 @@ def main() -> int:
     print(f"running {args.seeds} seeds x 5 folds, paired ...")
     base = evaluate(joined, base_feats, args.seeds)
     treat = evaluate(joined, spec_feats, args.seeds)
-    perm_joined, _ = join(df, specs, permute_seed=7)
+    perm_joined, _ = _join(df, _permuted_specs(specs, seed=7))
     perm = evaluate(perm_joined, spec_feats, args.seeds)
 
     d_real = [b - t for b, t in zip(base, treat)]     # positive = spec join HELPS

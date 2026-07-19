@@ -17,6 +17,8 @@ os.environ.setdefault("USE_TF", "0")
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend-api"))
 
 from agents import intake_agent, aggregation_agent, verifier_agent  # noqa: E402
@@ -399,6 +401,45 @@ finally:
     billing._set_tier = _orig_set
     billing.STRIPE_WEBHOOK_SECRET = ""
     billing.SUPABASE_SERVICE_ROLE_KEY = ""
+
+# ---- spec join wiring (eval/spec_join_study.json — ADOPT, +2.4pp) ----
+# The study proved the join helps; this proves the WIRING (join -> inference lookup) is
+# correct, without needing the gitignored Kaggle CSV — a tiny synthetic spec table exercises
+# the same code path (models/spec_join.py) that train_valuation.py and valuation_model.py use.
+print("\nSpec-join wiring (join + inference lookup, synthetic fixture):")
+from models import spec_join as _sj  # noqa: E402
+
+_specs = pd.DataFrame({
+    "k_make": ["toyota", "toyota"], "k_model": ["corolla", "camry"], "k_year": [2019, 2019],
+    "spec_hp": [140.0, 200.0], "spec_torque": [170.0, 240.0], "spec_l100km": [6.5, 8.0],
+    "spec_0to100": [10.5, 8.5], "spec_topspeed": [180.0, 210.0], "spec_weight": [1300.0, 1500.0],
+})
+
+_j1, _m1 = _sj.join(pd.DataFrame([{"make": "Toyota", "model": "Corolla", "year": 2019}]), _specs)
+check("spec join matches an exact (make, model, year)",
+      _m1 == 1.0 and _j1["spec_hp"].iloc[0] == 140.0)
+
+_j2, _ = _sj.join(pd.DataFrame([{"make": "Toyota", "model": "Corolla", "year": 2099}]), _specs)
+check("an unseen year falls back to the nameplate median",
+      _j2["spec_hp"].iloc[0] == 140.0)
+
+_j3, _m3 = _sj.join(pd.DataFrame([{"make": "Toyota", "model": "Hovercraft", "year": 2019}]), _specs)
+check("a genuinely unmatched nameplate leaves spec columns NaN, not a crash",
+      _m3 == 0.0 and pd.isna(_j3["spec_hp"].iloc[0]))
+
+_bundle_active = {"spec_join_active": True, "spec_table": _specs,
+                   "spec_medians": {c: 999.0 for c in _sj.SPEC_FEATURES}}
+check("inference lookup resolves a matched vehicle's specs",
+      _vm._spec_features({"make": "toyota", "model": "corolla", "year": 2019},
+                          _bundle_active)["spec_hp"] == 140.0)
+check("inference lookup falls back to the bundled median for an unmatched vehicle",
+      _vm._spec_features({"make": "toyota", "model": "hovercraft", "year": 2019},
+                          _bundle_active)["spec_hp"] == 999.0)
+check("spec lookup is a no-op on a bundle trained without spec join",
+      _vm._spec_features({"make": "toyota", "model": "corolla", "year": 2019},
+                          {"spec_join_active": False}) == {})
+check("the currently shipped bundle still predicts fine (spec join not required)",
+      _vm.predict(_typical)["price_mid_aed"] > 0)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

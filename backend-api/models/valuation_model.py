@@ -17,7 +17,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from . import brand_tier
+from . import brand_tier, spec_join
 
 _BUNDLE_PATH = Path(__file__).with_name("valuation_model.joblib")
 
@@ -39,7 +39,30 @@ def _load() -> dict:
     return joblib.load(_BUNDLE_PATH)
 
 
+def _spec_features(vehicle: dict[str, Any], bundle: dict) -> dict[str, float]:
+    """Look up spec_hp/spec_torque/etc for this vehicle via the bundle's aggregated spec
+    table (see train_valuation.try_join_specs) — a no-op bundle trained without spec join.
+
+    Uses the same join() as training so an unseen (make, model, year) falls back to the
+    nameplate median exactly like it does at train time; a nameplate spec_join has never
+    seen at all falls back to the bundled global median, matching how training fills NaN.
+    """
+    if not bundle.get("spec_join_active"):
+        return {}
+    row = pd.DataFrame([{"make": vehicle.get("make", ""), "model": vehicle.get("model", ""),
+                          "year": vehicle.get("year")}])
+    joined, _ = spec_join.join(row, bundle["spec_table"])
+    medians = bundle.get("spec_medians") or {}
+    out = {}
+    for c in spec_join.SPEC_FEATURES:
+        v = joined[c].iloc[0]
+        out[c] = float(v) if pd.notna(v) else float(medians.get(c, np.nan))
+    return out
+
+
 def _encode(vehicle: dict[str, Any], bundle: dict) -> pd.DataFrame:
+    """`vehicle` must already carry any looked-up spec_* values (see predict()) — this only
+    encodes, so a caller's spec_hp etc. is never silently dropped in favour of a fresh lookup."""
     row = {}
     for c in bundle["categorical_features"]:
         # Normalise exactly as training does (train_valuation.load: strip + lower). Without
@@ -107,6 +130,7 @@ def predict(vehicle: dict[str, Any], top_k: int = 6) -> dict[str, Any]:
     bundle = _load()
     ref_year = bundle.get("reference_year", 2026)
     v = _derive(vehicle, ref_year)
+    v = {**v, **_spec_features(v, bundle)}  # resolve spec_hp/etc before encoding + display
     X = _encode(v, bundle)
 
     log_q50 = float(bundle["models"]["q50"].predict(X)[0])
