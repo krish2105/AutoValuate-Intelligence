@@ -14,12 +14,20 @@ on:
       budget:
         description: "Hard ceiling on items requested this run (cost rail; 240 ~= $0.72)"
         default: "240"
+      capture_fixture:
+        description: "Capture a real Apify payload as a test fixture instead of scraping (free)"
+        default: "false"
+      skip_scrape:
+        description: "Skip the scrape job (use with capture_fixture=true to spend nothing)"
+        default: "false"
 
 permissions:
   contents: write
 
 jobs:
   scrape:
+    # Lets a fixture capture run without also spending Apify credit on a scrape.
+    if: github.event.inputs.skip_scrape != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,4 +84,40 @@ jobs:
           else
             git commit -m "data: grow comparables corpus to ${rows} listings (automated)"
           fi
+          git push
+
+  # One-click capture of a REAL actor payload as a committed test fixture, using the APIFY_TOKEN
+  # secret that already exists — so nobody has to handle the credential locally. Costs nothing:
+  # listing runs and reading a dataset are not billed, and this never starts a run. Free-tier
+  # datasets are retained ~7 days, so capture it before the last run's data expires.
+  # Trigger: Actions -> "Grow comparables corpus" -> Run workflow -> capture_fixture = true.
+  capture-fixture:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.capture_fixture == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install --quiet requests pandas
+      - name: Capture the fixture (answers whether the search payload carries photos)
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: python scripts/recover_apify_fixture.py --limit 3
+      - name: Run the harvester regression test against the real payload
+        run: python eval/test_photo_harvest.py
+      - name: Commit the fixture
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- eval/fixtures/apify_items.json 2>/dev/null && \
+             ! git ls-files --others --exclude-standard eval/fixtures | grep -q .; then
+            echo "no fixture change — nothing to commit"
+            exit 0
+          fi
+          git add eval/fixtures/apify_items.json
+          git commit -m "test(cv): capture real Apify payload as a photo-harvester fixture"
           git push

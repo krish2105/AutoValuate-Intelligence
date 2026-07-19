@@ -1,0 +1,55 @@
+{
+  "corpus_rows": 1302,
+  "spec_nameplate_years": 7648,
+  "spec_match_rate": 0.8095,
+  "seeds": 5,
+  "folds": 5,
+  "spec_features": [
+    "spec_hp",
+    "spec_torque",
+    "spec_l100km",
+    "spec_0to100",
+    "spec_topspeed",
+    "spec_weight"
+  ],
+  "excluded_for_leakage": [
+    "Approx Cost"
+  ],
+  "baseline_median_ape_per_seed": [
+    15.3541,
+    16.0155,
+    15.0958,
+    15.406,
+    16.007
+  ],
+  "spec_median_ape_per_seed": [
+    12.9587,
+    13.0073,
+    13.3012,
+    13.1412,
+    13.6179
+  ],
+  "permuted_median_ape_per_seed": [
+    15.9263,
+    16.2204,
+    15.5743,
+    16.4714,
+    16.6842
+  ],
+  "baseline_mean": 15.5757,
+  "spec_mean": 13.2052,
+  "permuted_mean": 16.1753,
+  "delta_pp_mean": 2.3704,
+  "delta_pp_ci95": [
+    2.0324,
+    2.7357
+  ],
+  "permuted_delta_pp_mean": -0.5997,
+  "permuted_delta_pp_ci95": [
+    -0.8681,
+    -0.3541
+  ],
+  "seeds_won": 5,
+  "verdict": "ADOPT \u2014 real gain, control clean",
+  "gate": "adopt only if the real CI excludes zero AND the permuted CI does not"
+}

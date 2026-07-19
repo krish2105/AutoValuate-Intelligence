@@ -209,10 +209,13 @@ data/            processed comparables corpus
 
 ## Licensing status
 
-The damage-detection weights derive from Ultralytics YOLOv8 (**AGPL-3.0**), and this repo has
-no LICENSE file of its own — so the project's terms are **unresolved and disclosed, not
-decided**. Payments stay in Stripe **test mode** and no commercial use is offered until that
-decision is made. Details and options: [`docs/LICENSING.md`](docs/LICENSING.md).
+This project is licensed under **[AGPL-3.0](LICENSE)**. The damage-detection weights derive from
+Ultralytics YOLOv8 (AGPL-3.0), and this repository is public, so AGPL is the honest declaration
+rather than a choice made for convenience — see [`docs/LICENSING.md`](docs/LICENSING.md).
+
+AGPL permits charging money; it does not permit withholding source from network users. Closed-
+source commercial use would still require an Ultralytics Enterprise License or a permissively
+licensed replacement detector. Until that is decided, payments stay in Stripe **test mode**.
 
 ---
 

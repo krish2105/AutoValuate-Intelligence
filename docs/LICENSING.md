@@ -1,7 +1,16 @@
-# Licensing — UNRESOLVED, needs a decision before any commercial use
+# Licensing — Option 1 taken (AGPL-3.0). Commercial use still needs a decision.
 
-**Status: escalated, not decided.** This is a legal question, not an engineering one, and it is
-recorded here rather than resolved silently. Do not treat the current state as compliant.
+**Status: the repository now declares AGPL-3.0** (`LICENSE`, verbatim from gnu.org). That closes
+the *undeclared-terms* gap below — the repo is public and ships AGPL-licensed weights, so this
+documents an obligation that already applied rather than creating a new one.
+
+**What is still open is the commercial path.** AGPL-3.0 does not forbid charging money; it
+forbids withholding the corresponding source from network users. Monetising this as closed-source
+SaaS still requires Option 2 or Option 3 below. Do not onboard a paying closed-source customer on
+the strength of the `LICENSE` file alone.
+
+Reversibility, stated honestly: you may relicense your *own* future code if the AGPL dependency
+(the YOLOv8-derived weights) is removed — but versions already published under AGPL stay AGPL.
 
 ## The issue
 
@@ -27,10 +36,12 @@ modifications, under the AGPL. Two facts make this non-trivial here:
 A permissive reading is not safe to assume. The obligation, if it applies, extends to the wider
 application source, not just the model.
 
-## Options (for the team / counsel to choose — not chosen here)
+## Options (for the team / counsel to choose)
 
 1. **Comply with AGPL-3.0** — license the application under AGPL and publish complete
    corresponding source. Simplest legally; has commercial implications.
+   **← TAKEN (2026-07-19).** `LICENSE` added at the repo root. The source is already public,
+   so the §13 network-source obligation is satisfied by the public repository.
 2. **Obtain an Ultralytics Enterprise License** — Ultralytics sells a commercial license that
    removes the AGPL obligation. This is the intended path for closed commercial use.
 3. **Replace the detector** with a model under a permissive license (e.g. Apache-2.0 / MIT
