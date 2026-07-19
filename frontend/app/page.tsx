@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Activity, Clock, Radio, ArrowDown, ShieldCheck } from "lucide-react";
+import { Activity, Clock, Radio, ArrowDown, ShieldCheck, Gauge, Sparkles, BarChart3, ScanSearch, FileText } from "lucide-react";
 import type { TraceStep, ValuationResult, VehicleInput } from "@/lib/types";
 import { streamValuation, apiInfo, wakeBackend } from "@/lib/api";
 import { loadHistory, saveToHistory, clearHistory, type HistoryItem } from "@/lib/history";
@@ -97,8 +97,11 @@ export default function Home() {
 
   const lastStep = steps[steps.length - 1];
 
+  // max-w widens on large screens: at 1920px the old max-w-6xl (1152px) left 384px of dead margin
+  // on EACH side — 40% of the viewport was empty. Stepping up to 7xl then 1440px fills that space
+  // on big monitors while staying readable; small screens are unchanged.
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-24 pt-5 sm:px-6">
+    <div className="mx-auto max-w-6xl px-4 pb-24 pt-5 sm:px-6 xl:max-w-7xl 2xl:max-w-[1440px]">
       {/* header */}
       <header className="sticky top-3 z-30 mb-8">
         {/* wrap on very narrow phones (320px): the action row is 16px too wide to sit
@@ -181,14 +184,30 @@ export default function Home() {
         <div ref={resultsRef} className="min-w-0 space-y-5">
             {!result && !loading && (
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="flex min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center">
+                className="flex min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center lg:min-h-[620px]">
                 <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                   className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-accent/10 text-accent">
                   <Activity className="h-7 w-7" />
                 </motion.div>
                 <p className="text-sm font-medium">Your valuation appears here</p>
                 <p className="mt-1 max-w-xs text-xs text-muted">Fill in the details and hit “Value my car”. The full reasoning trace streams live, then the results build in.</p>
-                <ArrowDown className="mt-4 h-4 w-4 animate-bounce text-muted lg:hidden" />
+                {/* Preview the outputs so the pane reads as intentional, not empty. */}
+                <div className="mt-6 grid w-full max-w-sm grid-cols-2 gap-2">
+                  {[
+                    { icon: <Gauge className="h-4 w-4" />, label: "Fair-market range" },
+                    { icon: <Sparkles className="h-4 w-4" />, label: "SHAP price drivers" },
+                    { icon: <BarChart3 className="h-4 w-4" />, label: "Live comparables" },
+                    { icon: <ScanSearch className="h-4 w-4" />, label: "On-device damage scan" },
+                    { icon: <FileText className="h-4 w-4" />, label: "Grounded report" },
+                    { icon: <ShieldCheck className="h-4 w-4" />, label: "Verified citations" },
+                  ].map((f) => (
+                    <div key={f.label} className="flex items-center gap-2 rounded-xl border bg-surface-2/30 px-3 py-2 text-left">
+                      <span className="text-accent">{f.icon}</span>
+                      <span className="text-[11px] font-medium text-muted">{f.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <ArrowDown className="mt-6 h-4 w-4 animate-bounce text-muted lg:hidden" />
               </motion.div>
             )}
 

@@ -49,8 +49,18 @@ export function CommandPalette({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Focus the search box the instant the palette opens. The old `setTimeout(…, 40)` left a ~50ms
+  // window where focus was still on <body>, so a user who pressed ⌘K and typed immediately (the
+  // whole point of a command palette) lost their first keystrokes — "dealer" arrived as "aler"
+  // and matched nothing, which read as "search doesn't work". Focus synchronously, then again on
+  // the next paint to cover the mount animation, with no arbitrary delay.
   useEffect(() => {
-    if (open) { setQ(""); setSel(0); setTimeout(() => inputRef.current?.focus(), 40); }
+    if (!open) return;
+    setQ(""); setSel(0);
+    const focus = () => inputRef.current?.focus();
+    focus();
+    const raf = requestAnimationFrame(focus);
+    return () => cancelAnimationFrame(raf);
   }, [open]);
 
   const actions: PaletteAction[] = useMemo(() => {
