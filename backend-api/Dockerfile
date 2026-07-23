@@ -33,5 +33,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD curl -fsS http://127.0.0.1:${PORT:-8000}/health || exit 1
 
-# Shell form so $PORT (set by Render/Fly/Railway) expands; defaults to 8000 locally.
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Exec form (JSON) so OS signals reach uvicorn for clean shutdown; the wrapping shell
+# still expands $PORT (set by Render/Fly/Railway), defaulting to 8000 locally.
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
