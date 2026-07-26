@@ -14,6 +14,7 @@ import type { DemoCar } from "@/lib/demo-garage";
 import { ReasoningTrace } from "@/components/reasoning-trace";
 import { ValuationDashboard } from "@/components/valuation-dashboard";
 import { WhatIf } from "@/components/what-if";
+import { Financing } from "@/components/financing";
 import { DealScore } from "@/components/deal-score";
 import { DamageReport } from "@/components/damage-report";
 import { Comparables } from "@/components/comparables";
@@ -242,6 +243,7 @@ export default function Home() {
                 <CardBoundary name="valuation"><ValuationDashboard v={result.valuation} /></CardBoundary>
                 <CardBoundary name="deal score"><DealScore result={result} asking={asking} /></CardBoundary>
                 <CardBoundary name="what-if explorer"><WhatIf result={result} online={online} /></CardBoundary>
+                <CardBoundary name="financing"><Financing result={result} /></CardBoundary>
                 <CardBoundary name="damage assessment"><DamageReport c={result.condition} valuation={result.valuation} /></CardBoundary>
                 <CardBoundary name="repair estimate"><RepairEstimateCard result={result} /></CardBoundary>
                 <CardBoundary name="market analytics"><MarketAnalytics result={result} /></CardBoundary>
