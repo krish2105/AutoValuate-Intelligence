@@ -1,8 +1,9 @@
 "use client";
 import { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Camera, Check, X, RotateCcw } from "lucide-react";
+import { Camera, Check, X, RotateCcw, TriangleAlert, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { assessCapture, type CaptureAssessment } from "@/lib/cv/capture-quality";
 
 /**
  * M1 — guided walk-around capture.
@@ -57,6 +58,10 @@ export function GuidedCapture({
   max?: number;
 }) {
   const [slots, setSlots] = useState<(string | null)[]>(() => ANGLES.map(() => null));
+  // Capture coaching, keyed by slot. Advisory only — a photo is never rejected, and this
+  // never reaches the damage score (see lib/cv/capture-quality.ts).
+  const [coach, setCoach] = useState<Record<number, CaptureAssessment | null>>({});
+  const [checking, setChecking] = useState<Record<number, boolean>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<number>(0);
 
@@ -76,20 +81,30 @@ export function GuidedCapture({
   function onFile(files: FileList | null) {
     const f = files?.[0];
     if (!f) return;
+    const slot = targetRef.current;
     const reader = new FileReader();
     reader.onload = () => {
       const next = [...slots];
-      next[targetRef.current] = reader.result as string;
+      next[slot] = reader.result as string;
       push(next);
     };
     reader.readAsDataURL(f);
     if (inputRef.current) inputRef.current.value = ""; // allow re-picking the same file
+
+    // Coach AFTER accepting the photo, never before: the shot is already usable, and a slow
+    // or failed check must not stand between the user and their next angle.
+    setCoach((c) => ({ ...c, [slot]: null }));
+    setChecking((c) => ({ ...c, [slot]: true }));
+    assessCapture(f)
+      .then((a) => setCoach((c) => ({ ...c, [slot]: a })))
+      .finally(() => setChecking((c) => ({ ...c, [slot]: false })));
   }
 
   function clearSlot(i: number) {
     const next = [...slots];
     next[i] = null;
     push(next);
+    setCoach((c) => ({ ...c, [i]: null }));
   }
 
   const R = 16, C = 2 * Math.PI * R;
@@ -174,6 +189,33 @@ export function GuidedCapture({
           );
         })}
       </div>
+
+      {/* Capture coaching. The detector is unstable to framing (docs/CV_FINDINGS.md), so the
+          cheapest lever on scan quality is catching a bad shot while the user is still stood
+          next to the car. Advice only — nothing here blocks or discards a photo. */}
+      {Object.values(checking).some(Boolean) && (
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-muted">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking the shot…
+        </p>
+      )}
+
+      {ANGLES.map((a, i) => {
+        const c = coach[i];
+        if (!c || c.ok || !c.message) return null;
+        return (
+          <motion.div key={a.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+            className="mt-2 flex items-start gap-2 rounded-lg bg-warn/10 px-2.5 py-2 text-[11px] text-warn">
+            <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1">
+              <strong className="font-semibold">{a.label}:</strong> {c.message}
+            </span>
+            <button onClick={() => pick(i)}
+              className="shrink-0 rounded-md px-1.5 py-0.5 font-medium underline underline-offset-2 transition hover:bg-warn/15">
+              Retake
+            </button>
+          </motion.div>
+        );
+      })}
 
       {filled === ANGLES.length && (
         <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
