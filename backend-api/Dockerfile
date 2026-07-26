@@ -33,6 +33,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD curl -fsS http://127.0.0.1:${PORT:-8000}/health || exit 1
 
-# Exec form (JSON) so OS signals reach uvicorn for clean shutdown; the wrapping shell
-# still expands $PORT (set by Render/Fly/Railway), defaulting to 8000 locally.
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# JSON-array CMD alone does NOT make signals reach uvicorn: `sh -c "cmd"` still runs cmd
+# as a CHILD of sh, and sh does not forward SIGTERM to it — PID 1 stays `sh`, Docker's
+# grace period expires, and the container is SIGKILLed. Verified this exact failure
+# (10.2s `docker stop`, /proc/1/cmdline showing `sh`, not uvicorn) before adding `exec`
+# below. `exec` replaces the shell process with uvicorn instead of forking it, so uvicorn
+# becomes PID 1 and receives SIGTERM directly. The shell wrapper is kept only so $PORT
+# (set by Render/Fly/Railway) still expands; defaults to 8000 locally.
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
