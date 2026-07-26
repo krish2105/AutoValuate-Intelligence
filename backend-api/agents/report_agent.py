@@ -14,6 +14,19 @@ from typing import Any
 
 from llm_client.client import LLMClient
 
+# Human labels for model feature names — mirrors frontend/lib/feature-labels.ts so the same
+# feature never gets two different names between the seller report and the SHAP charts.
+# Keep both files in sync when a feature is added or renamed.
+FEATURE_LABEL: dict[str, str] = {
+    "noOfCylinders": "Engine size", "year": "Model year", "bodyType": "Body type",
+    "make": "Make", "model": "Model", "kilometers": "Mileage",
+    "mileage_per_year": "Km / year", "transmissionType": "Transmission",
+    "fuelType": "Fuel", "regionalSpecs": "Specs", "city": "City",
+    "sellerType": "Seller", "age": "Age",
+    "spec_hp": "Horsepower", "spec_torque": "Torque", "spec_l100km": "Fuel economy",
+    "spec_0to100": "0-100 km/h", "spec_topspeed": "Top speed", "spec_weight": "Weight",
+}
+
 SYSTEM = (
     "You are a used-car valuation analyst writing a short, honest seller report for the UAE market. "
     "You may ONLY state numbers that appear in the EVIDENCE block. Cite every number with its id in "
@@ -35,7 +48,8 @@ def build_evidence(vehicle: dict, valuation: dict, condition: dict, comparables:
     }
     for i, f in enumerate(valuation["explanation"]["top_factors"][:4], 1):
         ev["drivers"][f"P{i}"] = {
-            "feature": f["feature"], "value": f["value"], "aed_impact": f["approx_aed_impact"]}
+            "feature": FEATURE_LABEL.get(f["feature"], f["feature"]),
+            "value": f["value"], "aed_impact": f["approx_aed_impact"]}
     if condition.get("cv_available"):
         ev["condition"]["D0"] = {"label": "condition score", "value": condition["condition_score"]}
         for i, f in enumerate(condition["findings"], 1):
