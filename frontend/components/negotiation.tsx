@@ -1,9 +1,10 @@
 "use client";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Handshake, Copy, Check, TrendingUp, TrendingDown } from "lucide-react";
+import { Handshake, Copy, Check, TrendingUp, TrendingDown, Send } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
 import { aed, titleCase } from "@/lib/utils";
+import { share } from "@/lib/share-targets";
 import { SectionCard, Pill } from "./ui";
 
 type Mode = "sell" | "buy";
@@ -128,6 +129,10 @@ export function Negotiation({ result }: { result: ValuationResult }) {
     } catch { /* clipboard may be blocked; ignore */ }
   };
 
+  // Must stay a direct click handler: navigator.share() throws outside a user gesture.
+  const sendScript = () =>
+    share({ title: "My car valuation", text: scriptText(result, mode, plan) });
+
   const ToneDot = ({ tone }: { tone?: Point["tone"] }) => (
     <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
       tone === "good" ? "bg-good" : tone === "warn" ? "bg-warn" : tone === "info" ? "bg-info" : "bg-muted"
@@ -191,12 +196,19 @@ export function Negotiation({ result }: { result: ValuationResult }) {
         })}
       </ul>
 
-      <div className="mt-4 flex items-center justify-between border-t pt-3">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
         <Pill tone="muted">deterministic · no AI guesswork</Pill>
-        <button onClick={copy}
-          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-accent">
-          {copied ? <><Check className="h-3.5 w-3.5 text-good" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy script</>}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={copy}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-accent">
+            {copied ? <><Check className="h-3.5 w-3.5 text-good" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy script</>}
+          </button>
+          {/* The negotiation happens in a chat, not a clipboard — this is the UAE. */}
+          <button onClick={sendScript}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-good/40 px-3 py-1.5 text-xs font-medium text-good transition hover:bg-good/10">
+            <Send className="h-3.5 w-3.5" /> Send
+          </button>
+        </div>
       </div>
     </SectionCard>
   );

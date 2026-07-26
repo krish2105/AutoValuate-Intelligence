@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Share2, Check, Loader2, AlertTriangle } from "lucide-react";
+import { Share2, Check, Loader2, AlertTriangle, Send } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
 import { shareValuation } from "@/lib/supabase";
+import { share as sendVia } from "@/lib/share-targets";
+import { aed } from "@/lib/utils";
 
 /**
  * Phase D — publish a read-only copy of this valuation and copy the link.
@@ -52,6 +54,18 @@ export function ShareButton({ result }: { result: ValuationResult }) {
           >
             <p className="mb-1 font-semibold text-good">Public link ready</p>
             <a href={url} target="_blank" rel="noreferrer" className="break-all text-accent underline">{url}</a>
+            {/* A link the seller still has to paste somewhere isn't finished. In the UAE that
+                somewhere is almost always WhatsApp. */}
+            <button
+              onClick={() => sendVia({
+                title: "Car valuation",
+                text: `${result.vehicle.year} ${result.vehicle.make} ${result.vehicle.model} — valued at ${aed(result.valuation.price_mid_aed)} by AutoValuate Intelligence.`,
+                url,
+              })}
+              className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-good/40 px-2 py-1.5 font-medium text-good transition hover:bg-good/10"
+            >
+              <Send className="h-3.5 w-3.5" /> Send
+            </button>
           </motion.div>
         )}
         {state === "error" && (

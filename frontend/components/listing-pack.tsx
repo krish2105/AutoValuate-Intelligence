@@ -1,9 +1,10 @@
 "use client";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ClipboardList, Copy, Check, Tag } from "lucide-react";
+import { ClipboardList, Copy, Check, Tag, Send } from "lucide-react";
 import type { ValuationResult } from "@/lib/types";
 import { aed, km, titleCase } from "@/lib/utils";
+import { share } from "@/lib/share-targets";
 import { SectionCard, Pill } from "./ui";
 
 /**
@@ -132,10 +133,17 @@ export function ListingPack({ result }: { result: ValuationResult }) {
             Built only from your form entries, the scan, and the model — nothing is embellished.
             Damage found by the scan is disclosed on purpose: surprises kill deals.
           </p>
-          <button onClick={() => copy("body", listing.body)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-accent">
-            {copied === "body" ? <><Check className="h-3.5 w-3.5 text-good" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy listing</>}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button onClick={() => copy("body", listing.body)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-accent">
+              {copied === "body" ? <><Check className="h-3.5 w-3.5 text-good" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy listing</>}
+            </button>
+            {/* Most UAE listings get sent as a WhatsApp message before they ever hit a portal. */}
+            <button onClick={() => share({ title: listing.title, text: `${listing.title}\n\n${listing.body}` })}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-good/40 px-3 py-1.5 text-xs font-medium text-good transition hover:bg-good/10">
+              <Send className="h-3.5 w-3.5" /> Send
+            </button>
+          </div>
         </div>
       </div>
     </SectionCard>
