@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AutoValuate Intelligence">
+  <title>AutoValuate Intelligence</title>
+  <!-- Android maskable: the launcher crops to an arbitrary shape, so the plate is full-bleed
+       (no corner radius of our own) and the mark is scaled to 62% about the centre to sit
+       inside the safe circle. -->
+  <defs>
+    <linearGradient id="m-plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#18222F"/><stop offset="1" stop-color="#0B1119"/>
+    </linearGradient>
+    <linearGradient id="m-arc" x1="0.1" y1="1" x2="0.9" y2="0">
+      <stop offset="0" stop-color="#E08A12"/><stop offset="0.55" stop-color="#F5A623"/><stop offset="1" stop-color="#FFC759"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#m-plate)"/>
+  <g transform="translate(256 256) scale(0.62) translate(-256 -282)">
+    <path d="M 132 339.1 A 132 132 0 1 1 380 339.1" fill="none" stroke="url(#m-arc)"
+          stroke-width="36" stroke-linecap="round"/>
+    <path d="M 244.1 286.6 L 311.1 205.8 L 267.9 301.4 Z" fill="#F4F8FC" stroke="#F4F8FC"
+          stroke-width="10" stroke-linejoin="round"/>
+    <circle cx="256" cy="294" r="29" fill="#F5A623"/>
+    <circle cx="256" cy="294" r="11" fill="#0B1119"/>
+  </g>
+</svg>

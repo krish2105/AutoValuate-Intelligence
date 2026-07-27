@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="106 136 300 230" role="img" aria-label="AutoValuate">
+  <title>AutoValuate</title>
+  <!-- Single-colour mark for inline, stencil and print use. Inherits currentColor,
+       so it works on any background. Geometry matches icon.svg exactly. -->
+  <g fill="currentColor">
+    <path d="M 132 339.1 A 132 132 0 1 1 380 339.1" fill="none" stroke="currentColor"
+          stroke-width="36" stroke-linecap="round"/>
+    <path d="M 244.1 286.6 L 311.1 205.8 L 267.9 301.4 Z" stroke="currentColor"
+          stroke-width="10" stroke-linejoin="round"/>
+    <circle cx="256" cy="294" r="29"/>
+  </g>
+</svg>
