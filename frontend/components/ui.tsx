@@ -1,6 +1,5 @@
 "use client";
 import { motion } from "framer-motion";
-import { Gauge } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -44,11 +43,29 @@ export function SectionCard({
   );
 }
 
+/**
+ * The brand mark, drawn from the same geometry as public/icons/icon.svg so the header logo,
+ * the favicon and the installed-app icon are literally the same shape. Inherits currentColor.
+ * Previously this was a stock lucide Gauge, which meant the site's logo and its icon were two
+ * different drawings.
+ */
+export function GaugeMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="106 136 300 230" className={className} fill="none" aria-hidden>
+      <path d="M 132 339.1 A 132 132 0 1 1 380 339.1" stroke="currentColor"
+            strokeWidth={38} strokeLinecap="round" />
+      <path d="M 244.1 286.6 L 311.1 205.8 L 267.9 301.4 Z" fill="currentColor"
+            stroke="currentColor" strokeWidth={12} strokeLinejoin="round" />
+      <circle cx="256" cy="294" r="30" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function Logo({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
       <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-accent-fg shadow-glow">
-        <Gauge className="h-5 w-5" strokeWidth={2.2} />
+        <GaugeMark className="h-[22px] w-[22px]" />
       </div>
       <div className="leading-tight">
         <div className="text-[15px] font-semibold tracking-tight">AutoValuate</div>
